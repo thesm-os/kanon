@@ -1,0 +1,147 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: Apache-2.0
+
+package wire_test
+
+import (
+	"errors"
+	"io"
+	"math"
+	"testing"
+
+	"go.dokimi.dev/assert"
+
+	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/wire"
+)
+
+// The cases locate their errors at a field of a struct of another package,
+// whose type name contains a dot.
+const (
+	errLoc    = "shop.Order.Count"
+	errType   = "shop.Order"
+	errField  = "Count"
+	errNumber = 7
+	errOff    = 12
+)
+
+// errOwn is the error of a type that encodes or decodes itself.
+var errOwn = errors.New("token: empty")
+
+// hexagon is a type that no list of concrete types names.
+type hexagon struct{}
+
+func TestError(t *testing.T) {
+	t.Parallel()
+	located := func(cause error, detail string) *kanon.DecodeError {
+		return &kanon.DecodeError{
+			Type: errType, Field: errField, Number: errNumber, Offset: errOff, Detail: detail, Err: cause,
+		}
+	}
+	cases := []struct {
+		name string
+		err  error
+		want *kanon.DecodeError
+	}{
+		{
+			name: "ReadError/reports truncation for length 0",
+			err:  wire.ReadError(0, errLoc, errNumber, errOff),
+			want: located(io.ErrUnexpectedEOF, ""),
+		},
+		{
+			name: "ReadError/reports truncation for a length that runs past the input",
+			err:  wire.ReadError(3, errLoc, errNumber, errOff),
+			want: located(io.ErrUnexpectedEOF, ""),
+		},
+		{
+			name: "ReadError/reports an overflow for length -1",
+			err:  wire.ReadError(-1, errLoc, errNumber, errOff),
+			want: located(kanon.ErrMalformed, "varint overflows 64 bits"),
+		},
+		{
+			name: "TagError/locates an invalid tag at the struct",
+			err:  wire.TagError(errNumber<<3|6, errType, 0, errOff),
+			want: &kanon.DecodeError{
+				Type: errType, Offset: errOff, Detail: "field 7 has invalid wire format 6", Err: kanon.ErrMalformed,
+			},
+		},
+		{
+			name: "FormatError/names the wire format and the one the field wants",
+			err:  wire.FormatError(errNumber<<3|wire.Fixed64, wire.Varint, errLoc, errOff),
+			want: located(kanon.ErrMalformed, "wire format fixed64, want varint"),
+		},
+		{
+			name: "FormatError/names the formats fixed32 and bytes",
+			err:  wire.FormatError(errNumber<<3|wire.Fixed32, wire.Bytes, errLoc, errOff),
+			want: located(kanon.ErrMalformed, "wire format fixed32, want bytes"),
+		},
+		{
+			name: "RangeError/names a signed value and the type",
+			err:  wire.RangeError(int64(-129), "int8", errLoc, errNumber, errOff),
+			want: located(kanon.ErrRange, "value -129 outside int8"),
+		},
+		{
+			name: "RangeError/names an unsigned value and the type",
+			err:  wire.RangeError(uint64(math.MaxUint64), "uint32", errLoc, errNumber, errOff),
+			want: located(kanon.ErrRange, "value 18446744073709551615 outside uint32"),
+		},
+		{
+			name: "LengthError/names the length and the one the value wants",
+			err:  wire.LengthError(3, 32, errLoc, errNumber, errOff),
+			want: located(kanon.ErrMalformed, "length 3, want 32"),
+		},
+		{
+			name: "TrailingError/counts the bytes after the value",
+			err:  wire.TrailingError(2, errLoc, errNumber, errOff),
+			want: located(kanon.ErrMalformed, "2 bytes after the value"),
+		},
+		{
+			name: "PresenceError/names the presence byte",
+			err:  wire.PresenceError(2, errLoc, errNumber, errOff),
+			want: located(kanon.ErrMalformed, "presence byte 2, want 0 or 1"),
+		},
+		{
+			name: "TypeError/names the type number",
+			err:  wire.TypeError(9, errLoc, errNumber, errOff),
+			want: located(kanon.ErrUnknownType, "type number 9"),
+		},
+		{
+			name: "DepthError/locates the depth at the struct",
+			err:  wire.DepthError(errType, errOff),
+			want: &kanon.DecodeError{Type: errType, Offset: errOff, Err: kanon.ErrDepth},
+		},
+		{
+			name: "UnmarshalError/wraps the error of the value",
+			err:  wire.UnmarshalError(errOwn, errLoc, errNumber, errOff),
+			want: located(errOwn, ""),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := assert.ErrorAs[*kanon.DecodeError](t, c.err, "the function returns a *kanon.DecodeError")
+			assert.Equal(t, got, c.want, "the error locates the input and states the cause")
+		})
+	}
+	t.Run("MarshalError", func(t *testing.T) {
+		t.Parallel()
+		t.Run("wraps the error of the value", func(t *testing.T) {
+			t.Parallel()
+			got := assert.ErrorAs[*kanon.EncodeError](t, wire.MarshalError(errOwn, errLoc, errNumber),
+				"MarshalError returns a *kanon.EncodeError")
+			assert.Equal(t, got, &kanon.EncodeError{Type: errType, Field: errField, Number: errNumber, Err: errOwn},
+				"MarshalError locates the field and wraps the cause")
+		})
+	})
+	t.Run("UnlistedError", func(t *testing.T) {
+		t.Parallel()
+		t.Run("wraps ErrUnlistedType and names the type", func(t *testing.T) {
+			t.Parallel()
+			err := wire.UnlistedError(hexagon{}, errLoc, errNumber)
+			assert.ErrorIs(t, err, kanon.ErrUnlistedType, "UnlistedError wraps ErrUnlistedType")
+			assert.Equal(t, err.Error(),
+				"kanon: shop.Order.Count (field 7): type not listed in the tag option types: wire_test.hexagon",
+				"UnlistedError names the field and the type of the value")
+		})
+	})
+}

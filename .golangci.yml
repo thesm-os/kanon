@@ -1,9 +1,9 @@
 # golangci-lint configuration for kanon.
 #
-# Derived from go.thesmos.sh/core's configuration. The generator and the
-# code it generates use the standard library only, so depguard allows the
-# standard library and kanon itself, in production code and in tests
-# alike. kanontest also uses pgregory.net/rapid for its property checks.
+# Derived from go.thesmos.sh/core's configuration. Production code imports
+# the standard library and kanon itself. Tests also import
+# go.dokimi.dev/assert, and kanontest imports it and pgregory.net/rapid for
+# its checks.
 
 version: "2"
 
@@ -71,11 +71,22 @@ linters:
           list-mode: strict
           files:
             - "$all"
+            - "!$test"
             - "!**/kanontest/**"
           allow:
             - $gostd
             - go/
             - go.thesmos.sh/kanon
+        tests:
+          list-mode: strict
+          files:
+            - "$test"
+          allow:
+            - $gostd
+            - go/
+            - go.dokimi.dev/assert
+            - go.thesmos.sh/kanon
+            - pgregory.net/rapid
         kanontest:
           list-mode: strict
           files:
@@ -83,6 +94,7 @@ linters:
           allow:
             - $gostd
             - go/
+            - go.dokimi.dev/assert
             - go.thesmos.sh/kanon
             - pgregory.net/rapid
 
@@ -160,14 +172,14 @@ linters:
       - std-error-handling
       - common-false-positives
     rules:
-      # These files build and read the wire format, and convert between
-      # integer widths on purpose: a field number becomes the high bits of
-      # a uint64 tag, a signed value becomes the uint64 of its varint, and
-      # a length arrives as a uint64. Every conversion is bounded by a
-      # preceding check or is the conversion the wire format defines. The
-      # wide sample of draw.go counts up from 0 and converts its count to
-      # every integer type of a sample.
-      - path: '^(internal/kanon/(emitter|decode)|kanontest/(wire|probes|bench|reference|draw))\.go$'
+      # Package wire and these files build and read the wire format, and
+      # convert between integer widths on purpose: a field number becomes
+      # the high bits of a uint64 tag, a signed value becomes the uint64 of
+      # its varint, and a length arrives as a uint64. Every conversion is
+      # bounded by a preceding check or is the conversion the wire format
+      # defines. The wide sample of draw.go counts up from 0 and converts
+      # its count to every integer type of a sample.
+      - path: '^(wire/[a-z]+|internal/kanon/(emitter|decode)|kanontest/(wire|probes|bench|reference|draw))\.go$'
         linters: [gosec]
         text: "G115:"
 

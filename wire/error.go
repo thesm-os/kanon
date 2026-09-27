@@ -1,0 +1,123 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: Apache-2.0
+
+package wire
+
+import (
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+
+	"go.thesmos.sh/kanon"
+)
+
+// ReadError returns the error for a value at offset off whose read returned
+// the length n: truncation, which wraps io.ErrUnexpectedEOF, for n of 0 and
+// for a positive n, the length of a prefix whose value runs past the input;
+// and a varint longer than 64 bits, which wraps kanon.ErrMalformed, for a
+// negative n.
+func ReadError(n int, loc string, num, off int) error {
+	if n < 0 {
+		return decodeError(kanon.ErrMalformed, loc, num, off, "varint overflows 64 bits")
+	}
+	return decodeError(io.ErrUnexpectedEOF, loc, num, off, "")
+}
+
+// TagError returns the error for an invalid tag at offset off: a tag with
+// field number 0, or with wire format 3, 4, 6 or 7. It wraps
+// kanon.ErrMalformed.
+func TagError(tag uint64, loc string, num, off int) error {
+	detail := "field number 0"
+	if tag>>3 != 0 {
+		detail = "field " + strconv.FormatUint(tag>>3, 10) + " has " + wireName(tag&7)
+	}
+	return decodeError(kanon.ErrMalformed, loc, num, off, detail)
+}
+
+// FormatError returns the error for the tag at offset off of a known
+// field, whose wire format is not want. It wraps kanon.ErrMalformed.
+func FormatError(tag uint64, want int, loc string, off int) error {
+	detail := "wire format " + wireName(tag&7) + ", want " + wireName(uint64(want))
+	return decodeError(kanon.ErrMalformed, loc, int(tag>>3), off, detail)
+}
+
+// RangeError returns the error for the value v at offset off, which does
+// not fit the integer type typ. It wraps kanon.ErrRange.
+func RangeError[V int64 | uint64](v V, typ, loc string, num, off int) error {
+	return decodeError(kanon.ErrRange, loc, num, off, fmt.Sprintf("value %d outside %s", v, typ))
+}
+
+// LengthError returns the error for the value at offset off whose length
+// is got and not want: a byte array, or a complex128. It wraps
+// kanon.ErrMalformed.
+func LengthError(got uint64, want int, loc string, num, off int) error {
+	detail := "length " + strconv.FormatUint(got, 10) + ", want " + strconv.Itoa(want)
+	return decodeError(kanon.ErrMalformed, loc, num, off, detail)
+}
+
+// TrailingError returns the error for n bytes at offset off after the value
+// that a length announced: after the value of a pointer field or an
+// interface field, and after the last element of an array. It wraps
+// kanon.ErrMalformed.
+func TrailingError(n int, loc string, num, off int) error {
+	return decodeError(kanon.ErrMalformed, loc, num, off, strconv.Itoa(n)+" bytes after the value")
+}
+
+// PresenceError returns the error for the presence byte b at offset off of
+// a pointer, which is neither 0 nor 1. It wraps kanon.ErrMalformed.
+func PresenceError(b byte, loc string, num, off int) error {
+	return decodeError(kanon.ErrMalformed, loc, num, off, "presence byte "+strconv.Itoa(int(b))+", want 0 or 1")
+}
+
+// TypeError returns the error for the interface type number t at offset
+// off, which the list of the field's concrete types does not name. It
+// wraps kanon.ErrUnknownType.
+func TypeError(t uint64, loc string, num, off int) error {
+	return decodeError(kanon.ErrUnknownType, loc, num, off, "type number "+strconv.FormatUint(t, 10))
+}
+
+// DepthError returns the error for the struct typ, whose encoding at offset
+// off is nested deeper than the limit of the decode. It wraps
+// kanon.ErrDepth.
+func DepthError(typ string, off int) error {
+	return decodeError(kanon.ErrDepth, typ, 0, off, "")
+}
+
+// UnmarshalError returns the error for the value at offset off of a type
+// that decodes itself, whose decode method failed with err. It wraps err.
+func UnmarshalError(err error, loc string, num, off int) error {
+	return decodeError(err, loc, num, off, "")
+}
+
+// MarshalError returns the error for the value of a type that encodes
+// itself, whose encode method failed with err. It wraps err.
+func MarshalError(err error, loc string, num int) error {
+	e := &kanon.EncodeError{Number: num, Err: err}
+	e.Type, e.Field = split(loc)
+	return e
+}
+
+// UnlistedError returns the error for the interface value v, whose type
+// the tag option types of the field does not list. It wraps
+// kanon.ErrUnlistedType, and its message names the type of v.
+func UnlistedError(v any, loc string, num int) error {
+	return MarshalError(fmt.Errorf("%w: %T", kanon.ErrUnlistedType, v), loc, num)
+}
+
+// decodeError returns the *kanon.DecodeError of loc and num at offset off,
+// which wraps cause and states detail.
+func decodeError(cause error, loc string, num, off int, detail string) *kanon.DecodeError {
+	e := &kanon.DecodeError{Type: loc, Number: num, Offset: off, Detail: detail, Err: cause}
+	if num != 0 {
+		e.Type, e.Field = split(loc)
+	}
+	return e
+}
+
+// split returns the struct type and the field that loc, "Type.Field",
+// names. A field name has no dot, so the last dot of loc separates the two.
+func split(loc string) (string, string) {
+	k := strings.LastIndexByte(loc, '.')
+	return loc[:k], loc[k+1:]
+}
