@@ -1,0 +1,6 @@
+# Generated code collapses in GitHub diffs.
+*.kanon.go linguist-generated=true
+*.kanon_test.go linguist-generated=true
+
+# Wire snapshots are raw bytes.
+*.bin binary

@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Build, vet and the race tests run on every supported OS. The other
+  # jobs check properties of the source that do not depend on the
+  # runner's OS, so they run on Linux only.
+  vet-build:
+    name: Vet + Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - run: make lint-vet
+      - run: make build
+
+  test:
+    name: Test (race, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - run: make test-race
+
+  # int, uint and uintptr are 32 bits wide on 386, where the decode rejects
+  # a value outside their range and a time zone offset outside the range of
+  # int. The race detector needs a 64-bit platform, so these tests run
+  # without it.
+  test-386:
+    name: Test (386)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: make test-386
+
+  gate:
+    name: Check (mod, lint, test, coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - run: make bootstrap
+      - run: make check
+
+  generated:
+    name: Generated code is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - run: make check-generated
+
+  # A pull request must not renumber a field that its base branch records,
+  # since data that the base branch encoded would decode into another
+  # field. The full history makes the base branch available as a remote
+  # branch.
+  numbers:
+    name: Field numbers are kept
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - env:
+          BASE: origin/${{ github.base_ref }}
+        run: make check-numbers BASE="$BASE"

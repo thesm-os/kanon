@@ -1,0 +1,226 @@
+# golangci-lint configuration for kanon.
+#
+# Derived from go.thesmos.sh/core's configuration. The generator and the
+# code it generates use the standard library only, so depguard allows the
+# standard library and kanon itself, in production code and in tests
+# alike. kanontest also uses pgregory.net/rapid for its property checks.
+
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  tests: true
+  relative-path-mode: gomod
+
+output:
+  show-stats: true
+  sort-order:
+    - linter
+    - severity
+    - file
+
+linters:
+  default: none
+  enable:
+    # Bugs & safety
+    - copyloopvar
+    - errcheck
+    - errorlint
+    - exhaustive
+    - gosec
+    - govet
+    - nilerr
+    - predeclared
+    - staticcheck
+    - unused
+    - wastedassign
+    # Modernization
+    - modernize
+    - unparam
+    # Performance
+    - gocritic
+    - perfsprint
+    - prealloc
+    # Architecture & style
+    - depguard
+    - dupword
+    - forbidigo
+    - goconst
+    - misspell
+    - nilnil
+    - revive
+    - usestdlibvars
+    - whitespace
+    # Test hygiene
+    - thelper
+    - tparallel
+    - paralleltest
+    - usetesting
+
+  settings:
+    # depguard v2.2.1 compares an import with the one allow entry that
+    # sorts just before it. $gostd expands to the directories of
+    # GOROOT/src, among them "go", and go.thesmos.sh/kanon sorts between
+    # "go" and "go/types". Every go/* import then fails unless "go/" is
+    # listed on its own, as each rule below does.
+    depguard:
+      rules:
+        main:
+          list-mode: strict
+          files:
+            - "$all"
+            - "!**/kanontest/**"
+          allow:
+            - $gostd
+            - go/
+            - go.thesmos.sh/kanon
+        kanontest:
+          list-mode: strict
+          files:
+            - "**/kanontest/**"
+          allow:
+            - $gostd
+            - go/
+            - go.thesmos.sh/kanon
+            - pgregory.net/rapid
+
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^panic$
+          msg: "panic() is forbidden in library code; return errors explicitly."
+        - pattern: ^fmt\.(Print|Printf|Println)$
+          msg: "Library code does not print. The kanon command writes through its io.Writer."
+
+    exhaustive:
+      default-signifies-exhaustive: true
+      check:
+        - switch
+
+    usetesting:
+      context-background: true
+      context-todo: true
+      os-setenv: true
+      os-mkdir-temp: true
+      os-temp-dir: true
+
+    gocritic:
+      enabled-tags:
+        - performance
+        - diagnostic
+      disabled-checks:
+        - ifElseChain
+        - commentedOutCode
+      settings:
+        hugeParam:
+          sizeThreshold: 256
+        rangeValCopy:
+          sizeThreshold: 256
+
+    revive:
+      severity: error
+      confidence: 0.1
+      rules:
+        - name: context-as-argument
+        - name: var-naming
+        - name: package-comments
+        - name: receiver-naming
+        - name: exported
+          severity: warning
+        - name: error-return
+        - name: error-naming
+        - name: error-strings
+        - name: errorf
+        - name: if-return
+        - name: indent-error-flow
+        - name: early-return
+        - name: unexported-return
+        - name: redundant-import-alias
+        - name: range
+        - name: empty-block
+        - name: unnecessary-stmt
+        - name: modifies-value-receiver
+        - name: time-naming
+        - name: unused-receiver
+
+    govet:
+      enable-all: true
+
+    whitespace:
+      multi-if: true
+      multi-func: false
+
+  exclusions:
+    generated: lax
+    paths:
+      - docs
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # These files build and read the wire format, and convert between
+      # integer widths on purpose: a field number becomes the high bits of
+      # a uint64 tag, a signed value becomes the uint64 of its varint, and
+      # a length arrives as a uint64. Every conversion is bounded by a
+      # preceding check or is the conversion the wire format defines. The
+      # wide sample of draw.go counts up from 0 and converts its count to
+      # every integer type of a sample.
+      - path: '^(internal/kanon/(emitter|decode)|kanontest/(wire|probes|bench|reference|draw))\.go$'
+        linters: [gosec]
+        text: "G115:"
+
+      # The loader runs `go list` in the package directory kanon was
+      # given. The command is fixed, and the arguments are fixed flags,
+      # the pattern "." and the import paths that go list itself reported
+      # for the package.
+      - path: '^internal/kanon/load\.go$'
+        linters: [gosec]
+        text: "G204:"
+
+      # chaos.Child runs the running test binary, os.Args[0], again. Its
+      # arguments are a -test.run pattern that quotes the name of a test
+      # and the coverage directory of the running binary. G204 flags the
+      # command and G702 traces os.Args to it.
+      - path: '^kanontest/internal/chaos/child\.go$'
+        linters: [gosec]
+        text: "G(204|702):"
+
+      # fieldalignment is noise outside hot-path structs.
+      - linters: [govet]
+        text: "fieldalignment:"
+
+      # Test files state literal values inline; the value is the
+      # assertion.
+      - path: '_test\.go'
+        linters: [goconst, gosec]
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(go.thesmos.sh/kanon)
+      custom-order: true
+    golines:
+      max-len: 120
+    gofumpt:
+      extra:
+        group-params: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: false
+
+severity:
+  default: error

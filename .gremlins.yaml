@@ -1,0 +1,11 @@
+# gremlins configuration for kanon.
+#
+# The tests of kanontest and the generated tests of the fixture packages
+# both exercise kanontest. The generated tests run its suites over every
+# field kind, shape and encoding, and kanontest's own tests do not repeat
+# them. Integration mode runs `go test ./...` for each mutant, and coverpkg
+# records the statements of every package that a test runs, so the tests
+# of any package can cover and kill a mutant.
+unleash:
+  integration: true
+  coverpkg: go.thesmos.sh/kanon/...
