@@ -1,0 +1,486 @@
+---
+rfc: 0002
+title: Generated Go codecs, their runtime and their public interface
+author: Roy Klopper <roy.klopper@stealthscale.io>
+status: Accepted
+created: 2026-09-27
+updated: 2026-09-27
+discussion: none
+supersedes: none
+superseded-by: none
+produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013
+---
+
+# RFC-0002: Generated Go codecs, their runtime and their public interface
+
+## Summary
+
+`kanon` is a code generator that reads Go struct types and writes their encoders and decoders
+for the kanon wire format, as `stringer` writes `String` methods: a `//go:generate go tool
+kanon -type=A,B` directive produces `<file>.kanon.go`, the methods of the named types, and
+`<file>.kanon_test.go`, their conformance test. The generated code calls a small runtime: the
+package `kanon` declares the `Message` interface that every generated type satisfies, the
+decode `Options`, the error types and the version constants, and the package `kanon/wire`
+provides the varint, time and skip functions that the generated code shares. The generated
+methods encode with zero allocations into a sized buffer, decode with zero allocations into a
+reused value, and keep exact presence for pointers. Field numbers are locked in the generated
+file and checked against a git revision.
+
+## Motivation
+
+The wire format needs Go struct types as its schema, so that an application declares its data
+model once. A codec written by hand costs about 35 lines per field, which is what the
+generated code measures for a struct of 70 fields, and a class of bugs that the compiler does
+not catch. Reflection at run time costs 5 to 20 times the time of generated code, measured as
+gob and json against a generated prototype on 13 types.
+
+Generated code needs a shared interface, so that a frame writer, a batch reader or an RPC
+codec accepts any generated type. It needs typed errors, so that a storage engine tells a
+truncated record from a corrupt one and from one that exceeds a limit. It needs decode
+options, so that a caller passes a slab and a nesting limit without a method signature per
+option. And it needs an allocation contract, so that a server with a million messages per
+second does not spend its time in the garbage collector. A runtime package gives all four,
+and one implementation of the varint, time and skip functions to fuzz and mutate instead of
+one copy per generated file.
+
+## Detailed design
+
+### The directive
+
+```go
+//go:generate go tool kanon -type=Order,Line
+```
+
+- `-type` names one or more struct types of the package, separated by commas. It is required.
+- kanon writes `<base>.kanon.go` and `<base>.kanon_test.go`, where `<base>` is the name of the
+  file with the directive, which `go generate` names in `GOFILE`. Outside `go generate`, the
+  file is the only argument.
+- kanon writes a file only when its content changes.
+- `-views` also generates the view types of the Views section.
+- With `KANON_CHECK=<revision>`, kanon checks the field numbers against the generated files at
+  that git revision and writes nothing.
+- The exit status is 0 on success, 1 when generation or the check fails, and 2 on a usage
+  error.
+
+### Field numbers
+
+Every field encodes under a number. A field without a tag takes the smallest free number in
+declaration order, and the generated file records the numbers of each type in a
+`//kanon:numbers` line:
+
+```go
+//kanon:numbers Order ID=1 Lines=2 Note=3
+```
+
+Regeneration reads the line and keeps the numbers, so a struct can change and old data still
+decodes:
+
+- A field keeps its number when fields are added, removed or reordered.
+- A new field takes the smallest number that is neither taken nor reserved.
+- A removed field's number is reserved. kanon does not give it to another field, and a tag may
+  name it.
+- A tag that gives a recorded field another number fails the generation.
+- A renamed field is a new field. Tag it with the number of its old name to keep the data.
+
+The check mode compares the numbers of a change against a revision, such as the branch it
+merges into, and fails on a renumbered field, on a removed number that is not reserved, and on
+a reserved number that a field took without a tag naming it. A CI job runs it on every pull
+request.
+
+### Tags
+
+```go
+type Order struct {
+	ID    string        `kanon:"7"`             // field number 7
+	Skip  int           `kanon:"-"`             // not encoded
+	Count int64         `kanon:",fixed"`        // fixed64 instead of a varint
+	Kind  Kind
+	Text  string        `kanon:",union=Kind"`   // member of the union that Kind selects
+	Num   int64         `kanon:",union=Kind"`
+	Shape Shape         `kanon:",types=Circle|*Square"` // the concrete types of the interface
+	Rest  []byte        `kanon:",unknown"`      // keeps unknown fields
+}
+```
+
+- Unexported fields, functions and channels are not encoded.
+- `fixed` applies to the 32- and 64-bit integers in the field's type, except map keys. Varints
+  are the default, and `fixed` is the opt-in for fields whose values are large or whose blocks
+  compress better with fixed widths.
+- `union=D` makes the field a member of the union whose discriminator is field `D`, an
+  exported field of an integer type. The constant that selects the member is named after the
+  discriminator's type and the member: `KindText` selects `Text` when `Kind` has type `Kind`,
+  `external.ChoiceText` when the type is `external.Choice`.
+- `types=A|B|*C` lists the concrete types of every interface in the field's type, as gob
+  registers types. Each entry is a type expression in the scope of the file. The generated
+  file records the type numbers under the field's path, and regeneration keeps them as it
+  keeps field numbers.
+- `unknown` marks the one `[]byte` field of a struct that keeps unknown fields.
+
+### Types
+
+The generator encodes every type that gob and json encode:
+
+- bool, the integer types, `time.Duration`, the float and complex types, string, `[]byte`,
+  `[N]byte`, slices, arrays, maps with any comparable key type, pointers at any depth and
+  `time.Time`.
+- A struct type named by a `-type` directive of its package, through the methods of its own
+  codec.
+- Any other struct type, of this package or another, as an inline struct. The generated file
+  declares its functions and records its field numbers under its type name, or under the path
+  of its first field for an anonymous struct type.
+- A type with `MarshalBinary` and `UnmarshalBinary`, `GobEncode` and `GobDecode`, or
+  `MarshalText` and `UnmarshalText`, as an opaque value through the first of those families it
+  has. `AppendBinary` or `AppendText` is used when the type has it.
+- Interfaces with a `types` list, inside maps, slices, arrays, pointers and unions included.
+- Generic struct instantiations, which share the field numbers of their generic type.
+
+A map key may be any comparable type, including a struct, an array, a pointer, a time or an
+interface whose listed types are comparable. A struct key must not contain an interface, since
+its order depends on a type list of another field. Struct keys order by field number.
+
+### The runtime: package kanon
+
+```go
+package kanon
+
+// Message is the method set that kanon generates for a struct type T. *T
+// implements it.
+//
+// # Allocation contract
+//
+// SizeKanon, EncodeKanon and AppendBinary into a buffer with spare capacity
+// do not allocate, except for an opaque type without an append method, an
+// opaque encoding longer than 128 bytes, and a map of more than 16 keys
+// other than bools. DecodeKanon with a Slab into a receiver that decoded
+// before does not allocate, except for an opaque value, a time in a zone
+// that the platform allocates, a map with more than 16 values that refer to
+// memory, a map key that refers to memory, and a value that an interface
+// stores by value. Without a Slab, a decode allocates the copy of its input
+// once when T contains a string.
+type Message interface {
+	encoding.BinaryAppender
+	encoding.BinaryMarshaler
+	encoding.BinaryUnmarshaler
+
+	// SizeKanon returns the length of the encoding in bytes.
+	SizeKanon() int
+
+	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
+	// and returns their count. When buf is shorter than SizeKanon bytes, it
+	// writes nothing and returns io.ErrShortBuffer. It returns an
+	// *EncodeError when an opaque value fails to encode itself or an
+	// interface stores a type its list does not name.
+	EncodeKanon(buf []byte) (int, error)
+
+	// DecodeKanon sets the receiver to the value encoded in data and reuses
+	// the memory of the receiver: its slices, maps, pointers and nested
+	// values. Every decoded string is a substring of opts.Slab, or of one
+	// copy of data when opts.Slab is empty. It returns a *DecodeError. After
+	// an error the receiver contains the fields decoded before it, and the
+	// failed field has an unspecified value.
+	DecodeKanon(data []byte, opts Options) error
+
+	// MergeKanon decodes data into the receiver without resetting it first,
+	// with the options of DecodeKanon. Slices append, maps add entries,
+	// nested structs merge, and other fields take the value in data.
+	MergeKanon(data []byte, opts Options) error
+
+	// Reset sets the receiver to its zero value and keeps its memory: the
+	// capacity of slices, the memory of map entries, and the values that
+	// pointers point at.
+	Reset()
+}
+
+// Cloner is the method set of a generated *T with its clone method, which
+// names T and so is not part of Message.
+type Cloner[T any] interface {
+	Message
+
+	// CloneKanon returns a deep copy that shares no memory with the receiver
+	// or with the slab it decoded from. A nil receiver returns nil.
+	CloneKanon() *T
+}
+
+// Options control DecodeKanon and MergeKanon. The zero Options copy the
+// input once and apply DefaultDepth.
+type Options struct {
+	// Slab is a string that data is a substring of, and Offset is the index
+	// of data[0] in it. Decoded strings are substrings of Slab, so the
+	// decode allocates nothing for them. An empty Slab makes the decode copy
+	// data once and use the copy as the slab.
+	Slab   string
+	Offset int
+	// Depth is the number of nested values the decode enters at most. Zero
+	// means DefaultDepth.
+	Depth int
+}
+
+// DefaultDepth is the nesting limit of a decode whose Options.Depth is 0.
+const DefaultDepth = 100
+
+// Causes of a DecodeError, which DecodeError.Unwrap returns. Truncation
+// unwraps to io.ErrUnexpectedEOF, so a stream reader that retries on it
+// needs no kanon-specific check.
+var (
+	ErrMalformed   = errors.New("kanon: malformed input")
+	ErrRange       = errors.New("kanon: value outside the range of the type")
+	ErrDepth       = errors.New("kanon: nested deeper than the limit")
+	ErrUnknownType = errors.New("kanon: interface type number not listed")
+)
+
+// DecodeError is the error of DecodeKanon and MergeKanon: the struct type,
+// the field and its number, the offset in the slab, the cause and a detail.
+// Field is "" and Number is 0 when the struct itself is malformed.
+type DecodeError struct {
+	Type   string
+	Field  string
+	Number int
+	Offset int
+	Detail string
+	Err    error
+}
+
+// Error returns "kanon: Type.Field (field N) at offset M: detail".
+func (e *DecodeError) Error() string
+
+// Unwrap returns the cause: io.ErrUnexpectedEOF, ErrMalformed, ErrRange,
+// ErrDepth or ErrUnknownType.
+func (e *DecodeError) Unwrap() error
+
+// ErrUnlistedType is the cause of an EncodeError for an interface that
+// stores a type its list does not name.
+var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+
+// EncodeError is the error of EncodeKanon: the struct type, the field and
+// its number, and the cause, which is ErrUnlistedType or the error of an
+// opaque value's own encoding.
+type EncodeError struct {
+	Type   string
+	Field  string
+	Number int
+	Err    error
+}
+
+func (e *EncodeError) Error() string
+func (e *EncodeError) Unwrap() error
+
+// EnforceVersion is a compile-time check that a generated file and the
+// runtime it imports agree. A generated file declares
+//
+//	const (
+//		_ = kanon.EnforceVersion(1 - kanon.MinVersion)
+//		_ = kanon.EnforceVersion(kanon.MaxVersion - 1)
+//	)
+//
+// with the generator's version in place of 1. An unsigned constant below
+// zero fails to compile, so a runtime that dropped support for the
+// generator's version, or a generator newer than the runtime, is caught at
+// build time.
+type EnforceVersion uint
+
+// MinVersion and MaxVersion are the oldest and newest generator versions
+// this runtime supports.
+const (
+	MinVersion = 1
+	MaxVersion = 1
+)
+```
+
+`UnmarshalBinary(data)` is generated as `DecodeKanon(data, Options{})`, which copies the input
+once. A caller that owns the buffer passes `Options{Slab: s, Offset: o}`, and with
+`unsafe.String` over the buffer the decode allocates nothing and the decoded strings alias the
+buffer.
+
+Errors allocate. Every generated error path constructs a `*DecodeError` or `*EncodeError`,
+and the allocation contract excludes failure paths.
+
+### The runtime: package wire
+
+`kanon/wire` is the support package that generated code calls. It is exported because
+generated code in other modules imports it, and it is not an API for applications.
+
+```go
+package wire
+
+// Uvarint reads the varint at the start of data and returns its value and
+// length: 0 when data ends inside it, and -1 when it exceeds 64 bits.
+func Uvarint(data []byte) (uint64, int)
+
+// SizeUvarint returns the encoded length of v, 1 to 10.
+func SizeUvarint(v uint64) int
+
+// PutUvarint writes v backward so that it ends at buf[i] and returns the
+// offset of its first byte.
+func PutUvarint(buf []byte, i int, v uint64) int
+
+// Zigzag and Unzigzag map between signed values and their varint form.
+func Zigzag(v int64) uint64
+func Unzigzag(u uint64) int64
+
+// Skip returns the length of the value of a field with the given tag at the
+// start of data, or an error for an invalid wire format or truncated data.
+func Skip(data []byte, tag uint64) (int, error)
+
+// CountValues returns the number of length-prefixed values in data, and
+// CountVarints the number of varints, for pre-sizing a slice.
+func CountValues(data []byte) int
+func CountVarints(data []byte) int
+
+// SizeTime, PutTime and Time encode and decode a time.Time without its
+// length prefix.
+func SizeTime(t time.Time) int
+func PutTime(buf []byte, i int, t time.Time) int
+func Time(data []byte) (time.Time, error)
+
+// Take moves the value stored under key in a free list to its end and
+// returns the new length, for map decodes that reuse values.
+func Take[K comparable, V any](keys []K, values []V, n int, key K) int
+```
+
+The one-byte case of every varint read and write is generated inline at the call site, and
+`wire.Uvarint` and `wire.PutUvarint` handle the longer forms. Go inlines a callee of cost
+above 20 only into a function below 5,000 nodes, and the decode function of a struct with many
+fields is above it, so an out-of-line call per one-byte read would cost about 2 ns per field.
+
+### The decode model
+
+- **Exact presence.** A pointer field that the input does not contain is nil after
+  `DecodeKanon`, a pointer to a zero value round-trips as a pointer, and a nested struct
+  present with an empty encoding round-trips as a zero struct.
+- **Reuse.** A decode into a receiver that decoded before writes into its memory: slices are
+  resliced and their elements decoded in place, map values are taken from a free list of the
+  previous values, pointers keep their targets, and nested structs decode in place. A seen
+  bitmap tracks the fields the input contains, and the decode sets the pointers, interfaces
+  and maps it did not see to nil or empty at the end.
+- **Merge.** `MergeKanon` and a repeated field number both merge as the wire format defines.
+- **Depth.** Each nested value costs one level. A decode that would enter a level below zero
+  fails with `ErrDepth`.
+- **Unknown fields.** Without an `unknown` field, unknown numbers are skipped. With one, their
+  bytes are appended to it, and `EncodeKanon` writes the field's bytes after the known fields.
+  A storage engine that rewrites records of a type without the field treats the records as
+  opaque bytes, since a rewrite through the type drops the fields it does not know.
+- **Range.** A value outside its integer type fails with `ErrRange`, including `int`, `uint`
+  and `uintptr` on a platform where they are 32 bits wide.
+
+### The encode model
+
+`SizeKanon` computes the size in one pass, and `EncodeKanon` writes backward from the end of
+the buffer in a second pass, so that each nested value's length is known when its prefix is
+written and every value is written once. Map keys sort in a stack array of 16 keys, or of 16
+key-value pairs when the key type has no lookup that finds every key, such as a float. Unions
+encode with one `switch` on the discriminator. Every value that the wire format says is absent
+is left out.
+
+### Views
+
+With `-views`, the generator declares a view type per struct type:
+
+```go
+// OrderView is the encoding of an Order. Each method reads one field by
+// scanning the encoding, without decoding the rest, and returns the zero
+// value when the encoding has no such field.
+type OrderView []byte
+
+// ID returns the ID field. The string aliases the view.
+func (v OrderView) ID() (string, error)
+
+// Line returns the encoding of the Line field, or nil.
+func (v OrderView) Line() (LineView, error)
+```
+
+A method exists for each field of a bool, integer, float, complex, string, byte slice, byte
+array, time or struct type, and for a pointer to one. Slices, maps, interfaces, union members
+and opaque types have no method. A storage engine reads an index key or evaluates a filter
+from the view without allocating.
+
+### The conformance suite
+
+`kanontest` checks a generated codec against the wire format: every check runs from a `Spec`
+that the generator writes into the test file. The suite builds samples from value tables and
+compares each decode with a model derived from the wire format's rules, not from the decoder.
+It compares each encoding with a reference encoder, probes malformed input for the required
+rejections and error causes, checks the allocation contract, runs random values under the same
+laws, fuzzes the decoder, round-trips every sample through gob and json where they apply, and
+pins the encodings in a golden file per type. The suite defines conformance for this
+implementation, and its golden files are test vectors for others. `kanontest.Codec` is an
+alias of `kanon.Message`.
+
+### Module layout
+
+```text
+go.thesmos.sh/kanon             Message, Cloner, Options, errors, versions
+go.thesmos.sh/kanon/wire        functions for generated code
+go.thesmos.sh/kanon/kanontest   conformance suite
+go.thesmos.sh/kanon/cmd/kanon   the generator
+```
+
+A consumer's module requires `go.thesmos.sh/kanon` for the `tool` directive, and its
+generated files import `kanon` and `kanon/wire`. One module version supplies the generator
+and the runtime, so within a module they agree by construction. Across modules, the
+`EnforceVersion` constants catch a mismatch at build time.
+
+## Alternatives considered
+
+### Generated code that imports only the standard library
+
+Every generated file repeats the varint, time, skip and error functions, and consumers share
+nothing but the standard library's sentinels.
+
+**Why not:** consumers cannot classify decode errors beyond truncation, decode options grow
+the method signatures, and the shared functions exist once per generated file, about 270 lines
+each, with a mutation run per copy. The property it buys, a generated file that compiles
+alone, has no consumer that needs it, and the `tool` directive already makes every consumer
+depend on the module.
+
+### Reflection at run time
+
+One codec that walks any type with `reflect`, as gob does.
+
+**Why not:** measured 5 to 20 times slower, with allocations on every decode, and no
+allocation contract is possible.
+
+### One method set per encoding, without a shared interface
+
+**Why not:** a frame writer or a batch reader has to be written per type, or take `any` and
+assert a method set of its own. One declared interface costs one small package.
+
+### Generating from a schema language
+
+A `.kanon` schema file compiled to Go, as protobuf, colfer and bebop do.
+
+**Why not:** the application's data model is its Go types. A schema file is a second copy that
+drifts, and it cannot express the types that only Go has, such as a struct key or an interface.
+
+## Drawbacks
+
+- Every consumer links the runtime, about 400 lines, and its binary depends on
+  `go.thesmos.sh/kanon` at run time.
+- The runtime promises compatibility with every generator version between `MinVersion` and
+  `MaxVersion`. Dropping a version is a breaking change of the module.
+- `kanon/wire` is a public package that applications should not use. Its documentation is
+  the only thing that keeps them out, since Go has no export visible to generated code alone.
+- A generated file is large: about 2,300 lines for a struct of 70 fields of distinct types,
+  since each container type gets its own size, encode, decode and reset functions.
+- The inline varint path adds about 5 lines per varint read and write site.
+- A struct that keeps unknown fields has one exported `[]byte` field that is not part of its
+  data model, and its encoding is canonical only while that field is nil.
+- Views scan from the start on every call, so reading k fields costs k scans.
+- Every decode error allocates a `*DecodeError`.
+
+## Unresolved and future work
+
+- A schema export in JSON, with field numbers, types and type lists, for storage catalogs and
+  readers in other languages.
+- A gRPC codec adapter as a separate module, since it adds the grpc dependency.
+- Test vectors in a machine-readable file for other implementations.
+- A generate-time flag for the map key buffer of 16 keys, above which an encode allocates.
+
+## References
+
+| What | Where |
+|---|---|
+| stringer, the model for the directive | https://pkg.go.dev/golang.org/x/tools/cmd/stringer |
+| gob's type registration, the model for type lists | https://pkg.go.dev/encoding/gob#Register |
+| protobuf-go's version enforcement, the model for EnforceVersion | google.golang.org/protobuf v1.36.12, runtime/protoimpl/version.go |
+| protobuf-go recursion limit, `protowire.DefaultRecursionLimit = 10000` | google.golang.org/protobuf v1.36.12, encoding/protowire/wire.go |
+| Go inlining budget and the big-function rule | cmd/compile/internal/inline, Go 1.27.1 |
