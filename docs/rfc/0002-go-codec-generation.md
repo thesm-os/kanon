@@ -147,7 +147,8 @@ The generator encodes every type that gob and json encode:
 
 A map key may be any comparable type, including a struct, an array, a pointer, a time or an
 interface whose listed types are comparable. A struct key must not contain an interface, since
-its order depends on a type list of another field. Struct keys order by field number.
+its order depends on a type list of another field, nor a union member, whose encoding depends
+on its discriminator. Struct keys order by field number.
 
 A key encodes as its projection, as the wire format defines. The encode of a map fails with an
 `*EncodeError` that wraps `ErrInvalidKey` for a key with a NaN component, and with one that
@@ -486,6 +487,8 @@ and its golden files are test vectors for others. `kanontest.Codec[T]` constrain
 ```text
 go.thesmos.sh/kanon             Message, Cloner, Options, errors, versions
 go.thesmos.sh/kanon/wire        functions for generated code
+go.thesmos.sh/kanon/frame       messages in frames on a byte stream
+go.thesmos.sh/kanon/batch       messages in batches for storage blocks
 go.thesmos.sh/kanon/kanontest   conformance suite
 go.thesmos.sh/kanon/cmd/kanon   the generator
 ```

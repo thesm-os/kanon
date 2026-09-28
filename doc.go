@@ -29,10 +29,12 @@
 //
 // A decode returns a [*DecodeError] that names the struct type, the field,
 // the field number and the offset of the malformed input, and that wraps
-// one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth] and
-// [ErrUnknownType], or the error of a type that decodes itself. An encode
-// returns a [*EncodeError] that wraps [ErrUnlistedType] or the error of a
-// type that encodes itself. errors.Is and errors.As classify both.
+// one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth],
+// [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey] and
+// [ErrRepeatedView], or the error of a type that decodes itself. An encode
+// returns a [*EncodeError] that wraps [ErrUnlistedType], [ErrInvalidKey] or
+// [ErrAmbiguousKey], or the error of a type that encodes itself. errors.Is
+// and errors.As classify both.
 //
 // # Versions
 //
