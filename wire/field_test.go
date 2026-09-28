@@ -58,6 +58,27 @@ func BenchmarkField(b *testing.B) {
 	}
 }
 
+// TestFieldAllocs checks that Skip allocates nothing for a value it skips.
+// It runs serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestFieldAllocs(t *testing.T) {
+	cases := []struct {
+		name string
+		tag  uint64
+		data []byte
+	}{
+		{name: "Skip/allocates nothing for a varint", tag: varintTag, data: []byte{0xac, 0x02}},
+		{name: "Skip/allocates nothing for eight bytes", tag: fixed64Tag, data: make([]byte, 8)},
+		{name: "Skip/allocates nothing for a length and its bytes", tag: bytesTag, data: []byte{0x02, 'a', 'b'}},
+		{name: "Skip/allocates nothing for four bytes", tag: fixed32Tag, data: make([]byte, 4)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, func() { sinkInt, sinkErr = wire.Skip(c.data, c.tag, skipType, 0, skipOff) }, 0,
+				"Skip allocates nothing without an error")
+		})
+	}
+}
+
 func TestField(t *testing.T) {
 	t.Parallel()
 	t.Run("constants", func(t *testing.T) {

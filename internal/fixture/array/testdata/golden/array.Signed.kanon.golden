@@ -1,0 +1,32 @@
+the zero value: 
+table sample 0: 0a02020112030180011a0480028102220580800281022a10ffffffffff01feffffffffffffffff013203ff017f3a04ffff0300420200024a02020152030180025a088002808080808002
+table sample 1: 0a030180021204800181011a058102feff0122078102feffffff0f2a14feffffffffffffffff01ffffffffffffffffff0132027f003a020002420202014a03018002520580028080025a0c808080808002ffffffffff01
+table sample 2: 0a05800280800212048101fe011a06feff01feff03220afeffffff0fffffffff0f2a0bffffffffffffffffff0100320200023a02020142030180024a088002808080808002520580800281025a10ffffffffff01feffffffffffffffff01
+table sample 3: 0a0580800281021204fe01ff011a06feff03ffff032206ffffffff0f002a020002320202013a03018002420580028080024a0c808080808002ffffffffff0152078102feffffff0f5a14feffffffffffffffff01ffffffffffffffffff01
+table sample 4: 0a078102feffffff0f1203ff017f1a04ffff0300220200022a02020132030180013a0480028102420580800281024a10ffffffffff01feffffffffffffffff01520afeffffff0fffffffff0f5a0bffffffffffffffffff0100
+table sample 5: 0a0afeffffff0fffffffff0f12027f001a020002220202012a030180023204800181013a058102feff0142078102feffffff0f4a14feffffffffffffffff01ffffffffffffffffff015206ffffffff0f005a020002
+table sample 6: 0a06ffffffff0f00120200021a02020122030180022a08800280808080800232048101fe013a06feff01feff03420afeffffff0fffffffff0f4a0bffffffffffffffffff0100520200025a020201
+table sample 7: 0a020002120202011a03018002220580028080022a0c808080808002ffffffffff013204fe01ff013a06feff03ffff034206ffffffff0f004a020002520202015a03018002
+the sample of field Int: 0a020201
+the sample of field Int8: 12020201
+the sample of field Int16: 1a020201
+the sample of field Int32: 22020201
+the sample of field Int64: 2a020201
+the sample of field Tiny: 32020201
+the sample of field Small: 3a020201
+the sample of field Level: 42020201
+the sample of field Amount: 4a020201
+the sample of field Offset: 52020201
+the sample of field Duration: 5a020201
+wide sample 0: 0a020204120204061a0206082202080a2a020a0c32020c0e3a020e10420210124a021214520214165a021618
+wide sample 1: 0a020406120206081a02080a22020a0c2a020c0e32020e103a021012420212144a021416520216185a02181a
+the key sample: 0a030180021204800181011a058102feff0122078102feffffff0f2a14feffffffffffffffff01ffffffffffffffffff0132027f003a020002420202014a03018002520580028080025a0c808080808002ffffffffff01
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 4377 probes, digest 14b22b0a183048f2
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 813 probes, digest 1e105a835d9ea318
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 2142 probes, digest 7dc8975f095f2c4d
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 605 probes, digest a5ff6f8aa169e393
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 23 probes, digest 6357bbad7e4b0def
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest a72f92ebb59fefda
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 23 probes, digest 6c82c7ec7b50d5f7
+the samples that the encode allocation checks measure: 20 samples, digest 20fbd9d9d761f828
+the samples that the decode allocation check measures: 20 samples, digest 20fbd9d9d761f828

@@ -48,6 +48,19 @@ func RangeError[V int64 | uint64](v V, typ, loc string, num, off int) error {
 	return decodeError(kanon.ErrRange, loc, num, off, fmt.Sprintf("value %d outside %s", v, typ))
 }
 
+// VarintError returns the error for the varint at offset off of a value of
+// the integer type typ, whose read returned the length n and the value v:
+// the error of [ReadError] for an n of 0 or less, and the error of
+// [RangeError] otherwise. The generated code of an int, a uint and a
+// uintptr, whose range only a platform with a 32-bit int checks, rejects
+// both cases in one condition and calls it.
+func VarintError[V int64 | uint64](n int, v V, typ, loc string, num, off int) error {
+	if n <= 0 {
+		return ReadError(n, loc, num, off)
+	}
+	return RangeError(v, typ, loc, num, off)
+}
+
 // LengthError returns the error for the value at offset off whose length
 // is got and not want: a byte array, or a complex128. It wraps
 // kanon.ErrMalformed.
@@ -77,11 +90,11 @@ func TypeError(t uint64, loc string, num, off int) error {
 	return decodeError(kanon.ErrUnknownType, loc, num, off, "type number "+strconv.FormatUint(t, 10))
 }
 
-// DepthError returns the error for the struct typ, whose encoding at offset
-// off is nested deeper than the limit of the decode. It wraps
-// kanon.ErrDepth.
-func DepthError(typ string, off int) error {
-	return decodeError(kanon.ErrDepth, typ, 0, off, "")
+// DepthError returns the error for the value at offset off that is nested
+// deeper than the limit of the decode: a struct, which loc names alone with
+// num 0, or a value of a field. It wraps kanon.ErrDepth.
+func DepthError(loc string, num, off int) error {
+	return decodeError(kanon.ErrDepth, loc, num, off, "")
 }
 
 // UnmarshalError returns the error for the value at offset off of a type
@@ -103,6 +116,19 @@ func MarshalError(err error, loc string, num int) error {
 // kanon.ErrUnlistedType, and its message names the type of v.
 func UnlistedError(v any, loc string, num int) error {
 	return MarshalError(fmt.Errorf("%w: %T", kanon.ErrUnlistedType, v), loc, num)
+}
+
+// InvalidKeyError returns the error for the encode of a map with a key
+// that has a NaN component, which loc and num locate at the field of the
+// map. It wraps kanon.ErrInvalidKey.
+func InvalidKeyError(loc string, num int) error {
+	return MarshalError(kanon.ErrInvalidKey, loc, num)
+}
+
+// KeyError returns the error for the decoded map key at offset off, which
+// has a NaN component. It wraps kanon.ErrInvalidKey.
+func KeyError(loc string, num, off int) error {
+	return decodeError(kanon.ErrInvalidKey, loc, num, off, "")
 }
 
 // decodeError returns the *kanon.DecodeError of loc and num at offset off,

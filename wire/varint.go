@@ -10,21 +10,19 @@ import (
 
 // Uvarint returns the value of the varint at the start of data and its
 // length. The length is 0 when data ends inside the varint, and -1 when the
-// varint exceeds 64 bits: an 11th byte, or a 10th byte above 1. A varint
-// with leading zero groups, such as 80 00 for 0, reads as its value.
+// varint exceeds 64 bits: a 10th byte above 1, which a 10th byte with the
+// continuation bit is, since it announces an 11th. A varint with leading
+// zero groups, such as 80 00 for 0, reads as its value.
 func Uvarint(data []byte) (uint64, int) {
 	if len(data) > 0 && data[0] < 0x80 {
 		return uint64(data[0]), 1
 	}
 	var x uint64
 	for i, b := range data {
-		if i == binary.MaxVarintLen64 {
+		if i == binary.MaxVarintLen64-1 && b > 1 {
 			return 0, -1
 		}
 		if b < 0x80 {
-			if i == binary.MaxVarintLen64-1 && b > 1 {
-				return 0, -1
-			}
 			return x | uint64(b)<<(7*i), i + 1
 		}
 		x |= uint64(b&0x7f) << (7 * i)
@@ -64,6 +62,41 @@ func PutTag(buf []byte, i int, tag uint64) int {
 	i -= 2
 	buf[i], buf[i+1] = byte(tag)|0x80, byte(tag>>7)
 	return i
+}
+
+// PutBool writes the varint of v, 1 for true and 0 for false, into the byte
+// of buf before i, and returns i-1. It writes the presence byte of a
+// pointer the same way.
+func PutBool(buf []byte, i int, v bool) int {
+	var b byte
+	if v {
+		b = 1
+	}
+	i--
+	buf[i] = b
+	return i
+}
+
+// Presence reads the presence byte at the start of data and reports
+// whether the value of a pointer follows it: false for 0, a nil pointer,
+// and true for 1. The byte opens the encoding of every pointer that is not
+// a field, such as an element of a slice or the value of a map.
+//
+// Presence returns an error that wraps io.ErrUnexpectedEOF for empty data,
+// and one that wraps kanon.ErrMalformed for any byte other than 0 and 1.
+// Both errors name loc and num, at offset off.
+func Presence(data []byte, loc string, num, off int) (bool, error) {
+	if len(data) == 0 {
+		return false, ReadError(0, loc, num, off)
+	}
+	switch data[0] {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, PresenceError(data[0], loc, num, off)
+	}
 }
 
 // Zigzag returns the zigzag encoding of v, which maps 0, -1, 1, -2 and 2

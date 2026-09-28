@@ -1,0 +1,123 @@
+the zero value: 0a0a040000000004000000002a06020000020000320401300130
+table sample 0: 0a0a0400000001040000007f120a040000007f040000008022b402056b616e6f6eac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a0602000102012c320c093236383433353435360130
+table sample 1: 0a0a040000007f0400000080120a040000008004000040001a0300014222b102ac0263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636302fffe2a0602012c020000320401300130
+table sample 2: 0a0a04000000800400004000120a040000400004002000001a03014200220402fffe002a06020000020001320401300131
+table sample 3: 0a0a04000040000400200000120a04002000000410000000220700056b616e6f6e2a0602000102007f3206013103313237
+table sample 4: 0a0a040020000004100000001206041000000000220e056b616e6f6e07c3a9e29c93cf892a0602007f02008032080331323703313238
+table sample 5: 0a0a041000000004000000001a0300014122880107c3a9e29c93cf897f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a06020080023fff320a03313238053136333834
+table sample 6: 0a0a0400000000040000000012060004000000011a030141002282027f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a06023fff024000320e0531363338340732303937313532
+table sample 7: 0a0a04000000000400000001120a0400000001040000007f22880180016262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262056b616e6f6e2a060240000200013212073230393731353209323638343335343536
+the sample of field Token: 0a0a0400000001040000007f2a06020000020000320401300130
+the sample of field Ticket: 0a0a04000000000400000000120a0400000001040000007f2a06020000020000320401300130
+the sample of field Grade: 0a0a040000000004000000001a030141002a06020000020000320401300130
+the sample of field Word: 0a0a0400000000040000000022880107c3a9e29c93cf897f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a06020000020000320401300130
+the sample of field Stamp: 0a0a040000000004000000002a0602007f020080320401300130
+the sample of field Code: 0a0a040000000004000000002a060200000200003206013103313237
+table sample 0 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 0 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 0 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 0 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 0 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 0 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 0 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 0 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 0 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 0 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 0 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 0 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 1 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 1 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 1 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 1 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 1 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 1 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 1 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 1 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 1 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 1 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 1 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 1 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 2 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 2 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 2 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 2 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 2 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 2 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 2 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 2 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 2 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 2 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 2 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 2 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 3 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 3 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 3 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 3 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 3 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 3 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 3 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 3 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 3 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 3 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 3 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 3 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 4 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 4 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 4 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 4 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 4 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 4 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 4 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 4 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 4 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 4 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 4 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 4 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 5 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 5 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 5 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 5 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 5 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 5 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 5 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 5 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 5 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 5 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 5 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 5 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 6 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 6 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 6 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 6 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 6 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 6 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 6 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 6 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 6 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 6 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 6 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 6 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 7 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 7 that fails at value 1: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 7 that fails at value 2: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 7 that fails at value 3: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 7 that fails at value 4: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 7 that fails at value 5: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 7 that fails at value 6: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 7 that fails at value 7: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 7 that fails at value 8: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 7 that fails at value 9: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 7 that fails at value 10: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 7 that fails at value 11: fails: kanon: Codecs.Code (field 6): external: code is retired
+wide sample 0: 0a0a04000000010400000002120a040000000204000000031a040143014422060277350277362a06020006020007320401360137
+wide sample 1: 0a0a04000000020400000003120a040000000304000000041a040144014522060277360277372a06020007020008320401370138
+the key sample: 0a0a040000007f0400000080120a040000008004000040001a0300014222b102ac0263636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636302fffe2a0602012c020000320401300130
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 3296 probes, digest b60d0393678a7c75
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 2959 probes, digest 4ebbb6f31ec1ed16
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 4671 probes, digest d2dbfe8e9a2458fc
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 295 probes, digest c1c6b1000a479f71
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 18 probes, digest 62a6e5e4e3597b3d
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 651a6e13072c0a0e
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 18 probes, digest b738bfab31ae7853
+the samples that the encode allocation checks measure: 0 samples, digest cbf29ce484222325
+the samples that the decode allocation check measures: 0 samples, digest cbf29ce484222325

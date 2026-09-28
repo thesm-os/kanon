@@ -97,9 +97,11 @@ check-mutation: ## Run gremlins mutation testing per layer, naming survivors (sl
 	$(ERGON) check mutation --mutants
 check-branch: ## Run gobco branch-coverage gating per layer (slow)
 	$(ERGON) check branch
-check-generated: ## Fail when a committed *.kanon.go or *.kanon_test.go differs from a fresh `go generate`
+check-generated: ## Fail when a fresh `go generate` changes a committed *.kanon.go or *.kanon_test.go, or writes one that git does not track
 	go generate ./...
 	git diff --exit-code -- '*.kanon.go' '*.kanon_test.go'
+	@untracked="$$(git ls-files --others --exclude-standard -- '*.kanon.go' '*.kanon_test.go')"; \
+		if [ -n "$$untracked" ]; then echo "untracked generated files:"; echo "$$untracked"; exit 1; fi
 check-numbers: ## Fail when a change renumbers a field that BASE (default origin/main) records
 	KANON_CHECK=$(BASE) go generate -run 'go tool kanon' ./...
 

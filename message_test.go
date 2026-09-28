@@ -9,10 +9,56 @@ import (
 	"go.dokimi.dev/assert"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/iface"
+	"go.thesmos.sh/kanon/internal/fixture/union"
 )
 
 // defaultDepth pins the nesting limit of the zero Options.
 const defaultDepth = 100
+
+// Vectors of the repeated fields of the wire format specification.
+var (
+	// unionTwice is field 1 of union.Containers, the union member Slice,
+	// twice: [1] and then [2].
+	unionTwice = []byte{0x0a, 0x01, 0x02, 0x0a, 0x01, 0x04}
+	// interfaceTwice is field 8 of iface.Variants, the interface Nested,
+	// twice with the concrete type []int32 of number 1: [1] and then [2].
+	interfaceTwice = []byte{0x42, 0x03, 0x01, 0x01, 0x02, 0x42, 0x03, 0x01, 0x01, 0x04}
+)
+
+func TestMessage(t *testing.T) {
+	t.Parallel()
+	t.Run("DecodeKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("replaces a union member with its second occurrence", func(t *testing.T) {
+			t.Parallel()
+			var c union.Containers
+			assert.NoError(t, c.DecodeKanon(unionTwice, kanon.Options{}), "DecodeKanon decodes the vector")
+			assert.Equal(t, c, union.Containers{Kind: union.ContainerKindSlice, Slice: []int32{2}},
+				"the second occurrence of the member replaces the union")
+		})
+		t.Run("merges a second occurrence of an interface that stores the same concrete type", func(t *testing.T) {
+			t.Parallel()
+			var v iface.Variants
+			assert.NoError(t, v.DecodeKanon(interfaceTwice, kanon.Options{}), "DecodeKanon decodes the vector")
+			assert.Equal(t, v.Nested, any([]int32{1, 2}), "the slices of the two occurrences merge")
+		})
+	})
+	t.Run("MergeKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("merges an encoding as a decode of the encoding of the receiver followed by it", func(t *testing.T) {
+			t.Parallel()
+			half := len(interfaceTwice) / 2
+			var merged, whole iface.Variants
+			assert.NoError(t, merged.DecodeKanon(interfaceTwice[:half], kanon.Options{}),
+				"DecodeKanon decodes the first occurrence")
+			assert.NoError(t, merged.MergeKanon(interfaceTwice[half:], kanon.Options{}),
+				"MergeKanon merges the second occurrence")
+			assert.NoError(t, whole.DecodeKanon(interfaceTwice, kanon.Options{}), "DecodeKanon decodes both")
+			assert.Equal(t, merged.Nested, whole.Nested, "the merge equals the decode of the concatenation")
+		})
+	})
+}
 
 func TestOptions(t *testing.T) {
 	t.Parallel()
@@ -42,7 +88,7 @@ func TestOptions(t *testing.T) {
 		}{
 			{name: "returns DefaultDepth for 0", depth: 0, want: defaultDepth},
 			{name: "returns a positive Depth", depth: 3, want: 3},
-			{name: "returns a negative Depth", depth: -1, want: -1},
+			{name: "returns 0 for a negative Depth", depth: -1, want: 0},
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {

@@ -20,13 +20,17 @@ func PutRaw[S ~string | ~[]byte](buf []byte, i int, s S) int {
 // CountValues returns the number of values in data that each take a varint
 // length and that many bytes. It stops at a length that does not read or
 // that runs past data, which the decode then reports. A decode sizes a
-// slice of such values with it before it appends.
+// slice of such values with it before it appends. A value takes a byte at
+// least, so that the loop runs len(data) times at most.
 func CountValues(data []byte) int {
-	for n := 0; ; n++ {
+	n := 0
+	for range len(data) {
 		l, k := Uvarint(data)
 		if k <= 0 || uint64(len(data)-k) < l {
-			return n
+			break
 		}
 		data = data[k+int(l):]
+		n++
 	}
+	return n
 }

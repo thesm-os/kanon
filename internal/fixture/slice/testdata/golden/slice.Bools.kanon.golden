@@ -1,0 +1,23 @@
+the zero value: 
+table sample 0: 0a010112020001
+table sample 1: 0a020001
+table sample 2: 120100
+table sample 3: 0a010012020100
+table sample 4: 0a020100
+table sample 5: 120101
+table sample 6: 0a010112020001
+table sample 7: 0a020001
+the sample of field Bool: 0a0101
+the sample of field Flag: 120101
+wide sample 0: 0a0101120101
+wide sample 1: 0a0101120101
+the key sample: 0a020001
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 402 probes, digest aac928fb44f7297
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 22 probes, digest c3247979e067f35f
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 96 probes, digest ce5d4378208ef385
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 110 probes, digest 9503df893cec4d85
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 14 probes, digest 8d84ed2f5feda2fc
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 6194de310110e642
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 14 probes, digest 573856f2d0b40cfd
+the samples that the encode allocation checks measure: 11 samples, digest fc89a078320496c1
+the samples that the decode allocation check measures: 11 samples, digest fc89a078320496c1

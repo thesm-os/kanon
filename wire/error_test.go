@@ -86,6 +86,21 @@ func TestError(t *testing.T) {
 			want: located(kanon.ErrRange, "value 18446744073709551615 outside uint32"),
 		},
 		{
+			name: "VarintError/reports truncation for length 0",
+			err:  wire.VarintError(0, int64(0), "int", errLoc, errNumber, errOff),
+			want: located(io.ErrUnexpectedEOF, ""),
+		},
+		{
+			name: "VarintError/reports an overflow for length -1",
+			err:  wire.VarintError(-1, uint64(0), "uint", errLoc, errNumber, errOff),
+			want: located(kanon.ErrMalformed, "varint overflows 64 bits"),
+		},
+		{
+			name: "VarintError/names a value outside the type for a positive length",
+			err:  wire.VarintError(5, int64(math.MaxInt32+1), "int", errLoc, errNumber, errOff),
+			want: located(kanon.ErrRange, "value 2147483648 outside int"),
+		},
+		{
 			name: "LengthError/names the length and the one the value wants",
 			err:  wire.LengthError(3, 32, errLoc, errNumber, errOff),
 			want: located(kanon.ErrMalformed, "length 3, want 32"),
@@ -106,14 +121,24 @@ func TestError(t *testing.T) {
 			want: located(kanon.ErrUnknownType, "type number 9"),
 		},
 		{
-			name: "DepthError/locates the depth at the struct",
-			err:  wire.DepthError(errType, errOff),
+			name: "DepthError/locates a struct nested too deep at the struct",
+			err:  wire.DepthError(errType, 0, errOff),
 			want: &kanon.DecodeError{Type: errType, Offset: errOff, Err: kanon.ErrDepth},
+		},
+		{
+			name: "DepthError/locates a value nested too deep at its field",
+			err:  wire.DepthError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrDepth, ""),
 		},
 		{
 			name: "UnmarshalError/wraps the error of the value",
 			err:  wire.UnmarshalError(errOwn, errLoc, errNumber, errOff),
 			want: located(errOwn, ""),
+		},
+		{
+			name: "KeyError/locates a map key with a NaN component",
+			err:  wire.KeyError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrInvalidKey, ""),
 		},
 	}
 	for _, c := range cases {
@@ -142,6 +167,17 @@ func TestError(t *testing.T) {
 			assert.Equal(t, err.Error(),
 				"kanon: shop.Order.Count (field 7): type not listed in the tag option types: wire_test.hexagon",
 				"UnlistedError names the field and the type of the value")
+		})
+	})
+	t.Run("InvalidKeyError", func(t *testing.T) {
+		t.Parallel()
+		t.Run("wraps ErrInvalidKey at the field of the map", func(t *testing.T) {
+			t.Parallel()
+			got := assert.ErrorAs[*kanon.EncodeError](t, wire.InvalidKeyError(errLoc, errNumber),
+				"InvalidKeyError returns a *kanon.EncodeError")
+			assert.Equal(t, got,
+				&kanon.EncodeError{Type: errType, Field: errField, Number: errNumber, Err: kanon.ErrInvalidKey},
+				"InvalidKeyError locates the field and wraps the cause")
 		})
 	})
 }

@@ -32,11 +32,15 @@ func CompareComplex(a, b complex128) int {
 }
 
 // CompareTime returns -1, 0 or +1 as the map key a sorts before, with or
-// after b: by instant, then a time in UTC before a time in a zone, then by
-// the offsets of the zones. Two times compare equal exactly when they
-// encode alike.
+// after b: by Unix seconds, then by nanoseconds, then a time in UTC before
+// a time in a zone, then by the offsets of the zones. The order leaves out
+// the monotonic clock reading and the name of the zone, as the encoding
+// does, so two times compare equal exactly when they encode alike.
 func CompareTime(a, b time.Time) int {
-	if c := a.Compare(b); c != 0 {
+	if c := cmp.Compare(a.Unix(), b.Unix()); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Nanosecond(), b.Nanosecond()); c != 0 {
 		return c
 	}
 	au, bu := a.Location() == time.UTC, b.Location() == time.UTC

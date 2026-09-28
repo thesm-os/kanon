@@ -26,6 +26,16 @@ func BenchmarkMap(b *testing.B) {
 	})
 }
 
+// TestMapAllocs checks that Take allocates nothing. It runs serially:
+// testing.AllocsPerRun panics while a parallel test runs.
+func TestMapAllocs(t *testing.T) {
+	keys, values := []string{"a", "b", "c"}, []int{1, 2, 3}
+	t.Run("Take/allocates nothing", func(t *testing.T) {
+		assert.MaxAllocs(t, func() { sinkInt = wire.Take(keys, values, len(keys), "b") }, 0,
+			"Take allocates nothing")
+	})
+}
+
 func TestMap(t *testing.T) {
 	t.Parallel()
 	t.Run("Pair", func(t *testing.T) {

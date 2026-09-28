@@ -32,12 +32,30 @@ var (
 	// ErrUnknownType marks an interface type number that the field's list
 	// of concrete types does not name.
 	ErrUnknownType = errors.New("kanon: interface type number not listed")
+	// ErrRepeatedView marks a second occurrence of a struct field in the
+	// encoding that a view reads the field from. A decode merges the
+	// occurrences, and one byte slice cannot hold the merge.
+	ErrRepeatedView = errors.New("kanon: struct field occurs twice in a view")
 )
 
 // ErrUnlistedType is the cause of an [EncodeError] for an interface that
 // stores a value of a type that the tag option types of its field does not
 // list.
 var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+
+// Causes of an [EncodeError] and of a [DecodeError] for a map key. The
+// projection of a key is its encoding, with every float component of -0.0
+// written as +0.0.
+var (
+	// ErrInvalidKey marks a map key with a NaN component, which the wire
+	// format cannot order: the encode of a map with such a key fails, and so
+	// does the decode of one.
+	ErrInvalidKey = errors.New("kanon: map key has a NaN component")
+	// ErrAmbiguousKey marks two keys of one map with the same projection:
+	// the encode of such a map fails, and so does a merge into a receiver
+	// whose map has two such keys.
+	ErrAmbiguousKey = errors.New("kanon: two map keys encode alike")
+)
 
 // DecodeError is the error of a decode: the malformed input, where it
 // starts, and why it is malformed. The generated code returns one for every
@@ -59,8 +77,8 @@ type DecodeError struct {
 	// Detail states what is malformed, and is empty when Err states it.
 	Detail string
 	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
-	// [ErrDepth], [ErrUnknownType], or the error of a type that decodes
-	// itself.
+	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
+	// [ErrRepeatedView], or the error of a type that decodes itself.
 	Err error
 }
 
@@ -99,8 +117,8 @@ type EncodeError struct {
 	Field string
 	// Number is the field number of Field.
 	Number int
-	// Err is the cause: [ErrUnlistedType] or the error of a type that
-	// encodes itself.
+	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
+	// [ErrAmbiguousKey], or the error of a type that encodes itself.
 	Err error
 }
 

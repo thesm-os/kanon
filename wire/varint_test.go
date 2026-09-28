@@ -5,17 +5,29 @@ package wire_test
 
 import (
 	"encoding/binary"
+	"io"
 	"math"
 	"testing"
 
 	"go.dokimi.dev/assert"
 
+	"go.thesmos.sh/kanon"
 	"go.thesmos.sh/kanon/wire"
 )
 
 // maxTag is the smallest tag that PutTag does not write: the tag of field
 // number 2048, which takes three bytes.
 const maxTag = 1 << 14
+
+// The field and the offset at which the Presence cases locate their
+// errors.
+const (
+	presenceLoc   = "Order.Ref"
+	presenceType  = "Order"
+	presenceField = "Ref"
+	presenceNum   = 4
+	presenceOff   = 9
+)
 
 // ones returns n bytes of 0xff, the continuation bit and seven bits of
 // ones, followed by last.
@@ -42,7 +54,7 @@ func TestVarint(t *testing.T) {
 			{name: "reads 128 from two bytes", data: []byte{0x80, 0x01}, value: 128, n: 2},
 			{name: "reads 300 from two bytes", data: []byte{0xac, 0x02}, value: 300, n: 2},
 			{name: "reads the bits of every group", data: []byte{0xd5, 0xaa, 0x55}, value: 0x155555, n: 3},
-			{name: "stops at the end of the varint", data: []byte{0x05, 0xff}, value: 5, n: 1},
+			{name: "reads the varint at the start of data", data: []byte{0x05, 0xff}, value: 5, n: 1},
 			{name: "reads a leading zero group", data: []byte{0x80, 0x00}, value: 0, n: 2},
 			{name: "reads leading zero groups up to 10 bytes", data: []byte{
 				0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00,
@@ -51,8 +63,9 @@ func TestVarint(t *testing.T) {
 			{name: "returns length 0 for empty data", data: nil, value: 0, n: 0},
 			{name: "returns length 0 for data that ends inside the varint", data: []byte{0x80}, value: 0, n: 0},
 			{name: "returns length 0 for 9 bytes with continuation bits", data: ones(8, 0xff), value: 0, n: 0},
-			{name: "rejects a 10th byte above 1", data: ones(9, 0x02), value: 0, n: -1},
-			{name: "rejects an 11th byte", data: ones(10, 0x00), value: 0, n: -1},
+			{name: "returns length -1 for a 10th byte above 1", data: ones(9, 0x02), value: 0, n: -1},
+			{name: "returns length -1 for a 10th byte with the continuation bit", data: ones(9, 0x80), value: 0, n: -1},
+			{name: "returns length -1 for an 11th byte", data: ones(10, 0x00), value: 0, n: -1},
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
@@ -119,6 +132,75 @@ func TestVarint(t *testing.T) {
 			}
 		})
 	})
+	t.Run("PutBool", func(t *testing.T) {
+		t.Parallel()
+		cases := []struct {
+			name string
+			v    bool
+			want byte
+		}{
+			{name: "writes 1 for true", v: true, want: 1},
+			{name: "writes 0 for false", v: false, want: 0},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				buf := []byte{0xff, 0xff, 0xff}
+				assert.Equal(t, wire.PutBool(buf, 2, c.v), 1, "PutBool returns the offset of the byte it wrote")
+				assert.Equal(t, buf, []byte{0xff, c.want, 0xff}, "PutBool writes one byte before i")
+			})
+		}
+	})
+	t.Run("Presence", func(t *testing.T) {
+		t.Parallel()
+		values := []struct {
+			name string
+			data []byte
+			want bool
+		}{
+			{name: "reports false for the byte 0", data: []byte{0x00, 0x01}, want: false},
+			{name: "reports true for the byte 1", data: []byte{0x01, 0x00}, want: true},
+		}
+		for _, c := range values {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				present, err := wire.Presence(c.data, presenceLoc, presenceNum, presenceOff)
+				assert.NoError(t, err, "Presence reads a presence byte of 0 or 1")
+				assert.Equal(t, present, c.want, "Presence reports whether a value follows the byte")
+			})
+		}
+		failures := []struct {
+			name string
+			data []byte
+			want *kanon.DecodeError
+		}{
+			{
+				name: "returns io.ErrUnexpectedEOF for empty data",
+				data: nil,
+				want: &kanon.DecodeError{
+					Type: presenceType, Field: presenceField, Number: presenceNum, Offset: presenceOff,
+					Err: io.ErrUnexpectedEOF,
+				},
+			},
+			{
+				name: "returns kanon.ErrMalformed for the byte 2",
+				data: []byte{0x02},
+				want: &kanon.DecodeError{
+					Type: presenceType, Field: presenceField, Number: presenceNum, Offset: presenceOff,
+					Detail: "presence byte 2, want 0 or 1", Err: kanon.ErrMalformed,
+				},
+			},
+		}
+		for _, c := range failures {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				present, err := wire.Presence(c.data, presenceLoc, presenceNum, presenceOff)
+				assert.False(t, present, "Presence reports no value with an error")
+				got := assert.ErrorAs[*kanon.DecodeError](t, err, "Presence returns a *kanon.DecodeError")
+				assert.Equal(t, got, c.want, "Presence locates the error at the presence byte")
+			})
+		}
+	})
 	t.Run("Zigzag", func(t *testing.T) {
 		t.Parallel()
 		cases := []struct {
@@ -149,7 +231,7 @@ func TestVarint(t *testing.T) {
 			data []byte
 			want int
 		}{
-			{name: "counts none in empty data", data: nil, want: 0},
+			{name: "returns 0 for empty data", data: nil, want: 0},
 			{name: "counts varints of one and two bytes", data: []byte{0x01, 0x80, 0x01, 0x7f}, want: 3},
 			{name: "counts no varint that data cuts off", data: []byte{0x80}, want: 0},
 		}
@@ -167,6 +249,7 @@ var (
 	sinkUint64 uint64
 	sinkInt64  int64
 	sinkInt    int
+	sinkBool   bool
 )
 
 func BenchmarkVarint(b *testing.B) {
@@ -208,6 +291,12 @@ func BenchmarkVarint(b *testing.B) {
 			sinkInt = wire.PutTag(buf, len(buf), maxTag-1)
 		}
 	})
+	b.Run("PutBool", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkInt = wire.PutBool(buf, len(buf), true)
+		}
+	})
 	b.Run("Zigzag", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
@@ -228,12 +317,40 @@ func BenchmarkVarint(b *testing.B) {
 	})
 }
 
+// TestVarintAllocs checks that the varint functions allocate nothing. It
+// runs serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestVarintAllocs(t *testing.T) {
+	tenBytes, buf := ones(9, 0x01), make([]byte, 16)
+	cases := []struct {
+		name string
+		fn   func()
+	}{
+		{name: "Uvarint/allocates nothing", fn: func() { sinkUint64, sinkInt = wire.Uvarint(tenBytes) }},
+		{name: "SizeUvarint/allocates nothing", fn: func() { sinkInt = wire.SizeUvarint(math.MaxUint64) }},
+		{name: "PutUvarint/allocates nothing", fn: func() { sinkInt = wire.PutUvarint(buf, len(buf), math.MaxUint64) }},
+		{name: "PutTag/allocates nothing", fn: func() { sinkInt = wire.PutTag(buf, len(buf), maxTag-1) }},
+		{name: "PutBool/allocates nothing", fn: func() { sinkInt = wire.PutBool(buf, len(buf), true) }},
+		{name: "Presence/allocates nothing", fn: func() {
+			sinkBool, sinkErr = wire.Presence(buf, presenceLoc, presenceNum, presenceOff)
+		}},
+		{name: "Zigzag/allocates nothing", fn: func() { sinkUint64 = wire.Zigzag(math.MinInt64) }},
+		{name: "Unzigzag/allocates nothing", fn: func() { sinkInt64 = wire.Unzigzag(math.MaxUint64) }},
+		{name: "CountVarints/allocates nothing", fn: func() { sinkInt = wire.CountVarints(tenBytes) }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, c.fn, 0, "the function allocates nothing")
+		})
+	}
+}
+
 func FuzzUvarint(f *testing.F) {
 	f.Add([]byte{0x00})
 	f.Add([]byte{0xac, 0x02})
 	f.Add(ones(9, 0x01))
 	f.Add(ones(9, 0x02))
 	f.Add(ones(10, 0x00))
+	f.Add(ones(9, 0x80))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		v, n := wire.Uvarint(data)
 		want, wn := binary.Uvarint(data)
@@ -241,6 +358,9 @@ func FuzzUvarint(f *testing.F) {
 		case wn > 0:
 			assert.Equal(t, v, want, "Uvarint reads the value binary.Uvarint reads")
 			assert.Equal(t, n, wn, "Uvarint reads the length binary.Uvarint reads")
+		case wn == 0 && len(data) == binary.MaxVarintLen64:
+			assert.Equal(t, n, -1, "Uvarint reports overflow for 10 bytes with continuation bits, "+
+				"which binary.Uvarint reports as truncation")
 		case wn == 0:
 			assert.Equal(t, n, 0, "Uvarint reports truncation where binary.Uvarint does")
 		default:

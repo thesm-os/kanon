@@ -24,12 +24,12 @@
 //
 // # Inlining
 //
-// [Uvarint], [PutUvarint], [PutTag], [Uint32], [Uint64], [PutUint32],
-// [PutUint64], [PutRaw], [SizeUvarint], [SizeBytes], [Zigzag] and
-// [Unzigzag] fit the compiler's inlining budget, so a call in a generated
-// method compiles to the body of the function, and a one-byte varint costs
-// one comparison. The other functions run once per value at most, or only
-// on malformed input.
+// [Uvarint], [PutUvarint], [PutTag], [PutBool], [Uint32], [Uint64],
+// [PutUint32], [PutUint64], [PutRaw], [SizeUvarint], [SizeBytes], [Zigzag],
+// [Unzigzag] and [Nested] fit the compiler's inlining budget, so a call in
+// a generated method compiles to the body of the function, and a one-byte
+// varint costs one comparison. The other functions run once per value at
+// most, or only on malformed input.
 //
 // # Errors
 //

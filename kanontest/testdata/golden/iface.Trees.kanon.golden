@@ -1,0 +1,67 @@
+the zero value: 
+table sample 0: 0a090107c3a9e29c93cf89
+table sample 1: 0a8101017f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161
+table sample 2: 0a0702808080808002
+table sample 3: 0a0702ffffffffff01
+table sample 4: 0a0b02feffffffffffffffff01
+table sample 5: 0a09030100000000000000
+table sample 6: 0a09030000000000000000
+table sample 7: 0a0903000000000000f83f
+table sample 8: 0a020400
+table sample 9: 0a020401
+table sample 10: 0a020400
+table sample 11: 0a0405020500
+table sample 12: 0a06050405000600
+table sample 13: 0a020500
+table sample 14: 0a050603000600
+table sample 15: 0a120610056b616e6f6e0007c3a9e29c93cf8900
+table sample 16: 0a020600
+table sample 17: 
+table sample 18: 
+table sample 19: 
+table sample 20: 0aaf0201ac02636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363
+the sample of field Tree: 0a090107c3a9e29c93cf89
+table sample 0 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 1 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 2 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 3 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 4 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 5 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 6 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 7 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 8 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 9 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 10 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 11 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 11 that fails at value 1: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 12 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 12 that fails at value 1: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 12 that fails at value 2: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 13 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 14 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 14 that fails at value 1: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 15 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 15 that fails at value 1: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 15 that fails at value 2: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 16 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 17 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 18 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 19 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+table sample 20 that fails at value 0: fails: kanon: Trees.Tree (field 1): type not listed in the tag option types: kanontest.outsider
+wide sample 0: 0a0401027732
+wide sample 1: 0a020206
+wide sample 2: 0a09030000000000001040
+wide sample 3: 0a020401
+wide sample 4: 0a03050100
+wide sample 5: 0aa50106a201037731300003773131000377313200037731330003773134000377313500037731360003773137000377313800037731390003773230000377323100037732320003773233000377323400037732350003773236000377323700037732380003773239000377333000037733310003773332000377333300037733340003773335000377333600037733370003773338000377333900027737000277380002773900
+wide sample 6: 
+the key sample: 0a8101017f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 1239 probes, digest 7a9facfa7a74ae3d
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 1043 probes, digest 3964bbf1fde3a419
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 1719 probes, digest 622c5dad31748b65
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 315 probes, digest 8c80ca276330972e
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 31 probes, digest 15fee6ff6c125f00
+DecodeKanon/decodes two concatenated encodings as the reference decode: 441 probes, digest aea0ceec2d97eaa5
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 31 probes, digest a5286a6a6db84c70
+the samples that the encode allocation checks measure: 23 samples, digest 18bbfaf0feefe079
+the samples that the decode allocation check measures: 4 samples, digest f06bd6f81fd94506

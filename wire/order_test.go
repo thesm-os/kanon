@@ -36,6 +36,26 @@ func BenchmarkOrder(b *testing.B) {
 	})
 }
 
+// TestOrderAllocs checks that the key orders allocate nothing. It runs
+// serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestOrderAllocs(t *testing.T) {
+	at := time.Unix(1, 0)
+	zoned := at.In(time.FixedZone("", hourEast))
+	cases := []struct {
+		name string
+		fn   func()
+	}{
+		{name: "CompareBool/allocates nothing", fn: func() { sinkInt = wire.CompareBool(false, true) }},
+		{name: "CompareComplex/allocates nothing", fn: func() { sinkInt = wire.CompareComplex(1, 2) }},
+		{name: "CompareTime/allocates nothing", fn: func() { sinkInt = wire.CompareTime(at, zoned) }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, c.fn, 0, "the function allocates nothing")
+		})
+	}
+}
+
 func TestOrder(t *testing.T) {
 	t.Parallel()
 	t.Run("CompareBool", func(t *testing.T) {
@@ -79,7 +99,7 @@ func TestOrder(t *testing.T) {
 	})
 	t.Run("CompareTime", func(t *testing.T) {
 		t.Parallel()
-		at := time.Unix(1, 0)
+		at, now := time.Unix(1, 0), time.Now()
 		east, west := time.FixedZone("", hourEast), time.FixedZone("", -hourEast)
 		cases := []struct {
 			name string
@@ -92,6 +112,13 @@ func TestOrder(t *testing.T) {
 			{name: "ties two times in UTC", a: at.UTC(), b: at.UTC(), want: 0},
 			{name: "orders zones by offset at one instant", a: at.In(west), b: at.In(east), want: -1},
 			{name: "ties two zones with one offset", a: at.In(east), b: at.In(time.FixedZone("E", hourEast)), want: 0},
+			{
+				name: "orders by nanoseconds on equal seconds",
+				a:    time.Unix(1, 2).UTC(),
+				b:    time.Unix(1, 1).UTC(),
+				want: 1,
+			},
+			{name: "ties a time with a monotonic reading and the time without it", a: now, b: now.Round(0), want: 0},
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {

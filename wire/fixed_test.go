@@ -43,6 +43,26 @@ func BenchmarkFixed(b *testing.B) {
 	})
 }
 
+// TestFixedAllocs checks that the fixed-width functions allocate nothing.
+// It runs serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestFixedAllocs(t *testing.T) {
+	data, buf := make([]byte, 8), make([]byte, 8)
+	cases := []struct {
+		name string
+		fn   func()
+	}{
+		{name: "Uint32/allocates nothing", fn: func() { sinkUint32, sinkInt = wire.Uint32(data) }},
+		{name: "Uint64/allocates nothing", fn: func() { sinkUint64, sinkInt = wire.Uint64(data) }},
+		{name: "PutUint32/allocates nothing", fn: func() { sinkInt = wire.PutUint32(buf, len(buf), 1) }},
+		{name: "PutUint64/allocates nothing", fn: func() { sinkInt = wire.PutUint64(buf, len(buf), 1) }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, c.fn, 0, "the function allocates nothing")
+		})
+	}
+}
+
 func TestFixed(t *testing.T) {
 	t.Parallel()
 	t.Run("Uint32", func(t *testing.T) {

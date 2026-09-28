@@ -1,0 +1,22 @@
+the zero value: 
+table sample 0: 09000000000000f83f
+table sample 1: 090000000000000080
+table sample 2: 09010000000000f87f
+table sample 3: 09000000000000f07f
+table sample 4: 09000000000000f0ff
+table sample 5: 09ffffffffffffef7f
+table sample 6: 090100000000000000
+table sample 7: 
+the sample of field Radius: 09000000000000f83f
+wide sample 0: 09000000000000f03f
+wide sample 1: 090000000000000040
+the key sample: 090000000000000080
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 368 probes, digest 46b988d16cf696a3
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 216 probes, digest d4c151df90a568d9
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 50 probes, digest 5b03cfdbd340f844
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 13 probes, digest 21ee67b266245724
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest f0f0033246e555c0
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 13 probes, digest 3708b66e0e3beb73
+the samples that the encode allocation checks measure: 10 samples, digest 360a1fdb5a3e2c75
+the samples that the decode allocation check measures: 10 samples, digest 360a1fdb5a3e2c75

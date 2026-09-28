@@ -40,6 +40,27 @@ func BenchmarkBytes(b *testing.B) {
 	})
 }
 
+// TestBytesAllocs checks that the length functions allocate nothing. It
+// runs serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestBytesAllocs(t *testing.T) {
+	values := []byte{0x03, 'a', 'b', 'c', 0x00, 0x02, 'd', 'e'}
+	buf := make([]byte, 16)
+	cases := []struct {
+		name string
+		fn   func()
+	}{
+		{name: "SizeBytes/allocates nothing", fn: func() { sinkInt = wire.SizeBytes(200) }},
+		{name: "PutRaw/allocates nothing for a string", fn: func() { sinkInt = wire.PutRaw(buf, len(buf), "abc") }},
+		{name: "PutRaw/allocates nothing for bytes", fn: func() { sinkInt = wire.PutRaw(buf, len(buf), values) }},
+		{name: "CountValues/allocates nothing", fn: func() { sinkInt = wire.CountValues(values) }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, c.fn, 0, "the function allocates nothing")
+		})
+	}
+}
+
 func TestBytes(t *testing.T) {
 	t.Parallel()
 	t.Run("SizeBytes", func(t *testing.T) {
@@ -86,6 +107,7 @@ func TestBytes(t *testing.T) {
 		}{
 			{name: "counts none in empty data", data: nil, want: 0},
 			{name: "counts an empty value and a value of two bytes", data: []byte{0x00, 0x02, 'a', 'b'}, want: 2},
+			{name: "counts empty values of one byte each", data: []byte{0x00, 0x00, 0x00}, want: 3},
 			{name: "stops at a length that runs past data", data: []byte{0x01, 'a', 0x03, 'b'}, want: 1},
 			{name: "stops at a length that does not end", data: []byte{0x00, 0x80}, want: 1},
 			{name: "stops at a length that overflows", data: ones(9, 0x02), want: 0},

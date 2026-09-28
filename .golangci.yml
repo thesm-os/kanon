@@ -1,9 +1,8 @@
 # golangci-lint configuration for kanon.
 #
 # Derived from go.thesmos.sh/core's configuration. Production code imports
-# the standard library and kanon itself. Tests also import
-# go.dokimi.dev/assert, and kanontest imports it and pgregory.net/rapid for
-# its checks.
+# the standard library and kanon itself. Tests and kanontest also import
+# go.dokimi.dev/assert.
 
 version: "2"
 
@@ -86,7 +85,6 @@ linters:
             - go/
             - go.dokimi.dev/assert
             - go.thesmos.sh/kanon
-            - pgregory.net/rapid
         kanontest:
           list-mode: strict
           files:
@@ -96,7 +94,6 @@ linters:
             - go/
             - go.dokimi.dev/assert
             - go.thesmos.sh/kanon
-            - pgregory.net/rapid
 
     forbidigo:
       analyze-types: true
@@ -175,13 +172,23 @@ linters:
       # Package wire and these files build and read the wire format, and
       # convert between integer widths on purpose: a field number becomes
       # the high bits of a uint64 tag, a signed value becomes the uint64 of
-      # its varint, and a length arrives as a uint64. Every conversion is
-      # bounded by a preceding check or is the conversion the wire format
-      # defines. The wide sample of draw.go counts up from 0 and converts
-      # its count to every integer type of a sample.
-      - path: '^(wire/[a-z]+|internal/kanon/(emitter|decode)|kanontest/(wire|probes|bench|reference|draw))\.go$'
+      # its varint, a length arrives as a uint64, and the generator and the
+      # reference encoder and decoder of kanontest size, write and read a
+      # field number, a type number, a length and the bits of a number as
+      # the uint64 varints and fixed-width words they encode as. Every
+      # conversion is bounded by a preceding check or is the conversion the
+      # wire format defines. The wide samples of sample.go count up from 0
+      # and convert the count to every integer type of a sample.
+      - path: '^(wire/[a-z]+|internal/kanon/(emitter|decode|size)|kanontest/(encode|decode|sample))\.go$'
         linters: [gosec]
         text: "G115:"
+
+      # The fixtures declare unexported fields that the generated code
+      # leaves out of the encoding, which no code reads: leaving them out is
+      # what the generated tests of such a fixture check.
+      - path: '^internal/fixture/'
+        linters: [unused]
+        text: "field \\w+ is unused"
 
       # The loader runs `go list` in the package directory kanon was
       # given. The command is fixed, and the arguments are fixed flags,
@@ -191,14 +198,6 @@ linters:
         linters: [gosec]
         text: "G204:"
 
-      # chaos.Child runs the running test binary, os.Args[0], again. Its
-      # arguments are a -test.run pattern that quotes the name of a test
-      # and the coverage directory of the running binary. G204 flags the
-      # command and G702 traces os.Args to it.
-      - path: '^kanontest/internal/chaos/child\.go$'
-        linters: [gosec]
-        text: "G(204|702):"
-
       # fieldalignment is noise outside hot-path structs.
       - linters: [govet]
         text: "fieldalignment:"
@@ -207,6 +206,21 @@ linters:
       # assertion.
       - path: '_test\.go'
         linters: [goconst, gosec]
+
+      # A test of an allocation ceiling calls assert.MaxAllocs, which
+      # counts through testing.AllocsPerRun, and AllocsPerRun panics while
+      # a parallel test runs. Such a test runs serially, and its name ends
+      # in Allocs.
+      - path: '_test\.go'
+        linters: [paralleltest, tparallel]
+        text: 'Test\w*Allocs\b'
+
+      # A test that sets an environment variable of the process with
+      # t.Setenv, which panics in a parallel test, runs serially, and its
+      # name ends in Env.
+      - path: '_test\.go'
+        linters: [paralleltest, tparallel]
+        text: 'Test\w*Env\b'
 
 formatters:
   enable:

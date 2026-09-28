@@ -1,0 +1,63 @@
+the zero value: 
+table sample 0: 0a040000007f1204000000801a002a02012c320130
+table sample 1: 0a04000000801204000040002202fffe2a020000320130
+table sample 2: 0a04000040001a0022002a020001
+table sample 3: 1204100000001a0022056b616e6f6e3203313237
+table sample 4: 0a041000000012001a002a0200803203313238
+table sample 5: 0a04000000001200227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a023fff32053136333834
+table sample 6: 0a04000000001a0022800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a024000
+table sample 7: 12040000007f1a0022056b616e6f6e3209323638343335343536
+the sample of field Token: 0a040000007f
+the sample of field Ticket: 12040000007f
+the sample of field Grade: 1a00
+the sample of field Word: 227f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161
+the sample of field Stamp: 2a020080
+the sample of field Code: 3203313237
+table sample 0 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 0 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 0 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 0 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 0 that fails at value 4: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 1 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 1 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 1 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 1 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 1 that fails at value 4: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 2 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 2 that fails at value 1: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 2 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 2 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 3 that fails at value 0: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 3 that fails at value 1: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 3 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 3 that fails at value 3: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 4 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 4 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 4 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 4 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 4 that fails at value 4: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 5 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 5 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 5 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 5 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 5 that fails at value 4: fails: kanon: Codecs.Code (field 6): external: code is retired
+table sample 6 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
+table sample 6 that fails at value 1: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 6 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 6 that fails at value 3: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
+table sample 7 that fails at value 0: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
+table sample 7 that fails at value 1: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
+table sample 7 that fails at value 2: fails: kanon: Codecs.Word (field 4): codec: word text contains a NUL byte
+table sample 7 that fails at value 3: fails: kanon: Codecs.Code (field 6): external: code is retired
+wide sample 0: 0a04000000021204000000031a0144220277362a020007320137
+wide sample 1: 0a04000000031204000000041a0145220277372a020008320138
+the key sample: 0a04000000801204000040002202fffe2a020000320130
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 1385 probes, digest be3afdb1b50ad42f
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 358 probes, digest 8e875cf99add819b
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 1158 probes, digest f5dac3d45cf6f158
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 195 probes, digest 22bd0f89429e47c6
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 18 probes, digest 32c1a64de31a7e3
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 396ebff72c5f86d6
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 18 probes, digest 356b404d0add34a6
+the samples that the encode allocation checks measure: 4 samples, digest 88e25f07181ecbe
+the samples that the decode allocation check measures: 1 samples, digest 60606ebc2b5eb553

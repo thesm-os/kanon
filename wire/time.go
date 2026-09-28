@@ -4,7 +4,6 @@
 package wire
 
 import (
-	"math"
 	"strconv"
 	"time"
 
@@ -69,9 +68,10 @@ func PutTime(buf []byte, i int, t time.Time) int {
 // encoding/gob decodes a time. Empty data is the Unix epoch in UTC. A field
 // that repeats takes its last value, and an unknown field is skipped.
 //
-// Time fails for malformed input as the decode of a struct fails, for
-// nanoseconds above 999999999, and for a zone offset outside the range of
-// an int32, with errors that loc and num locate.
+// Time fails for malformed input as the decode of a struct fails, and for
+// each occurrence of nanoseconds above 999999999 and of a zone offset
+// outside the range of an int32, at the offset of its value, with errors
+// that loc and num locate.
 func Time(data []byte, loc string, num, off int) (time.Time, error) {
 	var secs, zone int64
 	var nanos uint64
@@ -100,23 +100,24 @@ func Time(data []byte, loc string, num, off int) (time.Time, error) {
 		if n <= 0 {
 			return time.Time{}, ReadError(n, loc, num, off+i)
 		}
-		i += n
 		switch field {
 		case timeSeconds:
 			secs = Unzigzag(v)
 		case timeNanos:
+			if v > maxNanos {
+				return time.Time{}, decodeError(kanon.ErrRange, loc, num, off+i,
+					"time nanoseconds "+strconv.FormatUint(v, 10)+" outside 0 to 999999999")
+			}
 			nanos = v
 		default:
-			zone, zoned = Unzigzag(v), true
+			z := Unzigzag(v)
+			if z != int64(int32(z)) {
+				return time.Time{}, decodeError(kanon.ErrRange, loc, num, off+i,
+					"time zone offset "+strconv.FormatInt(z, 10)+" outside the range of an int32")
+			}
+			zone, zoned = z, true
 		}
-	}
-	if nanos > maxNanos {
-		return time.Time{}, decodeError(kanon.ErrRange, loc, num, off,
-			"time nanoseconds "+strconv.FormatUint(nanos, 10)+" outside 0 to 999999999")
-	}
-	if zone < math.MinInt32 || zone > math.MaxInt32 {
-		return time.Time{}, decodeError(kanon.ErrRange, loc, num, off,
-			"time zone offset "+strconv.FormatInt(zone, 10)+" outside the range of an int32")
+		i += n
 	}
 	t := time.Unix(secs, int64(nanos))
 	if !zoned {
