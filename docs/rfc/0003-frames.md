@@ -4,7 +4,7 @@ title: Frames for messages on a stream
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 discussion: none
 supersedes: none
 superseded-by: none
@@ -48,32 +48,49 @@ checksum : 4 bytes, little-endian, CRC-32C (Castagnoli) over version through pay
 - A payload may be empty: a message whose every field is absent is a valid frame.
 - Type IDs are assigned by the application as constants and are part of its wire contract. An
   ID is never reused for another type.
+- A length uvarint that runs past 10 bytes, or whose tenth byte is above 1, is malformed. A
+  valid length above the reader's limit, or above what an `int` of the platform can address,
+  is too large, and the reader reports it before it allocates for the frame.
+- For a valid length within the limit, the reader consumes the whole frame before it reports a
+  version, flag, type or checksum error, so that it stands at the next frame. A type uvarint
+  that runs past the declared length, or a declared length too short for the checksum that the
+  flags select, is malformed.
+- A stream that ends before the first byte of a length ends between frames. A stream that ends
+  inside a length or before the declared length is truncated.
+- After a malformed or too large length, the reader cannot find the next frame.
 
 ### The package
 
 ```go
 package frame
 
-// Errors of Reader. A stream that ends between frames returns io.EOF, and
-// one that ends inside a frame returns an error that wraps
-// io.ErrUnexpectedEOF.
+// Errors of Reader and Writer. A stream that ends before the first byte of
+// a length returns io.EOF, and one that ends inside a length or before the
+// declared length returns an error that wraps io.ErrUnexpectedEOF. Every
+// error wraps one of these sentinels or the error of the stream, so that a
+// caller compares with errors.Is and never parses a message.
 var (
-	ErrVersion  = errors.New("frame: unsupported version")
-	ErrFlags    = errors.New("frame: unknown flag")
-	ErrTooLarge = errors.New("frame: longer than the reader's limit")
-	ErrChecksum = errors.New("frame: checksum mismatch")
-	ErrUnknown  = errors.New("frame: type not registered")
+	ErrVersion    = errors.New("frame: unsupported version")
+	ErrFlags      = errors.New("frame: unknown flag")
+	ErrTooLarge   = errors.New("frame: longer than the limit")
+	ErrChecksum   = errors.New("frame: checksum mismatch")
+	ErrUnknown    = errors.New("frame: type not registered")
+	ErrMalformed  = errors.New("frame: malformed length or frame")
+	ErrNoFrame    = errors.New("frame: no current frame")
+	ErrNilMessage = errors.New("frame: nil message")
 )
 
-// DefaultMaxSize is the frame length a Reader accepts when MaxSize is 0.
+// DefaultMaxSize is the frame length a Reader accepts when MaxSize is 0 or
+// less.
 const DefaultMaxSize = 16 << 20
 
-// Registry maps type IDs to constructors. It is safe for concurrent reads
-// after registration.
+// Registry maps type IDs to constructors. Registration completes before
+// the first concurrent read, and the reads are then safe for concurrent
+// use.
 type Registry struct { /* ... */ }
 
 // Register maps id to new, a constructor of the type. It fails when id is
-// registered.
+// registered and when new is nil.
 func (r *Registry) Register(id uint64, new func() kanon.Message) error
 
 // New returns a new message of the type registered under id, and false
@@ -94,13 +111,20 @@ func NewWriter(w io.Writer) *Writer
 
 // Write writes m as one frame of type id: it sizes m, encodes it into the
 // buffer after the header, appends the checksum when Checksum is set, and
-// writes the frame with one call of the underlying writer.
+// writes the complete frame with one call of the underlying writer. It
+// writes nothing when m fails to encode, and returns ErrNilMessage for a
+// nil m, a typed nil pointer included, and ErrTooLarge when the length of
+// the header, the payload and the checksum overflows an int. When the
+// underlying writer returns an error, Write returns it. When it writes
+// fewer bytes than the frame without an error, Write returns
+// io.ErrShortWrite. Write does not retry, since a short write can already
+// have put a prefix of the frame on the stream.
 func (w *Writer) Write(id uint64, m kanon.Message) error
 
 // Reader reads frames from a stream with one buffer. A Reader is not safe
 // for concurrent use.
 type Reader struct {
-	// MaxSize is the longest frame the reader accepts. 0 means
+	// MaxSize is the longest frame the reader accepts. 0 or less means
 	// DefaultMaxSize.
 	MaxSize int
 	/* ... */
@@ -110,22 +134,29 @@ type Reader struct {
 func NewReader(r io.Reader) *Reader
 
 // Next reads the next frame and returns its type ID and payload. The
-// payload aliases the reader's buffer until the next call of Next.
+// payload aliases the reader's buffer: a caller must not change it while
+// Decode or a string that Decode returned is in use, and the next call of
+// Next can overwrite it. A caller that keeps the payload longer copies it.
 func (r *Reader) Next() (id uint64, payload []byte, err error)
 
-// Decode decodes payload, as Next returned it, into m, with the reader's
+// Decode decodes the payload of the frame that the last successful call
+// of Next read, an empty payload included, into m, with the reader's
 // buffer as the slab of its kanon.Options and kanon.DefaultDepth as the
-// depth. Strings of m alias the buffer until the next call of Next. A value
-// that is used after the next frame is copied with
-// m.UnmarshalBinary(payload) or CloneKanon.
-func (r *Reader) Decode(payload []byte, m kanon.Message) error
+// depth. It can decode that payload more than once. Strings of m alias the
+// buffer until the next call of Next, and a value that is used after the
+// next frame is copied with CloneKanon. Decode returns ErrNoFrame before
+// the first successful Next and after a failed one, and ErrNilMessage for
+// a nil m, a typed nil pointer included.
+func (r *Reader) Decode(m kanon.Message) error
 ```
 
 `Decode` builds the slab with `unsafe.String` over the reader's buffer, so a decode into a
-reused message allocates nothing. `Next` grows the buffer to the frame length when it is
-shorter, and never above `MaxSize`. Type IDs are constants that the application assigns. A
-hash of a type name changes on a rename and collides silently, so the registry takes the ID
-from the application.
+reused message allocates nothing. It takes no payload argument: after the reader reuses its
+buffer, an old payload slice can have the address and the length of the new one, so no check
+could tell a stale payload from the current one. `Next` grows the buffer to the frame length
+when it is shorter, and never above `MaxSize`. Type IDs are constants that the application
+assigns. A hash of a type name changes on a rename and collides silently, so the registry
+takes the ID from the application.
 
 ```mermaid
 sequenceDiagram
@@ -138,7 +169,7 @@ sequenceDiagram
     W-->>R: length version flags type payload checksum
     R->>R: Next: read length, read the frame, verify the checksum
     R-->>D: id, payload
-    D->>R: Decode(payload, m)
+    D->>R: Decode(m)
     R-->>D: m, strings alias the buffer
 ```
 
@@ -150,7 +181,7 @@ reg.Register(OrderID, func() kanon.Message { return new(Order) })
 
 r := frame.NewReader(conn)
 for {
-	id, payload, err := r.Next()
+	id, _, err := r.Next()
 	if err != nil {
 		return err
 	}
@@ -158,7 +189,7 @@ for {
 	if !ok {
 		return fmt.Errorf("%w: %d", frame.ErrUnknown, id)
 	}
-	if err := r.Decode(payload, m); err != nil {
+	if err := r.Decode(m); err != nil {
 		return err
 	}
 	handle(m)
@@ -167,11 +198,37 @@ for {
 
 ### Failure behaviour
 
-- A checksum mismatch, an unknown flag or a version above 1 leaves the reader positioned after
-  the frame, so a caller can skip the frame and continue.
-- `ErrTooLarge` leaves the stream inside the frame, since the reader does not buffer it. The
-  caller closes the stream.
+- A checksum mismatch, an unknown flag, a version above 1 or an unregistered type leaves the
+  reader positioned after the frame, so a caller can skip the frame and continue.
+- `ErrTooLarge` for a length leaves the stream inside the frame, since the reader does not
+  buffer it, and `ErrMalformed` for a length leaves it at an unknown position. The caller
+  closes the stream.
 - A decode error leaves the reader positioned after the frame.
+
+### Test vectors
+
+For type ID 1, where the checksum of the checksummed frame is the CRC-32C of `01 01 01`,
+`0x24ec2a70`, little-endian:
+
+| Frame | Bytes |
+|---|---|
+| Empty payload, no checksum | `03 01 00 01` |
+| Payload `0a 01 61`, no checksum | `06 01 00 01 0a 01 61` |
+| Empty payload, checksum | `07 01 01 01 70 2a ec 24` |
+
+A reader must return these errors for these inputs, which tell truncation, overflow and a
+valid but disallowed length apart:
+
+| Input | Error |
+|---|---|
+| The length byte `80`, then the end of the stream | wraps `io.ErrUnexpectedEOF` |
+| Ten length bytes `80` | `ErrMalformed` |
+| `03 01 00 01` with `MaxSize` 2 | `ErrTooLarge`, before the reader buffers the frame |
+
+The tests of the package cover an empty payload, frames with and without a checksum, a
+malformed length, short reads, short writes, a truncated checksum, an unknown flag and
+version, a checksum mismatch, registered and unregistered type IDs, `ErrNoFrame`,
+`ErrNilMessage`, and a payload that the next frame overwrites.
 
 ## Alternatives considered
 

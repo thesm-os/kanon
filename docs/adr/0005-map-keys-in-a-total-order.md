@@ -1,10 +1,10 @@
 ---
 adr: 0005
 title: Write map entries in a total key order, struct keys by field number
-status: Accepted
+status: Superseded
 date: 2026-09-27
 supersedes: none
-superseded-by: none
+superseded-by: ADR-0019
 rfc: RFC-0001
 ---
 
@@ -12,7 +12,7 @@ rfc: RFC-0001
 
 ## Status
 
-Accepted
+Superseded by [ADR-0019](0019-map-keys-ordered-by-projection.md).
 
 ## Context
 

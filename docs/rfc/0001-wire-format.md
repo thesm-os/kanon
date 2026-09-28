@@ -4,11 +4,11 @@ title: The kanon wire format
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006
+produces-adr: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0019
 ---
 
 # RFC-0001: The kanon wire format
@@ -88,7 +88,9 @@ uvarint = *( %x80-FF ) %x00-7F
 
 **fixed32, fixed64.** 4 or 8 bytes, little-endian. Signed integers are two's complement.
 Floats are the IEEE 754 binary32 or binary64 bit pattern. An encoder writes the bit pattern of
-the value as it is, so a round trip changes neither a NaN payload nor the sign of zero.
+the value as it is, so a round trip changes neither a NaN payload nor the sign of zero. A
+float in a map key is the one exception, which the section on map keys defines: an encoder
+writes -0.0 there as +0.0, and a NaN there is invalid.
 
 ### Structs
 
@@ -127,7 +129,7 @@ zero value of its type. A field is present when:
 | string, byte slice, slice, map | not empty. A nil and an empty slice or map encode alike |
 | array | at least one element is not the zero value of its type |
 | byte array | at least one byte is not zero |
-| time | not the zero time (January 1, year 1, 00:00:00 UTC) |
+| time | not the zero time (January 1, year 1, 00:00:00) in UTC. The zero instant in another location is present |
 | struct | its encoding has at least one byte |
 | opaque | its encoding has at least one byte |
 | pointer, interface | not nil. A pointer to a zero value is present |
@@ -144,20 +146,25 @@ occurrences merge, as the concatenation of two encodings merges:
 | Type | Second occurrence |
 |---|---|
 | slice | appends its elements |
-| map | adds its entries; a key present in both takes the later value |
+| map | adds its entries. A key of the same projection in both takes the later value |
 | struct, pointer to a struct | merges field by field under these rules |
 | interface | replaces the value. If the concrete type is the same, the values merge as their type merges |
-| union member | replaces the union: the other members become zero, and this member takes the value |
+| union member | replaces the union, also when it selects the member that the union selects: the other members become zero, and this member decodes from its zero value |
 | any other | replaces the value |
 
-An encoder must not write a field number twice in one struct encoding.
+An encoder must not write a field number twice in one struct encoding. A merge of an encoding
+into a value that encodes yields, for every field that the schema lists, what the decode of
+the value's canonical encoding followed by that encoding yields. Kept unknown fields follow
+their own rule, and what the encoding leaves out, such as skipped fields and the identity of a
+pointer, is outside this equivalence.
 
 ### Values
 
 Every value encodes the same way wherever it occurs: as a field, as a slice or array element,
 as a map key or value, as the value a pointer points at, and as the value an interface stores.
 A pointer and an interface encode differently as a field, where the tag makes a byte
-redundant, as the table marks.
+redundant, as the table marks. A float in a map key encodes with the sign of its zero
+normalized, as the section on map keys defines.
 
 | Type | Wire | Value |
 |---|---|---|
@@ -191,6 +198,12 @@ uint32.
 self-delimiting, so a decoder can skip any value from its tag and length alone. A decoder must
 reject a length that runs past the end of the enclosing value.
 
+**Recursive values.** A type can contain itself through a pointer, a slice, a map or an
+interface, and a value of such a type encodes as a finite tree. A value whose pointers or
+interfaces form a cycle has no finite encoding, and an encoder need not detect the cycle. The
+codec of an opaque value must write the same bytes for an unchanged value, so that a value that
+contains it has one encoding.
+
 ### Time
 
 A time is a struct with three fields, encoded as bytes:
@@ -204,11 +217,17 @@ A time is a struct with three fields, encoded as bytes:
 - A time in UTC has no field 3. A time in a zone with offset 0 that is not UTC has field 3
   with value 0.
 - A decoder must reject a nanosecond value above 999,999,999, and a zone offset outside the
-  32-bit signed range.
-- A decoder yields a time in a fixed zone with the decoded offset, or in UTC. The name of the
-  zone is not encoded. An implementation may yield its local zone when the offset matches it.
-- The zero time is 0001-01-01T00:00:00 UTC. As a field it is absent. As an element or a map
-  value it encodes as length 0.
+  32-bit signed range. It checks every occurrence of the field, including one that a later
+  occurrence replaces, and reports the offset of the value that it rejects.
+- A decoder yields a time with field 3 in a location other than UTC, with the decoded offset,
+  and a time without field 3 in UTC. The name of the zone is not encoded. An implementation
+  may yield its local zone when that zone is not UTC and has the decoded offset at that
+  instant.
+- A payload without fields is 1970-01-01T00:00:00 UTC, the time whose three fields are all
+  left out. The zero time, 0001-01-01T00:00:00 UTC, has Unix seconds that are not 0, so its
+  payload is not empty.
+- A time field is absent only when its time is the zero time in UTC. The zero instant in
+  another location is present, and its payload has field 3.
 - A duration is an int64 count of nanoseconds, zigzag, and has no fields.
 
 Examples:
@@ -217,6 +236,9 @@ Examples:
 - The same instant with 500 nanoseconds is `08 02 10 f4 03`.
 - The same instant in a zone one hour east of UTC is `08 02 18 a0 38`.
 - One second before the epoch in UTC is `08 01`.
+- The Unix epoch in UTC is the empty payload.
+- The zero time is `08 ff db 8f f9 ce 03`, with seconds -62135596800.
+- The zero instant in a zone one hour east of UTC is `08 ff db 8f f9 ce 03 18 a0 38`.
 
 ### Unions
 
@@ -252,16 +274,34 @@ where `Circle` has one float64 field and `Square` one int32 field:
 - `&Square{3}` is `0a 05 02 01 02 08 06`.
 - A nil `*Square` is `0a 02 02 00`.
 
-### Map key order
+### Map keys
 
-An encoder must write the entries of a map in ascending key order under this total order,
-so that equal maps encode to identical bytes:
+The **projection** of a map key is the encoding as a value of the key with every float
+component that is -0.0 replaced by +0.0, through arrays, structs, pointers and the values that
+interfaces store, so that a struct field of -0.0 is absent from it, as a field of +0.0 is.
+The projection leaves out what the encoding of a value leaves out: skipped fields, the
+identity of a pointer, the name of a zone and a monotonic clock reading. An encoder writes
+every key as its projection. A decoded key has the projection of the encoded key, not its
+identity, so an application looks a decoded map up with keys of the same projection.
+
+- A key with a NaN component is invalid. An encoder must fail for a map with such a key, and a
+  decoder must reject one.
+- An encoder must fail for a map with two keys of the same projection, such as two pointers to
+  equal values, two structs that differ only in a skipped field, or two times with the same
+  instant and offset in zones of different names. A failed encode writes no valid bytes.
+- The projection of an opaque key is the application's encoding of it. The application's
+  codec must write the same bytes for an unchanged value, and the decode of those bytes must
+  have the same projection. A codec that breaks either rule voids the guarantees of this
+  section for its keys.
+
+An encoder must write the entries of a map in ascending key order under this order, so that
+equal maps encode to identical bytes:
 
 | Key type | Order |
 |---|---|
 | bool | false before true |
 | signed and unsigned integers | numeric |
-| float | numeric, with NaN before every other value. -0.0 and +0.0 are equal |
+| float | numeric. -0.0 and +0.0 are equal |
 | complex | by the real part, then by the imaginary part, each as a float |
 | string, byte slice, byte array | bytewise, shorter prefix first |
 | array | element by element |
@@ -271,13 +311,23 @@ so that equal maps encode to identical bytes:
 | interface | by type number, then by value as the concrete type orders |
 | opaque | by encoding, bytewise |
 
-Two keys that are equal under this order but not equal as values, such as two NaNs or -0.0
-and +0.0, have no defined order between them. A map with such keys has no canonical encoding.
-A decoder accepts entries in any order, and a key that occurs twice takes the later value.
+Two valid keys are equal under this order exactly when their projections are equal, so the
+keys of a map that encodes have one order.
 
-Example, a map from a struct `{X, Y int32}` to string with entries `{2,1}: "b"` and
-`{1,9}: "a"`, as field 6: `32 0e 04 08 02 10 12 01 61 04 08 04 10 02 01 62`. The key `{1,9}`
-sorts first on X.
+A decoder accepts entries in any order. Keys of one projection are one key, also across
+repeated occurrences of the map field: the later value replaces the earlier one, and the
+decoded map has one entry for them. A decoder must not keep two entries whose keys have the
+same projection, even when the key type of the decoder's language tells the two decoded keys
+apart, as Go does for two decoded pointers. It must reject a key that the decoder's key type
+makes equal to an earlier key of another projection.
+
+Examples:
+
+- A map from a struct `{X, Y int32}` to string with entries `{2,1}: "b"` and `{1,9}: "a"`, as
+  field 6, is `32 0e 04 08 02 10 12 01 61 04 08 04 10 02 01 62`. The key `{1,9}` sorts first
+  on X.
+- A map from float64 to string with the entry `-0.0: "a"`, as field 1, is
+  `0a 0a 00 00 00 00 00 00 00 00 01 61`, the encoding of the key +0.0.
 
 ### Decoder requirements
 
@@ -293,10 +343,12 @@ offset:
 - A value outside the range of a narrower integer type.
 - A nanosecond count above 999,999,999, or a zone offset outside 32 bits.
 - An interface type number the schema does not list.
+- A map key with a NaN component.
+- A map key that the decoder's key type makes equal to an earlier key of another projection.
 - A nesting deeper than its limit.
 
 A decoder accepts non-minimal uvarints, fields in any order, map entries in any order,
-duplicate map keys, a bool above 1 and unknown field numbers.
+duplicate map keys, whose later value takes effect, a bool above 1 and unknown field numbers.
 
 A decoder must bound its nesting depth, since every nested struct, slice, map, pointer and
 interface is a level and a hostile encoding can nest one level per two bytes. The
@@ -306,10 +358,10 @@ allocate from a declared length before it has checked the length against the inp
 ### Encoder requirements
 
 A conformant encoder writes the canonical form: minimal uvarints, fields in ascending number,
-absent fields left out, map entries in key order, no repeated field numbers, and no unknown
-fields other than the bytes it decoded and kept. Two encoders that follow these rules encode
-equal values to identical bytes, except for maps with keys of undefined mutual order and for
-kept unknown fields.
+absent fields left out, map keys as their projections in key order, no repeated field
+numbers, and no unknown fields other than the bytes it decoded and kept. Two encoders that
+follow these rules encode equal values to identical bytes, except for kept unknown fields. An
+encoder must fail for a map with an invalid key or with two keys of the same projection.
 
 The encoding has no version of its own. A container of encodings, such as a stream frame or a
 storage block, carries the version, and a change to this format is a new format.
@@ -320,15 +372,19 @@ The schema of a struct is its list of fields, each with a number and a type, its
 the type lists of its interface fields with their numbers. The schema is not on the wire. Two
 parties share it by sharing the struct definition.
 
-These changes are compatible, and old and new readers both read the other's data after them:
+A change to a schema is compatible in one direction when a reader with one version of the
+schema reads the data that a writer with the other version writes. Some changes are
+compatible in one direction only:
 
-- Adding a field with a number never used before.
-- Removing a field, whose number is then never used again.
-- Reordering fields.
-- Adding a concrete type to an interface's list with a new number.
-- Widening an integer type within the same wire format, such as int32 to int64.
+| Change | New reader, old data | Old reader, new data | Rollout |
+|---|---|---|---|
+| Add a field with a number never used before | Reads the field as absent | Skips the field as unknown | Safe when no old writer has to set the field |
+| Remove a field and reserve its number | Skips the old field | Reads the field as absent | Keep the number reserved for good |
+| Reorder fields | Reads it | Reads it | Keep the recorded numbers |
+| Add a concrete type to an interface's list, with a new number | Reads it | Rejects the new type number | Upgrade every reader before a writer stores a value of the new type |
+| Widen a signed integer type to a wider signed one, or an unsigned one to a wider unsigned one, as varints | Reads it | Reads a value only while it fits the old range | Keep writes within the old range until no old reader is left |
 
-These changes are incompatible:
+These changes are incompatible in both directions:
 
 - Reusing a number.
 - Changing the wire format of a number, such as int32 to a fixed int32, or a string to a
@@ -384,7 +440,7 @@ Each vector is the encoding of one struct value. Field numbers are given per str
 |---|---|
 | `{Label: "r", Children: {{Label: "a"}}}` | `0a 01 72 12 05 01 03 0a 01 61` |
 
-**Times** `{CreatedAt time = 1, Timeout duration = 2}`
+**Times** `{CreatedAt time = 1, Timeout duration = 2, Stamps []time = 3}`
 
 | Value | Bytes |
 |---|---|
@@ -393,7 +449,19 @@ Each vector is the encoding of one struct value. Field numbers are given per str
 | `{CreatedAt: 1970-01-01T01:00:01+01:00}` | `0a 05 08 02 18 a0 38` |
 | `{CreatedAt: 1969-12-31T23:59:59Z}` | `0a 02 08 01` |
 | `{CreatedAt: zero time}` | (empty) |
+| `{CreatedAt: 1970-01-01T00:00:00Z}` | `0a 00` |
+| `{CreatedAt: zero instant at +01:00}` | `0a 0a 08 ff db 8f f9 ce 03 18 a0 38` |
 | `{Timeout: 1s}` | `10 80 a8 d6 b9 07` |
+| `{Stamps: {1970-01-01T00:00:00Z}}` | `1a 01 00` |
+| `{Stamps: {zero time}}` | `1a 08 07 08 ff db 8f f9 ce 03` |
+
+**Keys** `{Scores map[float64]string = 1, Refs map[*int32]string = 2}`
+
+| Value | Bytes |
+|---|---|
+| `{Scores: {-0.0: "a"}}` | `0a 0a 00 00 00 00 00 00 00 00 01 61` |
+| `{Scores: {NaN: "a"}}` | fails: invalid key |
+| `{Refs: {&1: "a", &1: "b"}}`, two pointers to equal values | fails: two keys of one projection |
 
 **Bytes** `{Payload []byte = 1}`
 
@@ -435,6 +503,15 @@ Each vector is the encoding of one struct value. Field numbers are given per str
 | `{Opt: &Point{}}` | `42 00` |
 | `{Any: []any{"s", int64(-1)}}` | `4a 07 03 05 01 01 73 02 01` |
 | `{Any: ""}` | `4a 02 01 00` |
+
+A decoder must decode these inputs, which repeat a field, to these values.
+
+**Repeats** `{Kind discriminator, Slice []int32 = 1 (union), Nested interface = 8 ([]int32 = 1)}`
+
+| Input | Value |
+|---|---|
+| `0a 01 02 0a 01 04` | `{Kind: selects Slice, Slice: {2}}`: the second occurrence of the member replaces the first |
+| `42 03 01 01 02 42 03 01 01 04` | `{Nested: []int32{1, 2}}`: both occurrences store `[]int32`, whose values merge |
 
 The reference implementation also pins the encoding of every sample of every fixture type in
 golden files, one line per sample, as `sample N: <hex>`.
@@ -504,7 +581,8 @@ the reference encoder makes once and reuses for the buffer allocation.
 - A time costs 4 bytes more than an int64 of nanoseconds when it has nanosecond precision,
   and 3 bytes for a zone offset when it is not in UTC.
 - Random access within a struct is a scan of its fields from the start.
-- A map with NaN keys, or with -0.0 and +0.0 keys, has no canonical encoding.
+- A map with a NaN key, or with two keys of the same projection, does not encode. A decoded
+  pointer key is a new pointer, so the identity of a key does not survive a round trip.
 
 ## Unresolved and future work
 

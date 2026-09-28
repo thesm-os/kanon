@@ -9,7 +9,7 @@ under `../rfc`.
 | [0002](0002-varints-by-default-fixed-opt-in.md) | Encode integers as varints by default, fixed widths per field on request | Accepted |
 | [0003](0003-accept-non-minimal-varints.md) | Decoders accept non-minimal varints | Accepted |
 | [0004](0004-no-version-in-the-encoding.md) | The encoding carries no version | Accepted |
-| [0005](0005-map-keys-in-a-total-order.md) | Write map entries in a total key order, struct keys by field number | Accepted |
+| [0005](0005-map-keys-in-a-total-order.md) | Write map entries in a total key order, struct keys by field number | Superseded by [0019](0019-map-keys-ordered-by-projection.md) |
 | [0006](0006-time-as-seconds-nanos-and-zone.md) | Encode a time as seconds, nanoseconds and zone offset | Accepted |
 | [0007](0007-go-structs-as-the-schema.md) | Go struct types are the schema, generated in stringer's model | Accepted |
 | [0008](0008-lock-field-numbers-and-check-them.md) | Lock field numbers in the generated file and check them against a revision | Accepted |
@@ -23,3 +23,4 @@ under `../rfc`.
 | [0016](0016-batch-layout.md) | Lay out a batch as header, payloads, then offsets and count | Accepted |
 | [0017](0017-batch-offsets-32-bit-with-opt-in-64.md) | Batch offsets are 32 bits wide, with 64 bits as an opt-in | Accepted |
 | [0018](0018-compression-stays-with-the-engine.md) | Compression stays with the storage engine | Accepted |
+| [0019](0019-map-keys-ordered-by-projection.md) | Order map keys by their projection, and fail the encode of NaN and tied keys | Accepted |

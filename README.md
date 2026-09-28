@@ -5,10 +5,10 @@ build, test, lint, and release lifecycle.
 
 ## Decoding without a copy
 
-The codec that kanon generates for a struct type has a `DecodeKanon(data, slab, slabOff)` method.
-`data` starts at offset `slabOff` of `slab`.
-Every string that `DecodeKanon` decodes is a substring of `slab`.
-`UnmarshalBinary` passes `string(data)`, a copy of its input.
+The codec that kanon generates for a struct type has a `DecodeKanon(data []byte, opts kanon.Options) error` method.
+`opts.Slab` is a string that contains `data` at offset `opts.Offset`.
+Every string that `DecodeKanon` decodes is a substring of the slab.
+With an empty `Slab`, `DecodeKanon` copies `data` into a slab of its own, and `UnmarshalBinary` decodes this way.
 For a type with strings, that copy is one allocation per decode.
 If you control the input buffer, pass the slab yourself.
 
@@ -19,7 +19,7 @@ The decode then does not allocate a slab:
 
 ```go
 slab := unsafe.String(unsafe.SliceData(data), len(data))
-if err := m.DecodeKanon(data, slab, 0); err != nil {
+if err := m.DecodeKanon(data, kanon.Options{Slab: slab}); err != nil {
 	return err
 }
 ```
@@ -33,7 +33,7 @@ If you decode many values from one buffer, copy the buffer into one slab and pas
 ```go
 slab := string(batch)
 for _, r := range records { // r.off and r.n locate one encoding in batch
-	if err := m.DecodeKanon(batch[r.off:r.off+r.n], slab, r.off); err != nil {
+	if err := m.DecodeKanon(batch[r.off:r.off+r.n], kanon.Options{Slab: slab, Offset: r.off}); err != nil {
 		return err
 	}
 }

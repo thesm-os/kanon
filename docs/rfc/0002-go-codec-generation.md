@@ -4,7 +4,7 @@ title: Generated Go codecs, their runtime and their public interface
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 discussion: none
 supersedes: none
 superseded-by: none
@@ -94,6 +94,7 @@ type Order struct {
 	ID    string        `kanon:"7"`             // field number 7
 	Skip  int           `kanon:"-"`             // not encoded
 	Count int64         `kanon:",fixed"`        // fixed64 instead of a varint
+	seq   uint64        `kanon:""`              // unexported, encoded because it has a tag
 	Kind  Kind
 	Text  string        `kanon:",union=Kind"`   // member of the union that Kind selects
 	Num   int64         `kanon:",union=Kind"`
@@ -102,19 +103,29 @@ type Order struct {
 }
 ```
 
-- Unexported fields, functions and channels are not encoded.
+- A field of a function or a channel type, or of a pointer to one at any depth, is not
+  encoded, as gob leaves it out, and neither is an unexported field without a kanon tag. Any
+  kanon tag on an unexported field other than `-`, `kanon:""` included, encodes it. Only the
+  code of the field's package can read the field, so the generator rejects such a field in a
+  struct of another package that it would encode inline or order as a map key, and a view has
+  no method for it.
+- An embedded field is a field named after its type, as gob encodes it: an embedded struct
+  encodes as a nested struct, and an embedded struct of an unexported type is left out unless
+  a kanon tag opts it in. kanon does not promote the fields of an embedded struct into the
+  outer struct, as encoding/json does.
 - `fixed` applies to the 32- and 64-bit integers in the field's type, except map keys. Varints
   are the default, and `fixed` is the opt-in for fields whose values are large or whose blocks
   compress better with fixed widths.
 - `union=D` makes the field a member of the union whose discriminator is field `D`, an
   exported field of an integer type. The constant that selects the member is named after the
-  discriminator's type and the member: `KindText` selects `Text` when `Kind` has type `Kind`,
+  discriminator's type and the member, with the member's first letter in upper case:
+  `KindText` selects `Text`, or an unexported `text`, when `Kind` has type `Kind`, and
   `external.ChoiceText` when the type is `external.Choice`.
 - `types=A|B|*C` lists the concrete types of every interface in the field's type, as gob
   registers types. Each entry is a type expression in the scope of the file. The generated
   file records the type numbers under the field's path, and regeneration keeps them as it
   keeps field numbers.
-- `unknown` marks the one `[]byte` field of a struct that keeps unknown fields.
+- `unknown` marks the one exported `[]byte` field of a struct that keeps unknown fields.
 
 ### Types
 
@@ -137,6 +148,23 @@ The generator encodes every type that gob and json encode:
 A map key may be any comparable type, including a struct, an array, a pointer, a time or an
 interface whose listed types are comparable. A struct key must not contain an interface, since
 its order depends on a type list of another field. Struct keys order by field number.
+
+A key encodes as its projection, as the wire format defines. The encode of a map fails with an
+`*EncodeError` that wraps `ErrInvalidKey` for a key with a NaN component, and with one that
+wraps `ErrAmbiguousKey` for two keys of one projection, such as two pointers to equal values
+or two structs that differ only in a skipped field. A decoded key is a new value with the
+projection of the encoded key. A pointer key decodes to a new pointer, and keys of one
+projection decode to one entry.
+
+A type may contain itself through a pointer, a slice, a map or an interface, and its values
+encode as finite trees, as the fixtures test with a struct key that contains itself behind a
+pointer, a named pointer type that points at itself, and trees of interfaces. `SizeKanon`,
+`EncodeKanon`, `CloneKanon`, `Reset` and the order of map keys follow pointers and interfaces
+without looking for a cycle, since `SizeKanon` returns no error. A value whose pointers or
+interfaces form a cycle, such as a node whose `Next` points at the node itself, is outside
+their contract, and its `SizeKanon` recurses without end. The methods through which an opaque
+type encodes itself must write the same bytes for an unchanged value and return an error
+rather than panic.
 
 ### The runtime: package kanon
 
@@ -162,32 +190,48 @@ type Message interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 
-	// SizeKanon returns the length of the encoding in bytes.
+	// SizeKanon returns the length of the encoding in bytes, for a value
+	// whose encode succeeds.
 	SizeKanon() int
 
 	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
 	// and returns their count. When buf is shorter than SizeKanon bytes, it
 	// writes nothing and returns io.ErrShortBuffer. It returns an
-	// *EncodeError when an opaque value fails to encode itself or an
-	// interface stores a type its list does not name.
+	// *EncodeError when an opaque value fails to encode itself, an
+	// interface stores a type its list does not name, or a map has an
+	// invalid key or two keys of one projection. After an error, buf does
+	// not contain a valid encoding, and AppendBinary returns its buffer
+	// unchanged.
 	EncodeKanon(buf []byte) (int, error)
 
 	// DecodeKanon sets the receiver to the value encoded in data and reuses
 	// the memory of the receiver: its slices, maps, pointers and nested
-	// values. Every decoded string is a substring of opts.Slab, or of one
-	// copy of data when opts.Slab is empty. It returns a *DecodeError. After
-	// an error the receiver contains the fields decoded before it, and the
-	// failed field has an unspecified value.
+	// values. It first clears the fields that the encoding leaves out, as
+	// Reset does. Every decoded string is a substring of opts.Slab, or of
+	// one copy of data when opts.Slab is empty. It returns a *DecodeError.
+	// After an error the receiver contains the fields decoded before it,
+	// and the failed field has an unspecified value.
 	DecodeKanon(data []byte, opts Options) error
 
 	// MergeKanon decodes data into the receiver without resetting it first,
 	// with the options of DecodeKanon. Slices append, maps add entries,
-	// nested structs merge, and other fields take the value in data.
+	// nested structs merge, and other fields take the value in data. The
+	// fields that the encoding leaves out keep their values. A map of the
+	// receiver with two keys of one projection fails the merge with
+	// ErrAmbiguousKey before the map changes.
 	MergeKanon(data []byte, opts Options) error
 
-	// Reset sets the receiver to its zero value and keeps its memory: the
-	// capacity of slices, the memory of map entries, and the values that
-	// pointers point at.
+	// Reset clears every field of the receiver, including the fields that
+	// the encoding leaves out: skipped fields, unexported fields without a
+	// kanon tag, and fields of a function or a channel type or of a pointer
+	// to one. An encoded scalar becomes its zero value, and an encoded
+	// pointer or interface becomes nil. An encoded slice or map becomes
+	// empty and keeps its storage for a decode
+	// to reuse: every element in the capacity of a slice is reset, a pointer
+	// element keeps its allocation with its value reset, and the entries of
+	// a map are deleted. A skipped slice or map becomes nil. The receiver
+	// need not be reflect.DeepEqual to a new zero value, but no decoded
+	// content remains in its values or in the storage that it keeps.
 	Reset()
 }
 
@@ -197,7 +241,10 @@ type Cloner[T any] interface {
 	Message
 
 	// CloneKanon returns a deep copy that shares no memory with the receiver
-	// or with the slab it decoded from. A nil receiver returns nil.
+	// or with the slab it decoded from, with the zero value in the fields
+	// that the encoding leaves out, map keys included. A map with two keys
+	// of one projection, which does not encode, can have one entry for them
+	// in the copy. A nil receiver returns nil.
 	CloneKanon() *T
 }
 
@@ -222,10 +269,19 @@ const DefaultDepth = 100
 // unwraps to io.ErrUnexpectedEOF, so a stream reader that retries on it
 // needs no kanon-specific check.
 var (
-	ErrMalformed   = errors.New("kanon: malformed input")
-	ErrRange       = errors.New("kanon: value outside the range of the type")
-	ErrDepth       = errors.New("kanon: nested deeper than the limit")
-	ErrUnknownType = errors.New("kanon: interface type number not listed")
+	ErrMalformed    = errors.New("kanon: malformed input")
+	ErrRange        = errors.New("kanon: value outside the range of the type")
+	ErrDepth        = errors.New("kanon: nested deeper than the limit")
+	ErrUnknownType  = errors.New("kanon: interface type number not listed")
+	ErrRepeatedView = errors.New("kanon: struct field occurs twice in a view")
+)
+
+// Causes of both an EncodeError and a DecodeError for a map key.
+var (
+	// ErrInvalidKey marks a map key with a NaN component.
+	ErrInvalidKey = errors.New("kanon: map key has a NaN component")
+	// ErrAmbiguousKey marks two keys of one map with the same projection.
+	ErrAmbiguousKey = errors.New("kanon: two map keys encode alike")
 )
 
 // DecodeError is the error of DecodeKanon and MergeKanon: the struct type,
@@ -244,7 +300,8 @@ type DecodeError struct {
 func (e *DecodeError) Error() string
 
 // Unwrap returns the cause: io.ErrUnexpectedEOF, ErrMalformed, ErrRange,
-// ErrDepth or ErrUnknownType.
+// ErrDepth, ErrUnknownType, ErrInvalidKey, ErrAmbiguousKey or
+// ErrRepeatedView.
 func (e *DecodeError) Unwrap() error
 
 // ErrUnlistedType is the cause of an EncodeError for an interface that
@@ -252,8 +309,8 @@ func (e *DecodeError) Unwrap() error
 var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
 
 // EncodeError is the error of EncodeKanon: the struct type, the field and
-// its number, and the cause, which is ErrUnlistedType or the error of an
-// opaque value's own encoding.
+// its number, and the cause, which is ErrUnlistedType, ErrInvalidKey,
+// ErrAmbiguousKey or the error of an opaque value's own encoding.
 type EncodeError struct {
 	Type   string
 	Field  string
@@ -353,6 +410,12 @@ fields is above it, so an out-of-line call per one-byte read would cost about 2 
   bitmap tracks the fields the input contains, and the decode sets the pointers, interfaces
   and maps it did not see to nil or empty at the end.
 - **Merge.** `MergeKanon` and a repeated field number both merge as the wire format defines.
+- **Map keys.** A decoded key with a NaN component fails with `ErrInvalidKey`. Keys of one
+  projection are one key. When a key type can decode two such keys to distinct Go values, as
+  pointers and times in a zone that the platform allocates do, the decode sorts those keys
+  after it reads the map and deletes every entry of a key whose projection a later key
+  repeats. A merge into a map with two keys of one projection fails with `ErrAmbiguousKey`
+  before it changes the map.
 - **Depth.** Each nested value costs one level. A decode that would enter a level below zero
   fails with `ErrDepth`.
 - **Unknown fields.** Without an `unknown` field, unknown numbers are skipped. With one, their
@@ -367,9 +430,11 @@ fields is above it, so an out-of-line call per one-byte read would cost about 2 
 `SizeKanon` computes the size in one pass, and `EncodeKanon` writes backward from the end of
 the buffer in a second pass, so that each nested value's length is known when its prefix is
 written and every value is written once. Map keys sort in a stack array of 16 keys, or of 16
-key-value pairs when the key type has no lookup that finds every key, such as a float. Unions
-encode with one `switch` on the discriminator. Every value that the wire format says is absent
-is left out.
+key-value pairs when the key type has no lookup that finds every key, such as a float. A key
+writes every -0.0 as +0.0. The encode fails with `ErrInvalidKey` for a key with a NaN
+component, and with `ErrAmbiguousKey` when two adjacent sorted keys order equal, which neither
+check allocates for. Unions encode with one `switch` on the discriminator. Every value that the
+wire format says is absent is left out.
 
 ### Views
 
@@ -381,29 +446,40 @@ With `-views`, the generator declares a view type per struct type:
 // value when the encoding has no such field.
 type OrderView []byte
 
-// ID returns the ID field. The string aliases the view.
-func (v OrderView) ID() (string, error)
+// ID returns the bytes of the ID field, which alias the view.
+func (v OrderView) ID() ([]byte, error)
 
 // Line returns the encoding of the Line field, or nil.
 func (v OrderView) Line() (LineView, error)
 ```
 
-A method exists for each field of a bool, integer, float, complex, string, byte slice, byte
-array, time or struct type, and for a pointer to one. Slices, maps, interfaces, union members
-and opaque types have no method. A storage engine reads an index key or evaluates a filter
-from the view without allocating.
+A method exists for each exported field of a bool, integer, float, complex, string, byte slice,
+byte array, time or struct type, and for a pointer to one. Slices, maps, interfaces, union
+members and opaque types have no method. A string or byte slice field returns its bytes, which alias
+the view, so that a read needs neither a copy nor package unsafe. A storage engine reads an
+index key or evaluates a filter from the view without allocating.
+
+A view checks the tags and lengths of the encoding and the wire format of the field that a
+method reads. It does not check the rest of the schema, so a caller that needs a full check
+decodes. A method of any field but a struct returns the last occurrence of the field, as a
+decode does. A method of a struct field, or of a pointer to a struct, fails with a
+`*DecodeError` that wraps `ErrRepeatedView` at the tag of a second occurrence, since a decode
+merges the occurrences and one byte slice cannot hold the merge. For the record encoding
+`72 03 0a 01 61 72 02 10 01`, a decode merges `Item{Name: "a", Count: 1}`, and
+`RecordView.Item` fails with `ErrRepeatedView` at offset 5.
 
 ### The conformance suite
 
 `kanontest` checks a generated codec against the wire format: every check runs from a `Spec`
-that the generator writes into the test file. The suite builds samples from value tables and
-compares each decode with a model derived from the wire format's rules, not from the decoder.
-It compares each encoding with a reference encoder, probes malformed input for the required
-rejections and error causes, checks the allocation contract, runs random values under the same
-laws, fuzzes the decoder, round-trips every sample through gob and json where they apply, and
-pins the encodings in a golden file per type. The suite defines conformance for this
-implementation, and its golden files are test vectors for others. `kanontest.Codec` is an
-alias of `kanon.Message`.
+that the generator writes into the test file. The suite reads and sets an unexported field
+through its address with `reflect.NewAt`, since reflection neither sets such a field nor
+returns its value as an interface. The suite builds samples from value tables and compares
+each decode with a model derived from the wire format's rules, not from the decoder. It
+compares each encoding with a reference encoder, probes malformed input for the required
+rejections and error causes, checks the allocation contract, fuzzes the decoder, and pins the
+encodings in a golden file per type. The suite defines conformance for this implementation,
+and its golden files are test vectors for others. `kanontest.Codec[T]` constrains the codec to
+`*T`, which implements `kanon.Message`.
 
 ### Module layout
 
@@ -465,6 +541,8 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
 - A struct that keeps unknown fields has one exported `[]byte` field that is not part of its
   data model, and its encoding is canonical only while that field is nil.
 - Views scan from the start on every call, so reading k fields costs k scans.
+- A map whose keys can decode to distinct Go values of one projection, such as pointer keys,
+  sorts those keys after every decode, which costs n log n and allocates above 16 keys.
 - Every decode error allocates a `*DecodeError`.
 
 ## Unresolved and future work
