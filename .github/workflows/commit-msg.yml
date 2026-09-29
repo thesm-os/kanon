@@ -1,0 +1,39 @@
+name: Commit messages
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ergon checks each commit message against the Conventional Commits subset
+  # of .ergon.yaml, as the commit-msg hook does before a commit. A pull
+  # request checks its commits without the merges, and a push to main the
+  # commits that it adds, since the protect-main ruleset rejects a force
+  # push.
+  commit-msg:
+    name: Commit message format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            echo "commit $commit"
+            git log -1 --format=%B "$commit" > "$RUNNER_TEMP/message"
+            ergon check commit-msg "$RUNNER_TEMP/message"
+          done

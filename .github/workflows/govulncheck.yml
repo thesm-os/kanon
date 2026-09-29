@@ -1,0 +1,25 @@
+name: Nightly vulnerability scan
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The gate of the CI runs govulncheck on every push. This job runs it every
+  # night too, so that a vulnerability published without a push shows.
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-ergon
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: make lint-vuln
