@@ -94,6 +94,12 @@ merges into, and fails on a renumbered field, on a removed number that is not re
 a reserved number that a field took without a tag naming it. A CI job runs it on every pull
 request.
 
+A struct of another package that a field encodes inline has its numbers line in the code file
+of the field's package. When the struct gains a kanon codec of its own, its own package numbers
+its fields without that record. The check mode compares the record of the revision with the
+numbers line in the code file of the struct's package. It fails when that package has no
+numbers line for the struct, as for a codec written by hand.
+
 ### Tags
 
 ```go

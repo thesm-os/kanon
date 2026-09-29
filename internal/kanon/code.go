@@ -48,6 +48,7 @@ func codeFile(u *unit) ([]byte, error) {
 			fset:      u.pkg.fset,
 			inlines:   u.inlines,
 			named:     make(map[string]*value),
+			codecs:    make(map[string]*types.Named),
 			lookup:    true,
 		},
 		generates:  u.pkg.generates,

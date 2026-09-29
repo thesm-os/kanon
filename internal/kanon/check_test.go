@@ -23,17 +23,36 @@ const (
 	checkList = "type A struct {\n\tS any `kanon:\",types=int32|string\"`\n}\n"
 )
 
+// Sources of the check of a struct of another package that gains a kanon
+// codec: a package dep whose struct S a directive names, the code file of
+// dep that numbers S, and a struct type A with a field of type dep.S.
+const (
+	codecDep     = "//go:generate go tool kanon -type=S\n\n// S has a kanon codec.\ntype S struct {\n\tX int32\n\tY int32\n}\n"
+	codecNumbers = "//kanon:numbers S X=1 Y=2\n"
+	codecSource  = "import \"example.com/m/dep\"\n\ntype A struct {\n\tS dep.S\n}\n"
+	// codecKey is the key under which the code file of A records S as an
+	// inline struct.
+	codecKey = "example.com/m/dep.S"
+)
+
 // check returns the error of Check for the struct type A of the module of
 // source, against the code files of base, which maps each name to its
 // content after the package clause.
 func check(t *testing.T, source string, base map[string]string) error {
 	t.Helper()
-	dir := module(t, map[string]string{"a.go": source})
-	files := make(map[string][]byte, len(base))
+	return checkFiles(t, map[string]string{"a.go": source}, base)
+}
+
+// checkFiles returns the error of Check for the struct type A of a.go in the
+// module of files, against the code files of base, as [check] states.
+func checkFiles(t *testing.T, files, base map[string]string) error {
+	t.Helper()
+	dir := module(t, files)
+	code := make(map[string][]byte, len(base))
 	for name, content := range base {
-		files[name] = []byte(pkgClause + content)
+		code[name] = []byte(pkgClause + content)
 	}
-	return kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, files)
+	return kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, code)
 }
 
 func TestCheck(t *testing.T) {
@@ -163,6 +182,58 @@ func TestCheck(t *testing.T) {
 			assert.NoError(t, kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, base),
 				"Check passes the reserved number")
 		})
+		codecs := []struct {
+			name    string
+			numbers string
+			base    string
+			want    string
+		}{
+			{
+				name:    "returns nil for a struct of another package whose codec keeps the recorded numbers",
+				numbers: codecNumbers,
+				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+			},
+			{
+				name: "returns nil for a struct of another package with a codec that the base revision does not " +
+					"record",
+				base: "//kanon:numbers A S=1\n",
+			},
+			{
+				name:    "returns an error for each field of a struct of another package whose codec renumbers it",
+				numbers: codecNumbers,
+				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " Y=1 X=2\n",
+				want: "kanon: field Y of " + codecKey + " has number 2, and the base revision gives it number 1\n" +
+					"kanon: field X of " + codecKey + " has number 1, and the base revision gives it number 2",
+			},
+			{
+				name: "returns an error for a struct of another package whose package records no numbers for it",
+				base: "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+				want: "kanon: " + codecKey + " encodes through a kanon codec whose package records no numbers for " +
+					"it, and the base revision records its fields: kanon cannot check them",
+			},
+			{
+				name:    "returns an error for a code file of the package of such a struct that does not parse",
+				numbers: "//kanon:numbers\n",
+				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+				want:    "kanon: a numbers line names no struct",
+			},
+		}
+		for _, tt := range codecs {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				files := map[string]string{"a.go": codecSource, "dep/dep.go": codecDep}
+				if tt.numbers != "" {
+					files["dep/dep.kanon.go"] = tt.numbers
+				}
+				err := checkFiles(t, files, map[string]string{codeName: tt.base})
+				if tt.want == "" {
+					assert.NoError(t, err, "Check passes the numbers of the struct")
+					return
+				}
+				assert.HasError(t, err, "Check fails for the numbers of the struct")
+				assert.Equal(t, err.Error(), tt.want, "Check states each broken rule")
+			})
+		}
 		t.Run("returns the error of Generate for options without a type", func(t *testing.T) {
 			t.Parallel()
 			err := kanon.Check(module(t, map[string]string{"a.go": checkXY}), "a.go", kanon.Options{}, nil)

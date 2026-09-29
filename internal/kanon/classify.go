@@ -61,6 +61,11 @@ type classifier struct {
 	// slice, array, map or pointer to its value, so that a type that
 	// contains itself, such as type Tree []Tree, ends the classification.
 	named map[string]*value
+	// codecs collects, by the key of its numbers line as an inline struct,
+	// each struct type of another package that the classified types encode
+	// through the struct's own kanon codec. [Check] compares its numbers with
+	// those that a base revision records for it.
+	codecs map[string]*types.Named
 	// lookup makes the classifier find the inline struct of a struct type in
 	// inlines without adding one. The compare functions of map keys classify
 	// the fields of struct keys in this mode, and a struct that the
@@ -141,6 +146,9 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			return nil, err
 		}
 		if c.nested(named) {
+			if named.Obj().Pkg() != c.pkg {
+				c.codecs[c.recordKey(named)] = named
+			}
 			v.kind = kindStruct
 			v.fails = c.mayFail(named, make(map[*types.Named]bool))
 			v.indirect = c.indirect(named)

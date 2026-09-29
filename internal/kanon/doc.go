@@ -62,7 +62,10 @@
 // A field keeps its recorded number when its struct changes, and so does a
 // concrete type. The number of a removed field or type goes to no other one
 // unless a tag names it. [Check] compares the numbers with the code files of
-// a base revision.
+// a base revision. For a struct of another package that the base revision
+// records as an inline struct, and that a field now encodes through its own
+// kanon codec, it compares the record with the numbers line in the code
+// file of the struct's package.
 //
 // # Generated code
 //

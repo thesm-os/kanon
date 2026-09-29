@@ -176,10 +176,11 @@ The `-run` flag keeps the other generators of your module from running:
 KANON_CHECK=origin/main go generate -run 'go tool kanon' ./...
 ```
 
-The check fails in two cases:
+The check fails in three cases:
 
 - A field has another number than at the revision.
 - A number that the revision reserves, or gives a field that the change removes, is neither reserved nor taken by a field whose tag names it.
+- A struct of another package that the revision records as an inline struct now has a kanon codec of its own, and the code file of its package breaks one of these rules against that record, or records no numbers for it.
 
 ## Tags
 

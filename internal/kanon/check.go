@@ -6,6 +6,8 @@ package kanon
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 )
 
 // Nouns that name the entries of a numbers line in the errors of [Check]:
@@ -31,12 +33,18 @@ const (
 //   - A concrete type keeps its number. The number of a removed concrete
 //     type and a reserved number are still reserved.
 //
+// The rules also apply to a struct of another package that base records as
+// an inline struct, and that a field now encodes through the struct's own
+// kanon codec: the numbers line that the code files of its package record
+// for it must follow them. Such a struct whose package records no numbers
+// for it fails, since Check cannot compare them.
+//
 // A struct, a list, a field or a concrete type that base does not record
 // passes. Check returns one error per broken rule, joined. It fails as
 // Generate fails, apart from the rendering of the files. It also fails when
-// a code file of base does not parse, and when two code files of base other
-// than the code file of file record different numbers for a struct or a
-// list.
+// a code file of base or of the package of such a struct does not parse,
+// and when two code files of base other than the code file of file record
+// different numbers for a struct or a list.
 func Check(dir, file string, opts Options, base map[string][]byte) error {
 	u, err := newUnit(dir, file, opts)
 	if err != nil {
@@ -60,6 +68,27 @@ func Check(dir, file string, opts Options, base map[string][]byte) error {
 			return err
 		}
 		errs = append(errs, typeNumbers(l).against(rec)...)
+	}
+	for _, key := range slices.Sorted(maps.Keys(u.codecs)) {
+		rec, err := recordFor([]string{key}, own, others)
+		if err != nil {
+			return err
+		}
+		if len(rec.order) == 0 && len(rec.reserved) == 0 {
+			continue
+		}
+		obj := u.codecs[key].Obj()
+		recs, err := u.pkg.depRecords(obj.Pkg().Path())
+		if err != nil {
+			return err
+		}
+		now := recs[obj.Name()]
+		if now == nil {
+			errs = append(errs, fmt.Errorf("kanon: %s encodes through a kanon codec whose package records no "+
+				"numbers for it, and the base revision records its fields: kanon cannot check them", key))
+			continue
+		}
+		errs = append(errs, recordNumbers(key, now).against(rec)...)
 	}
 	return errors.Join(errs...)
 }
@@ -87,6 +116,17 @@ func fieldNumbers(m *target) *numbers {
 	n := newNumbers(m.key, fieldNoun, m.reserved)
 	for _, f := range m.fields {
 		n.add(f.name, f.num, f.tag.num != 0)
+	}
+	return n
+}
+
+// recordNumbers returns the numbering of the fields that rec, a numbers
+// line of the code file of another package, records, under key. The line
+// does not state which numbers a tag names, so no number counts as tagged.
+func recordNumbers(key string, rec *record) *numbers {
+	n := newNumbers(key, fieldNoun, rec.reserved)
+	for _, name := range rec.order {
+		n.add(name, rec.nums[name], false)
 	}
 	return n
 }

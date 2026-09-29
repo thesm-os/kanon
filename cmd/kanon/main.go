@@ -75,7 +75,9 @@
 // and when a number that the revision gives a removed field or reserves is
 // neither reserved nor taken by a field whose tag names it. The same rules
 // apply to the concrete types of interfaces, without the exception for
-// tags.
+// tags, and to a struct of another package that the revision records as an
+// inline struct and that now has a kanon codec of its own, against the
+// numbers that the code file of its package records.
 package main
 
 import (

@@ -117,6 +117,10 @@ type unit struct {
 	// keyStructs maps the type string of each struct type with a kanon codec
 	// in the map keys of the targets to the numbers of its fields.
 	keyStructs map[string]keyStruct
+	// codecs maps the key of the numbers line of an inline struct to each
+	// struct type of another package that the targets encode through the
+	// struct's own kanon codec, as [classifier.codecs] collects them.
+	codecs map[string]*types.Named
 	// views reports that the code file declares a view type per target.
 	views bool
 }
@@ -172,8 +176,9 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 		inlines:   newInlines(),
 		lists:     newLists(),
 		named:     make(map[string]*value),
+		codecs:    make(map[string]*types.Named),
 	}
-	u := &unit{pkg: p, file: file, prefix: prefix, inlines: c.inlines, values: values}
+	u := &unit{pkg: p, file: file, prefix: prefix, inlines: c.inlines, values: values, codecs: c.codecs}
 	if u.targets, err = c.targets(named, own, recorded); err != nil {
 		return nil, err
 	}
