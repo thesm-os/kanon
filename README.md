@@ -1,5 +1,10 @@
 # kanon
 
+[![CI](https://github.com/thesm-os/kanon/actions/workflows/ci.yml/badge.svg)](https://github.com/thesm-os/kanon/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/go.thesmos.sh/kanon.svg)](https://pkg.go.dev/go.thesmos.sh/kanon)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/thesm-os/kanon)](go.mod)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 kanon generates binary codecs for Go struct types, as stringer generates `String` methods.
 A `go:generate` directive names the types:
 
@@ -468,7 +473,7 @@ make check-numbers  # fail when a change renumbers a field of BASE (default orig
 make build          # compile every module's source
 ```
 
-`make help` lists every target.
+`make help` lists every target. [CONTRIBUTING.md](CONTRIBUTING.md) describes how to propose a change, and [SECURITY.md](SECURITY.md) how to report a vulnerability.
 
 ## License
 
