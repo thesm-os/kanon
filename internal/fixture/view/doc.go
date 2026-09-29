@@ -6,6 +6,7 @@
 // struct, with a method per field of a bool, a number, a string, a byte
 // slice, a byte array, a time, a struct or a type that encodes itself, or
 // of a pointer to one, which reads the field by scanning the encoding.
+// Page has no such field, so its view has no method that reads a field.
 //
 // # Dependency position
 //

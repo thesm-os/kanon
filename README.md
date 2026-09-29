@@ -263,7 +263,9 @@ id, err := index.ID()
 ```
 
 `IndexKanon` scans the encoding once and records the offset of every field that the view reads.
-Each method of the index returns what the method of the view with the same name returns.
+Each method of the index returns what the method of the view with the same name returns. The
+view of a struct without a field that a view reads has no such method, and its `IndexKanon`
+returns the index without a scan and without an error.
 
 ## Frames and batches
 

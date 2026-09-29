@@ -24,21 +24,28 @@ const indexKanonName = "IndexKanon"
 // since a view exposes the fields of m to other packages.
 func (e *emitter) viewType(m *target) {
 	name := m.name + viewSuffix
-	e.doc(name + " is the encoding of a " + m.name + ". Each method reads one field by scanning the " +
-		"encoding, without decoding the rest, and returns the zero value when the encoding has no such " +
-		"field, and the last value when it has several. A method of a struct fails with " +
-		"kanon.ErrRepeatedView for a second occurrence instead, since a decode merges the occurrences. The " +
-		"bytes that a method returns for a string, a byte slice and a struct alias the view. A value of a " +
-		"type that encodes itself decodes with the method of its type, and the offsets of the errors of a " +
-		"method are offsets in the view. " + indexKanonName + " reads the fields of the view with one scan.")
-	e.line("type %s []byte", name)
-	e.line("")
 	var fields []*field
 	for _, f := range m.fields {
 		if f.obj.Exported() && f.member == nil && viewed(f.val) {
-			e.viewMethod(m, name, f)
 			fields = append(fields, f)
 		}
+	}
+	if len(fields) == 0 {
+		e.doc(name + " is the encoding of a " + m.name + ", which has no field that a view reads, so " + name +
+			" has no method that reads a field. " + indexKanonName + " returns the index of the view.")
+	} else {
+		e.doc(name + " is the encoding of a " + m.name + ". Each method reads one field by scanning the " +
+			"encoding, without decoding the rest, and returns the zero value when the encoding has no such " +
+			"field, and the last value when it has several. A method of a struct fails with " +
+			"kanon.ErrRepeatedView for a second occurrence instead, since a decode merges the occurrences. The " +
+			"bytes that a method returns for a string, a byte slice and a struct alias the view. A value of a " +
+			"type that encodes itself decodes with the method of its type, and the offsets of the errors of a " +
+			"method are offsets in the view. " + indexKanonName + " reads the fields of the view with one scan.")
+	}
+	e.line("type %s []byte", name)
+	e.line("")
+	for _, f := range fields {
+		e.viewMethod(m, name, f)
 	}
 	e.indexType(m, name, fields)
 }
@@ -175,17 +182,24 @@ func (e *emitter) viewResult(v *value) string {
 // IndexKanon of the view, which scans the encoding once, and a method of
 // the index per field of fields, the fields that the methods of the view
 // read, in their order, which reads the field at the offset that the scan
-// recorded.
+// recorded. The index of a view without such fields is the view alone.
 func (e *emitter) indexType(m *target, view string, fields []*field) {
 	index := m.name + indexSuffix
-	e.doc(index + " is the index of a " + view + ": the view and the offsets of the values of the fields " +
-		"that its methods read, which " + indexKanonName + " records in one scan. Each method of " + index +
-		" returns what the method of " + view + " of the same name returns, without a scan.")
+	if len(fields) == 0 {
+		e.doc(index + " is the index of a " + view + ", which has no method that reads a field: the view " +
+			"alone.")
+	} else {
+		e.doc(index + " is the index of a " + view + ": the view and the offsets of the values of the fields " +
+			"that its methods read, which " + indexKanonName + " records in one scan. Each method of " + index +
+			" returns what the method of " + view + " of the same name returns, without a scan.")
+	}
 	e.line("type %s struct {", index)
 	e.line("v %s", view)
-	e.line("// at records, per method, 1 + the offset of the value of the last")
-	e.line("// occurrence of its field, and 0 when the encoding has none.")
-	e.line("at [%d]int", len(fields))
+	if len(fields) > 0 {
+		e.line("// at records, per method, 1 + the offset of the value of the last")
+		e.line("// occurrence of its field, and 0 when the encoding has none.")
+		e.line("at [%d]int", len(fields))
+	}
 	e.line("}")
 	e.line("")
 	e.indexMethod(m, view, index, fields)
@@ -200,7 +214,18 @@ func (e *emitter) indexType(m *target, view string, fields []*field) {
 // fields. It fails where a method of the view fails before it reads a
 // value: at a malformed tag or value, at an occurrence of one of fields
 // with another wire format, and at the second occurrence of a struct field.
+// A view without fields has no method that fails, so its IndexKanon
+// returns the index without a scan.
 func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
+	if len(fields) == 0 {
+		e.doc(indexKanonName + " returns the index of the encoding in v. " + view + " has no method that reads a " +
+			"field, so " + indexKanonName + " reads nothing and returns no error.")
+		e.line("func (v %s) %s() (%s, error) {", view, indexKanonName, index)
+		e.line("return %s{v: v}, nil", index)
+		e.line("}")
+		e.line("")
+		return
+	}
 	w, typ := e.wire(), structLoc(m)
 	e.doc(indexKanonName + " returns the index of the encoding in v, from one scan of the encoding. It fails " +
 		"where a method of " + view + " fails before it reads a value: at a malformed tag or value, at an " +
@@ -219,24 +244,22 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 	e.line("if err != nil {")
 	e.line("return %s{}, err", index)
 	e.line("}")
-	if len(fields) > 0 {
-		e.line("switch tag >> 3 {")
-		for k, f := range fields {
-			v, _, _ := e.viewParts(f)
-			loc := fieldLoc(m, f)
-			e.line("case %d:", f.num)
-			e.line("if tag != %s {", e.tag(f.num, v.kind.wire()))
-			e.line("return %s{}, %sFormatError(tag, %s%s, %s, at)", index, w, w, wireName(v.kind.wire()), loc)
-			e.line("}")
-			if v.kind == kindStruct {
-				e.line("if ix.at[%d] != 0 {", k)
-				e.line("return %s{}, %sRepeatedError(%s, %d, at)", index, w, loc, f.num)
-				e.line("}")
-			}
-			e.line("ix.at[%d] = i + 1", k)
-		}
+	e.line("switch tag >> 3 {")
+	for k, f := range fields {
+		v, _, _ := e.viewParts(f)
+		loc := fieldLoc(m, f)
+		e.line("case %d:", f.num)
+		e.line("if tag != %s {", e.tag(f.num, v.kind.wire()))
+		e.line("return %s{}, %sFormatError(tag, %s%s, %s, at)", index, w, w, wireName(v.kind.wire()), loc)
 		e.line("}")
+		if v.kind == kindStruct {
+			e.line("if ix.at[%d] != 0 {", k)
+			e.line("return %s{}, %sRepeatedError(%s, %d, at)", index, w, loc, f.num)
+			e.line("}")
+		}
+		e.line("ix.at[%d] = i + 1", k)
 	}
+	e.line("}")
 	e.line("i += skipped")
 	e.line("}")
 	e.line("return ix, nil")

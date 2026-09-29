@@ -35,21 +35,24 @@ func TestView(t *testing.T) {
 				return strings.HasSuffix(d.key, indexSuffix) || strings.HasSuffix(d.recv, indexSuffix)
 			})
 		})
-		t.Run("writes an index of no offsets for a view type that reads no field", func(t *testing.T) {
+		t.Run("writes an IndexKanon without a scan for a view type that reads no field", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{source: structA("X []int32")})
 			files, err := kanon.Generate(dir, source, kanon.Options{Types: []string{"A"}, Views: true})
 			assert.NoError(t, err, "Generate writes the view type")
-			code := string(files[0].Src)
-			assert.Contains(t, code, "at [0]int", "the index records no offset")
-			var index string
-			for _, d := range declarations(t, source, code) {
-				if d.key == "AView."+indexKanon {
+			var index, indexType string
+			for _, d := range declarations(t, source, string(files[0].Src)) {
+				switch d.key {
+				case "AView." + indexKanon:
 					index = d.text
+				case "A" + indexSuffix:
+					indexType = d.text
 				}
 			}
-			assert.Contains(t, index, "return ix, nil", "the code file declares IndexKanon")
-			assert.NotContains(t, index, "switch", "IndexKanon reads no field number")
+			assert.Contains(t, index, "return AIndex{v: v}, nil", "IndexKanon returns the index of the view")
+			assert.NotContains(t, index, "Skip", "IndexKanon scans no field")
+			assert.Contains(t, indexType, "v AView", "the code file declares the index type")
+			assert.NotContains(t, indexType, "at [", "the index records no offset")
 		})
 	})
 }
