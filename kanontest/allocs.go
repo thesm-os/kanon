@@ -33,13 +33,14 @@ func names[T any](samples []sample[T]) string {
 
 // encodeAllocates reports whether the encode of x, a value of s, can
 // allocate: x has a type that encodes itself, and its family has no append
-// method, or its encoding is longer than scratchLength bytes.
+// method, or its encoding is longer than scratchLength bytes and the type
+// is not a kanon.Sizer, whose encoding the generated code appends in place.
 func encodeAllocates(s *shape, x reflect.Value) bool {
 	if s.kind != kindBinary {
 		return false
 	}
 	enc, _ := marshal(x)
-	return !appends(s.typ) || len(enc) > scratchLength
+	return !appends(s.typ) || !s.sizer && len(enc) > scratchLength
 }
 
 // sharedZone reports whether time.FixedZone returns one location for every

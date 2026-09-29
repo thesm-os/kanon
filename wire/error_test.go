@@ -140,6 +140,11 @@ func TestError(t *testing.T) {
 			err:  wire.KeyError(errLoc, errNumber, errOff),
 			want: located(kanon.ErrInvalidKey, ""),
 		},
+		{
+			name: "RepeatedError/locates the second occurrence of a struct field",
+			err:  wire.RepeatedError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrRepeatedView, ""),
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -178,6 +183,17 @@ func TestError(t *testing.T) {
 			assert.Equal(t, got,
 				&kanon.EncodeError{Type: errType, Field: errField, Number: errNumber, Err: kanon.ErrInvalidKey},
 				"InvalidKeyError locates the field and wraps the cause")
+		})
+	})
+	t.Run("SizeError", func(t *testing.T) {
+		t.Parallel()
+		t.Run("wraps ErrSize at the field of the value", func(t *testing.T) {
+			t.Parallel()
+			got := assert.ErrorAs[*kanon.EncodeError](t, wire.SizeError(errLoc, errNumber),
+				"SizeError returns a *kanon.EncodeError")
+			assert.Equal(t, got,
+				&kanon.EncodeError{Type: errType, Field: errField, Number: errNumber, Err: kanon.ErrSize},
+				"SizeError locates the field and wraps the cause")
 		})
 	})
 }

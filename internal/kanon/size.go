@@ -180,11 +180,12 @@ func (e *emitter) sizeOf(v *value, x string) string {
 
 // content returns the expression of the length of the encoding of x, a
 // struct or a value of a type that encodes itself, without its length: the
-// SizeKanon method of a struct with a kanon codec, and the size function of
-// the code file otherwise, which a struct with a kanon codec takes too in
-// the projection of a map key, as [emitter.keyed] reports.
+// SizeKanon method of a struct with a kanon codec and of a kanon.Sizer, and
+// the size function of the code file otherwise, which a struct with a kanon
+// codec takes too in the projection of a map key, as [emitter.keyed]
+// reports.
 func (e *emitter) content(v *value, x string) string {
-	if v.kind == kindStruct && v.inline == nil && !e.keyed(v) {
+	if v.kind == kindStruct && v.inline == nil && !e.keyed(v) || v.kind == kindBinary && v.self.sizer {
 		return method(x, sizeKanonName) + "()"
 	}
 	return e.fn(e.keyOp(opSize, v), v) + "(" + addr(x) + ")"
@@ -197,12 +198,12 @@ func (e *emitter) content(v *value, x string) string {
 // they are not empty, a time when it is not at the zero instant or not in
 // UTC, so that a decode keeps the zone of a time at the zero instant, an
 // array when an element is present, a type that encodes itself when it is
-// not the zero value, for a type that [zeroAbsent] reports, a struct and any
-// other type that encodes itself when their encoding has bytes, and a
-// pointer and an interface when they are not nil. In the projection of a map
-// key, which writes -0.0 as +0.0, a float and a complex number are present
-// when they are not zero. The condition is an operand of || without
-// parentheses.
+// not the zero value, for a type that [zeroAbsent] reports, as its IsZero
+// method reports it when it declares one, a struct and any other type that
+// encodes itself when their encoding has bytes, and a pointer and an
+// interface when they are not nil. In the projection of a map key, which
+// writes -0.0 as +0.0, a float and a complex number are present when they
+// are not zero. The condition is an operand of || without parentheses.
 func (e *emitter) present(v *value, x string) string {
 	switch v.kind {
 	case kindBool:
@@ -229,6 +230,9 @@ func (e *emitter) present(v *value, x string) string {
 		}
 		return e.fn(e.keyOp(opPresent, v), v) + "(" + addr(x) + ")"
 	case kindStruct, kindBinary:
+		if zeroAbsent(v) && v.self.zeroer {
+			return "!" + method(x, isZeroName) + "()"
+		}
 		if zeroAbsent(v) {
 			return x + " != " + e.zeroOperand(v.typ)
 		}

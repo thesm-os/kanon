@@ -28,6 +28,8 @@ var codecsSpec = kanontest.Spec[codec.Codecs]{
 		{Name: "Seal", Number: 8},
 		{Name: "Reading", Number: 9},
 		{Name: "Blob", Number: 10},
+		{Name: "Hash", Number: 11},
+		{Name: "Clip", Number: 12},
 	},
 }
 

@@ -18,7 +18,8 @@ const DefaultDepth = 100
 // bytes of spare capacity do not allocate, except for these values:
 //
 //   - a value of a type that encodes itself and has no append method;
-//   - a value of a type that encodes itself into more than 128 bytes;
+//   - a value of a type that encodes itself into more than 128 bytes and
+//     is not a [Sizer];
 //   - a map of more than 16 keys other than bools, whose keys sort in a
 //     slice;
 //   - a value of a [Validator] whose ValidateKanon allocates for it.
@@ -65,10 +66,11 @@ type Message interface {
 	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
 	// and returns their count. It returns io.ErrShortBuffer without writing
 	// when buf is shorter than SizeKanon bytes. It returns an [*EncodeError]
-	// when a value fails to encode itself, the ValidateKanon of a [Validator]
-	// rejects a value, an interface stores a type that its list does not
-	// name, or a map has a key with a NaN component ([ErrInvalidKey]) or two
-	// keys of one projection ([ErrAmbiguousKey]). After an error, buf does
+	// when a value fails to encode itself or encodes to another length than
+	// the SizeKanon of a [Sizer] ([ErrSize]), the ValidateKanon of a
+	// [Validator] rejects a value, an interface stores a type that its list
+	// does not name, or a map has a key with a NaN component ([ErrInvalidKey])
+	// or two keys of one projection ([ErrAmbiguousKey]). After an error, buf does
 	// not contain a valid encoding, and AppendBinary returns its buffer
 	// unchanged.
 	EncodeKanon(buf []byte) (int, error)
@@ -164,6 +166,33 @@ type Validator interface {
 	// ValidateKanon returns nil for a value that kanon encodes and decodes,
 	// and the reason that it rejects any other value.
 	ValidateKanon() error
+}
+
+// Sizer is the method of a type that encodes itself through its binary, gob
+// or text methods and knows the length of that encoding without encoding.
+// SizeKanon has the meaning that it has in [Message]: the length of the
+// bytes that kanon writes for the value, without a tag and a length, which
+// for such a type are the bytes that the encode method of its family
+// returns.
+//
+// # Encoding
+//
+// The generated code sizes a value of a Sizer with SizeKanon in place of a
+// call of its encode method, and appends the encoding into the room that
+// SizeKanon sized, through the append method of the type when it has one.
+// It still calls the encode method of every value that it writes, and fails
+// the encode with an [*EncodeError] that wraps [ErrSize] when the method
+// returns another length. For a type whose == does not compare every bit, a
+// field is present when its SizeKanon is not 0.
+//
+// # Allocation contract
+//
+// A Sizer with an append method encodes a value of any length without an
+// allocation. SizeKanon must not allocate.
+type Sizer interface {
+	// SizeKanon returns the length of the encoding of the receiver that the
+	// encode method of its family returns.
+	SizeKanon() int
 }
 
 // Options set the slab and the nesting limit of a decode, and with the zero

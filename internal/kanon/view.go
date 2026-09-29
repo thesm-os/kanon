@@ -13,9 +13,13 @@ import (
 // field, which alias the view.
 const byteSliceType = "[]byte"
 
+// indexKanonName names the method of a view type that returns its index.
+const indexKanonName = "IndexKanon"
+
 // viewType writes the view type of the -type struct m, the encoding of an
 // m, and a method per exported field of m that is not a union member and
-// that [viewed] reports, which reads the field from the encoding. An
+// that [viewed] reports, which reads the field from the encoding, and then
+// the index type of the view, as [emitter.indexType] writes it. An
 // unexported field that a kanon tag opts into the encoding has no method,
 // since a view exposes the fields of m to other packages.
 func (e *emitter) viewType(m *target) {
@@ -26,51 +30,75 @@ func (e *emitter) viewType(m *target) {
 		"kanon.ErrRepeatedView for a second occurrence instead, since a decode merges the occurrences. The " +
 		"bytes that a method returns for a string, a byte slice and a struct alias the view. A value of a " +
 		"type that encodes itself decodes with the method of its type, and the offsets of the errors of a " +
-		"method are offsets in the view.")
+		"method are offsets in the view. " + indexKanonName + " reads the fields of the view with one scan.")
 	e.line("type %s []byte", name)
 	e.line("")
+	var fields []*field
 	for _, f := range m.fields {
 		if f.obj.Exported() && f.member == nil && viewed(f.val) {
 			e.viewMethod(m, name, f)
+			fields = append(fields, f)
 		}
 	}
+	e.indexType(m, name, fields)
 }
 
 // viewMethod writes the method of the view type view that reads the field f
 // of m, or the value that f points at for a pointer field. wire.Find skips
 // the value of every occurrence of the field, so the value that it returns
-// is complete, and the method checks only what the type of the field adds:
-// the range of an integer, the length of an array and of a complex number,
-// and the fields of a time. A type that encodes itself decodes the bytes of
-// the field with the decode method of its family, whose error is the cause
-// of the error of the method. The method of a struct finds the field with
-// wire.FindOne, which fails for a second occurrence, since one byte slice
-// cannot contain the merge of two encodings.
+// is complete, and the method reads it as [emitter.viewRead] states. The
+// method of a struct finds the field with wire.FindOne, which fails for a
+// second occurrence, since one byte slice cannot contain the merge of two
+// encodings.
 func (e *emitter) viewMethod(m *target, view string, f *field) {
-	v := f.val
-	if v.kind == kindPointer {
-		v = v.elem
-	}
-	result := e.viewResult(v)
-	zero := nilName
+	v, result, zero := e.viewParts(f)
 	find := "Find"
 	if v.kind == kindStruct {
 		find = "FindOne"
-	} else if result != byteSliceType {
-		zero = e.zero(v.typ)
 	}
-	w := e.wire()
-	loc, num := fieldLoc(m, f), strconv.Itoa(f.num)
 	doc := f.name + " returns the value of the field " + f.name + " of the encoding in v."
 	if v.validate {
 		doc += " It returns the error of " + validateKanonName + " for a value that the method rejects."
 	}
 	e.doc(doc)
 	e.line("func (v %s) %s() (%s, error) {", view, f.name, result)
-	e.line("i, err := %s%s(v, %s, %s)", w, find, e.tag(f.num, v.kind.wire()), loc)
+	e.line("i, err := %s%s(v, %s, %s)", e.wire(), find, e.tag(f.num, v.kind.wire()), fieldLoc(m, f))
 	e.line("if err != nil || i < 0 {")
 	e.line("return %s, err", zero)
 	e.line("}")
+	e.viewRead(m, f)
+	e.line("}")
+	e.line("")
+}
+
+// viewParts returns the value of the field f of a view, or the value that
+// f points at for a pointer field, the result type of its view method, and
+// the expression of the zero value of that type: nil for the bytes and the
+// view type of a struct.
+func (e *emitter) viewParts(f *field) (*value, string, string) {
+	v := f.val
+	if v.kind == kindPointer {
+		v = v.elem
+	}
+	result := e.viewResult(v)
+	if v.kind == kindStruct || result == byteSliceType {
+		return v, result, nilName
+	}
+	return v, result, e.zero(v.typ)
+}
+
+// viewRead writes the statements that read the value of the field f of m
+// at offset i of the view v and return it, the body of a method of the view
+// type and of the index type after the offset. The offset is that of the
+// value of a complete occurrence of the field, so the statements check only
+// what the type of the field adds: the range of an integer, the length of
+// an array and of a complex number, and the fields of a time. A type that
+// encodes itself decodes the bytes of the field with the decode method of
+// its family, whose error is the cause of the error of the method.
+func (e *emitter) viewRead(m *target, f *field) {
+	v, result, zero := e.viewParts(f)
+	w := e.wire()
+	loc, num := fieldLoc(m, f), strconv.Itoa(f.num)
 	e.ret = zero + ", "
 	switch v.kind {
 	case kindBool, kindInt, kindUint:
@@ -86,11 +114,11 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.line("return %sTime(v[i+n:i+n+int(l)], %s, %s, i+n)", w, loc, num)
 	case kindComplex128:
-		m := e.std(mathPath)
+		math := e.std(mathPath)
 		e.viewLength(complex128Width, loc, num)
 		e.line("re, _ := %sUint64(v[i+n:])", w)
 		e.line("im, _ := %sUint64(v[i+n+%d:])", w, fixed64Width)
-		e.viewReturn(v, e.cast(v, "complex("+m+".Float64frombits(re), "+m+".Float64frombits(im))",
+		e.viewReturn(v, e.cast(v, "complex("+math+".Float64frombits(re), "+math+".Float64frombits(im))",
 			types.Complex128), loc, num)
 	case kindByteArray:
 		e.viewLength(v.size, loc, num)
@@ -108,8 +136,6 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.viewReturn(v, result+"(v[i+n : i+n+int(l)])", loc, num)
 	}
-	e.line("}")
-	e.line("")
 }
 
 // viewLength writes the statements of a view method that read the length l
@@ -143,6 +169,98 @@ func (e *emitter) viewResult(v *value) string {
 	default:
 		return e.p.typ(v.typ)
 	}
+}
+
+// indexType writes the index type of the view type view of m, the method
+// IndexKanon of the view, which scans the encoding once, and a method of
+// the index per field of fields, the fields that the methods of the view
+// read, in their order, which reads the field at the offset that the scan
+// recorded.
+func (e *emitter) indexType(m *target, view string, fields []*field) {
+	index := m.name + indexSuffix
+	e.doc(index + " is the index of a " + view + ": the view and the offsets of the values of the fields " +
+		"that its methods read, which " + indexKanonName + " records in one scan. Each method of " + index +
+		" returns what the method of " + view + " of the same name returns, without a scan.")
+	e.line("type %s struct {", index)
+	e.line("v %s", view)
+	e.line("// at records, per method, 1 + the offset of the value of the last")
+	e.line("// occurrence of its field, and 0 when the encoding has none.")
+	e.line("at [%d]int", len(fields))
+	e.line("}")
+	e.line("")
+	e.indexMethod(m, view, index, fields)
+	for k, f := range fields {
+		e.indexRead(m, view, index, k, f)
+	}
+}
+
+// indexMethod writes the method IndexKanon of the view type view of m. It
+// scans the encoding once, as wire.Find scans it, and records in the index
+// type index the offset of the value of the last occurrence of each of
+// fields. It fails where a method of the view fails before it reads a
+// value: at a malformed tag or value, at an occurrence of one of fields
+// with another wire format, and at the second occurrence of a struct field.
+func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
+	w, typ := e.wire(), structLoc(m)
+	e.doc(indexKanonName + " returns the index of the encoding in v, from one scan of the encoding. It fails " +
+		"where a method of " + view + " fails before it reads a value: at a malformed tag or value, at an " +
+		"occurrence of a field that a method reads with another wire format, and at the second occurrence of a " +
+		"struct field.")
+	e.line("func (v %s) %s() (%s, error) {", view, indexKanonName, index)
+	e.line("ix := %s{v: v}", index)
+	e.line("for i := 0; i < len(v); {")
+	e.line("at := i")
+	e.line("tag, n := %sUvarint(v[i:])", w)
+	e.line("if n <= 0 {")
+	e.line("return %s{}, %sReadError(n, %s, 0, i)", index, w, typ)
+	e.line("}")
+	e.line("i += n")
+	e.line("skipped, err := %sSkip(v[i:], tag, %s, 0, at)", w, typ)
+	e.line("if err != nil {")
+	e.line("return %s{}, err", index)
+	e.line("}")
+	if len(fields) > 0 {
+		e.line("switch tag >> 3 {")
+		for k, f := range fields {
+			v, _, _ := e.viewParts(f)
+			loc := fieldLoc(m, f)
+			e.line("case %d:", f.num)
+			e.line("if tag != %s {", e.tag(f.num, v.kind.wire()))
+			e.line("return %s{}, %sFormatError(tag, %s%s, %s, at)", index, w, w, wireName(v.kind.wire()), loc)
+			e.line("}")
+			if v.kind == kindStruct {
+				e.line("if ix.at[%d] != 0 {", k)
+				e.line("return %s{}, %sRepeatedError(%s, %d, at)", index, w, loc, f.num)
+				e.line("}")
+			}
+			e.line("ix.at[%d] = i + 1", k)
+		}
+		e.line("}")
+	}
+	e.line("i += skipped")
+	e.line("}")
+	e.line("return ix, nil")
+	e.line("}")
+	e.line("")
+}
+
+// indexRead writes the method of the index type index that reads the field
+// f of m at the offset k of the index. Its result is that of the method of
+// the view type view of the same name: the value that [emitter.viewRead]
+// reads at the offset, and the zero value for a field that the encoding
+// does not contain.
+func (e *emitter) indexRead(m *target, view, index string, k int, f *field) {
+	_, result, zero := e.viewParts(f)
+	e.doc(f.name + " returns the value of the field " + f.name + ", as " + view + "." + f.name + " returns it, " +
+		"at the offset that the index records.")
+	e.line("func (ix %s) %s() (%s, error) {", index, f.name, result)
+	e.line("v, i := ix.v, ix.at[%d]-1", k)
+	e.line("if i < 0 {")
+	e.line("return %s, nil", zero)
+	e.line("}")
+	e.viewRead(m, f)
+	e.line("}")
+	e.line("")
 }
 
 // viewed reports whether a view type has a method for a field whose value is

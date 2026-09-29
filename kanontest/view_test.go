@@ -11,8 +11,74 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// viewCheck is the name of the check of a view type.
-const viewCheck = "View/returns the value of each field as the reference view"
+// Names of the checks of a view type and of its index type.
+const (
+	viewCheck  = "View/returns the value of each field as the reference view"
+	indexCheck = "IndexKanon/returns the value of each field as the reference view"
+)
+
+// doubledIndex is an index of view.Item whose Count returns twice the
+// count.
+type doubledIndex struct{ view.ItemIndex }
+
+// Count returns twice the Count of the index.
+func (x doubledIndex) Count() (uint32, error) {
+	n, err := x.ItemIndex.Count()
+	return 2 * n, err
+}
+
+// doubledView is a view of view.Item whose index returns twice the count.
+type doubledView []byte
+
+// Name returns the Name of the encoding in v.
+func (v doubledView) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns the Count of the encoding in v.
+func (v doubledView) Count() (uint32, error) { return view.ItemView(v).Count() }
+
+// IndexKanon returns the index of the encoding in v, whose Count doubles.
+func (v doubledView) IndexKanon() (doubledIndex, error) {
+	x, err := view.ItemView(v).IndexKanon()
+	return doubledIndex{x}, err
+}
+
+// strayIndex is an index of view.Item with a method that names no field.
+type strayIndex struct{ view.ItemIndex }
+
+// Size returns 0.
+func (strayIndex) Size() (int, error) { return 0, nil }
+
+// strayView is a view of view.Item whose index has a method that names no
+// field.
+type strayView []byte
+
+// Name returns the Name of the encoding in v.
+func (v strayView) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns the Count of the encoding in v.
+func (v strayView) Count() (uint32, error) { return view.ItemView(v).Count() }
+
+// IndexKanon returns the index of the encoding in v, with the method Size.
+func (v strayView) IndexKanon() (strayIndex, error) {
+	x, err := view.ItemView(v).IndexKanon()
+	return strayIndex{x}, err
+}
+
+// lenientView is a view of view.Item whose IndexKanon returns no error, and
+// the zero index for an encoding that its scan rejects.
+type lenientView []byte
+
+// Name returns the Name of the encoding in v.
+func (v lenientView) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns the Count of the encoding in v.
+func (v lenientView) Count() (uint32, error) { return view.ItemView(v).Count() }
+
+// IndexKanon returns the index of the encoding in v, without its error.
+func (v lenientView) IndexKanon() (view.ItemIndex, error) {
+	x, _ := view.ItemView(v).IndexKanon()
+	return x, nil
+}
 
 // nameless is a view of view.Item whose Name returns no bytes.
 type nameless []byte
@@ -115,6 +181,28 @@ func TestView(t *testing.T) {
 		t.Run("fails for a view method that names no field", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: stray(nil)}, viewCheck,
+				"has the method Size, which names no field of Item")
+		})
+	})
+	t.Run("IndexKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("passes the index of a struct of every type that a view reads", func(t *testing.T) {
+			t.Parallel()
+			holds(t, kanontest.Spec[view.Record]{Fields: recordSpec.Fields, View: view.RecordView(nil)}, indexCheck)
+		})
+		t.Run("fails for an index method that returns another value", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: doubledView(nil)}, indexCheck,
+				"doubledIndex.Count returns the value of the reference decode")
+		})
+		t.Run("fails for an IndexKanon that returns another error", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: lenientView(nil)}, indexCheck,
+				"lenientView.IndexKanon returns the error of the reference index")
+		})
+		t.Run("fails for an index method that names no field", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: strayView(nil)}, indexCheck,
 				"has the method Size, which names no field of Item")
 		})
 	})

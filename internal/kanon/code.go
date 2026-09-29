@@ -20,13 +20,17 @@ const (
 	sourceHeader = "// source: "
 )
 
-// viewSuffix follows the name of a -type struct in the name of its view
-// type.
-const viewSuffix = "View"
+// Suffixes that follow the name of a -type struct in the names of its view
+// type and of the index type of the view.
+const (
+	viewSuffix  = "View"
+	indexSuffix = "Index"
+)
 
 // codeFile returns the code file of u: the numbers lines, the version check,
 // the interface assertions of the targets, the methods of each target, a
-// view type per target when u.views is set, the ValidateKanon method of
+// view type and its index type per target when u.views is set, the
+// ValidateKanon method of
 // each value type, and the helpers that the code calls, in the order in
 // which it first calls them.
 func codeFile(u *unit) ([]byte, error) {
@@ -123,7 +127,7 @@ func (u *unit) check(e *emitter) error {
 	names := slices.Sorted(maps.Values(e.names))
 	if u.views {
 		for _, m := range u.targets {
-			names = append(names, m.name+viewSuffix)
+			names = append(names, m.name+viewSuffix, m.name+indexSuffix)
 		}
 	}
 	for _, name := range names {
@@ -180,11 +184,12 @@ func localNames() []string {
 	return []string{
 		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "data", "depth", "dst", "ea", "eb",
 		"enc",
-		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "k", "keys", "l", "last", locParam, "m", "mk",
+		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "ix", "k", "keys", "l", "last", locParam, "m",
+		"mk",
 		"mv",
 		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "pair", "pairs", "present", "re", "s",
 		"sa", "sb",
-		"scratch", "seen", "size", "slab", "src", "t", "tag", "u", "used", "w", "x", "zero",
+		"scratch", "seen", "size", "skipped", "slab", "src", "t", "tag", "u", "used", "v", "w", "x", "zero",
 	}
 }
 

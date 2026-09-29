@@ -11,10 +11,13 @@
 // projection. [Seal] has no encoding for its zero value, which a field of
 // it leaves out. == reports -0.0 equal to +0.0 in a [Reading] and does not
 // apply to a [Blob]. A field of either is present when its encoding has
-// bytes. The encoding of each type fails for one value and the decoding for
-// malformed data, so that the generated tests run the error branches of the
-// code that calls them. [Codecs] has a field of each, and [Appenders] a
-// field of each with an append method.
+// bytes. [Hash], [Clip] and [Reading] are kanon.Sizer types, which a codec
+// sizes with SizeKanon: a Hash tests its presence with IsZero, a Clip
+// counts 4 bytes at most and fails for a longer text with kanon.ErrSize,
+// and a Reading has no append method. The encoding of each type fails for
+// one value and the decoding for malformed data, so that the generated
+// tests run the error branches of the code that calls them. [Codecs] has a
+// field of each, and [Appenders] a field of each with an append method.
 //
 // # Dependency position
 //

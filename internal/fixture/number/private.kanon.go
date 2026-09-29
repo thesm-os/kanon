@@ -436,7 +436,8 @@ func (m *Private) cloneKanon(c *Private) {
 // instead, since a decode merges the occurrences. The bytes that a method
 // returns for a string, a byte slice and a struct alias the view. A value of a
 // type that encodes itself decodes with the method of its type, and the offsets
-// of the errors of a method are offsets in the view.
+// of the errors of a method are offsets in the view. IndexKanon reads the
+// fields of the view with one scan.
 type PrivateView []byte
 
 // Name returns the value of the field Name of the encoding in v.
@@ -444,6 +445,58 @@ func (v PrivateView) Name() ([]byte, error) {
 	i, err := wire.Find(v, 1<<3|wire.Bytes, "Private.Name")
 	if err != nil || i < 0 {
 		return nil, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	return []byte(v[i+n : i+n+int(l)]), nil
+}
+
+// PrivateIndex is the index of a PrivateView: the view and the offsets of the
+// values of the fields that its methods read, which IndexKanon records in one
+// scan. Each method of PrivateIndex returns what the method of PrivateView of
+// the same name returns, without a scan.
+type PrivateIndex struct {
+	v PrivateView
+	// at records, per method, 1 + the offset of the value of the last
+	// occurrence of its field, and 0 when the encoding has none.
+	at [1]int
+}
+
+// IndexKanon returns the index of the encoding in v, from one scan of the
+// encoding. It fails where a method of PrivateView fails before it reads a
+// value: at a malformed tag or value, at an occurrence of a field that a method
+// reads with another wire format, and at the second occurrence of a struct
+// field.
+func (v PrivateView) IndexKanon() (PrivateIndex, error) {
+	ix := PrivateIndex{v: v}
+	for i := 0; i < len(v); {
+		at := i
+		tag, n := wire.Uvarint(v[i:])
+		if n <= 0 {
+			return PrivateIndex{}, wire.ReadError(n, "Private", 0, i)
+		}
+		i += n
+		skipped, err := wire.Skip(v[i:], tag, "Private", 0, at)
+		if err != nil {
+			return PrivateIndex{}, err
+		}
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return PrivateIndex{}, wire.FormatError(tag, wire.Bytes, "Private.Name", at)
+			}
+			ix.at[0] = i + 1
+		}
+		i += skipped
+	}
+	return ix, nil
+}
+
+// Name returns the value of the field Name, as PrivateView.Name returns it, at
+// the offset that the index records.
+func (ix PrivateIndex) Name() ([]byte, error) {
+	v, i := ix.v, ix.at[0]-1
+	if i < 0 {
+		return nil, nil
 	}
 	l, n := wire.Uvarint(v[i:])
 	return []byte(v[i+n : i+n+int(l)]), nil
@@ -645,7 +698,8 @@ func (m *PrivateKey) cloneKanon(c *PrivateKey) {
 // occurrence instead, since a decode merges the occurrences. The bytes that a
 // method returns for a string, a byte slice and a struct alias the view. A
 // value of a type that encodes itself decodes with the method of its type, and
-// the offsets of the errors of a method are offsets in the view.
+// the offsets of the errors of a method are offsets in the view. IndexKanon
+// reads the fields of the view with one scan.
 type PrivateKeyView []byte
 
 // Name returns the value of the field Name of the encoding in v.
@@ -653,6 +707,58 @@ func (v PrivateKeyView) Name() ([]byte, error) {
 	i, err := wire.Find(v, 2<<3|wire.Bytes, "PrivateKey.Name")
 	if err != nil || i < 0 {
 		return nil, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	return []byte(v[i+n : i+n+int(l)]), nil
+}
+
+// PrivateKeyIndex is the index of a PrivateKeyView: the view and the offsets of
+// the values of the fields that its methods read, which IndexKanon records in
+// one scan. Each method of PrivateKeyIndex returns what the method of
+// PrivateKeyView of the same name returns, without a scan.
+type PrivateKeyIndex struct {
+	v PrivateKeyView
+	// at records, per method, 1 + the offset of the value of the last
+	// occurrence of its field, and 0 when the encoding has none.
+	at [1]int
+}
+
+// IndexKanon returns the index of the encoding in v, from one scan of the
+// encoding. It fails where a method of PrivateKeyView fails before it reads a
+// value: at a malformed tag or value, at an occurrence of a field that a method
+// reads with another wire format, and at the second occurrence of a struct
+// field.
+func (v PrivateKeyView) IndexKanon() (PrivateKeyIndex, error) {
+	ix := PrivateKeyIndex{v: v}
+	for i := 0; i < len(v); {
+		at := i
+		tag, n := wire.Uvarint(v[i:])
+		if n <= 0 {
+			return PrivateKeyIndex{}, wire.ReadError(n, "PrivateKey", 0, i)
+		}
+		i += n
+		skipped, err := wire.Skip(v[i:], tag, "PrivateKey", 0, at)
+		if err != nil {
+			return PrivateKeyIndex{}, err
+		}
+		switch tag >> 3 {
+		case 2:
+			if tag != 2<<3|wire.Bytes {
+				return PrivateKeyIndex{}, wire.FormatError(tag, wire.Bytes, "PrivateKey.Name", at)
+			}
+			ix.at[0] = i + 1
+		}
+		i += skipped
+	}
+	return ix, nil
+}
+
+// Name returns the value of the field Name, as PrivateKeyView.Name returns it,
+// at the offset that the index records.
+func (ix PrivateKeyIndex) Name() ([]byte, error) {
+	v, i := ix.v, ix.at[0]-1
+	if i < 0 {
+		return nil, nil
 	}
 	l, n := wire.Uvarint(v[i:])
 	return []byte(v[i+n : i+n+int(l)]), nil

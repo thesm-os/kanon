@@ -33,7 +33,8 @@
 //     boundaries of every type;
 //   - a sample per field, which sets that field alone;
 //   - per value that can fail to encode, a sample in which it alone fails:
-//     a value of a type that encodes itself that its method rejects, an
+//     a value of a type that encodes itself that its method rejects, or
+//     that encodes to another length than the SizeKanon of a kanon.Sizer, an
 //     interface that stores a type that its field does not list, or a map
 //     with a key with a NaN component or with two keys of one projection;
 //   - the key sample, whose map keys differ in one part each and have no
@@ -78,6 +79,11 @@
 // decoded alone, and the bytes after the length of a string, a byte slice
 // and a struct. The method of a struct fails with kanon.ErrRepeatedView at
 // the tag of a second occurrence, since a decode merges the occurrences.
+//
+// When the view type has IndexKanon, a check calls it on the same inputs.
+// It returns the first error, by offset, of the reference scans of the
+// fields that the view reads, and without an error each method of the index
+// returns what the reference view of its field returns.
 //
 // # Fields left out and unexported fields
 //

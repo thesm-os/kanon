@@ -46,6 +46,16 @@ func (r Reading) MarshalBinary() ([]byte, error) {
 	return binary.BigEndian.AppendUint64(nil, bits), nil
 }
 
+// SizeKanon returns the length of the encoding that MarshalBinary returns
+// for r: 0 when every bit of r.Value is zero, and 8 otherwise. It makes
+// Reading a kanon.Sizer, whose field is present when SizeKanon is not 0.
+func (r Reading) SizeKanon() int {
+	if math.Float64bits(r.Value) == 0 {
+		return 0
+	}
+	return readingLength
+}
+
 // UnmarshalBinary sets r.Value to the float64 whose bits are the eight
 // big-endian bytes in data, and to +0.0 for empty data. It fails with
 // ErrReadingLength for data of any other length.

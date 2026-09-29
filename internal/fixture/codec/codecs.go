@@ -18,15 +18,20 @@ type Codecs struct {
 	Seal    Seal
 	Reading Reading
 	Blob    Blob
+	Hash    Hash
+	Clip    Clip
 }
 
 // Appenders has a field of each type of the package with an append method,
-// which a codec calls with a stack array, so that the allocation checks of
-// its generated tests measure the encode of every such type.
+// which a codec calls with a stack array, or in place for a kanon.Sizer, so
+// that the allocation checks of its generated tests measure the encode of
+// every such type.
 type Appenders struct {
 	Token Token
 	Grade Grade
 	Stamp Stamp
 	Note  Note
 	Seal  Seal
+	Hash  Hash
+	Clip  Clip
 }

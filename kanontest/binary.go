@@ -6,8 +6,17 @@ package kanontest
 import (
 	"encoding"
 	"encoding/gob"
+	"errors"
 	"reflect"
+
+	"go.thesmos.sh/kanon"
 )
+
+// errSize marks the encoding of a value of a kanon.Sizer that the generated
+// code rejects with the error of wire.SizeError: a SizeKanon below 0, which
+// the generated code meets before it calls the encode method, and an
+// encoding of another length than SizeKanon.
+var errSize = errors.New("kanontest: the encoding differs from SizeKanon")
 
 // family is a family of methods through which a type encodes itself. The
 // zero family is none.
@@ -57,6 +66,32 @@ func appends(t reflect.Type) bool {
 	default:
 		return false
 	}
+}
+
+// sizes reports whether the pointer to t, a type that encodes itself, is a
+// kanon.Sizer, whose SizeKanon the generated code sizes a value with.
+func sizes(t reflect.Type) bool {
+	return reflect.PointerTo(t).Implements(reflect.TypeFor[kanon.Sizer]())
+}
+
+// encodeSelf returns the encoding of x, a value of a type that encodes
+// itself, as the generated code writes it, and its error: the encoding that
+// [marshal] returns and the error of the encode method, and errSize for a
+// kanon.Sizer whose SizeKanon is below 0, before any error of the method,
+// or differs from the length of the encoding.
+func encodeSelf(x reflect.Value) ([]byte, error) {
+	if !sizes(x.Type()) {
+		return marshal(x)
+	}
+	p := reflect.New(x.Type())
+	p.Elem().Set(x)
+	s, _ := reflect.TypeAssert[kanon.Sizer](p)
+	n := s.SizeKanon()
+	enc, err := marshal(x)
+	if n < 0 || err == nil && len(enc) != n {
+		return nil, errSize
+	}
+	return enc, err
 }
 
 // marshal returns the encoding of v, a value of a type that encodes itself,

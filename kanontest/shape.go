@@ -100,6 +100,10 @@ type shape struct {
 	// absent exactly when it is the zero value of its type, since == compares
 	// every bit of the type, as [bitwiseType] reports.
 	zeroAbsent bool
+	// sizer reports that a type that encodes itself is a kanon.Sizer, as
+	// [sizes] reports, whose encoding the generated code writes into the
+	// room that its SizeKanon sizes.
+	sizer bool
 	// validate reports that the type is a kanon.Validator, as [validates]
 	// reports: it encodes as its underlying type, and every value that the
 	// codec writes or reads passes its ValidateKanon.
@@ -388,7 +392,7 @@ func (r *resolver) shapeOf(t reflect.Type, o opts) (*shape, error) {
 	}
 	s.validate = validates(t)
 	if !s.validate && familyOf(t) != 0 {
-		s.kind, s.zeroAbsent = kindBinary, bitwiseType(t)
+		s.kind, s.zeroAbsent, s.sizer = kindBinary, bitwiseType(t), sizes(t)
 		return s, nil
 	}
 	var err error

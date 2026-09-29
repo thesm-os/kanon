@@ -22,6 +22,8 @@ var kanonSpecCodecs = kanontest.Spec[Codecs]{
 		{Name: "Seal", Number: 8},
 		{Name: "Reading", Number: 9},
 		{Name: "Blob", Number: 10},
+		{Name: "Hash", Number: 11},
+		{Name: "Clip", Number: 12},
 	},
 }
 
@@ -48,6 +50,8 @@ var kanonSpecAppenders = kanontest.Spec[Appenders]{
 		{Name: "Stamp", Number: 3},
 		{Name: "Note", Number: 4},
 		{Name: "Seal", Number: 5},
+		{Name: "Hash", Number: 6},
+		{Name: "Clip", Number: 7},
 	},
 }
 

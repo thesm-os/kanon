@@ -134,6 +134,21 @@ func KeyError(loc string, num, off int) error {
 	return decodeError(kanon.ErrInvalidKey, loc, num, off, "")
 }
 
+// RepeatedError returns the error for the second occurrence of a struct
+// field in the encoding that a view reads, at off, the offset of its tag: a
+// decode merges the occurrences, and one byte slice cannot hold the merge.
+// It wraps kanon.ErrRepeatedView.
+func RepeatedError(loc string, num, off int) error {
+	return decodeError(kanon.ErrRepeatedView, loc, num, off, "")
+}
+
+// SizeError returns the error for the encode of a value of a kanon.Sizer,
+// whose encode method returned another length than its SizeKanon, which
+// loc and num locate at the field of the value. It wraps kanon.ErrSize.
+func SizeError(loc string, num int) error {
+	return MarshalError(kanon.ErrSize, loc, num)
+}
+
 // decodeError returns the *kanon.DecodeError of loc and num at offset off,
 // which wraps cause and states detail.
 func decodeError(cause error, loc string, num, off int, detail string) *kanon.DecodeError {

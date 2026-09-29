@@ -9,9 +9,25 @@ import (
 	"go.dokimi.dev/assert"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/iface"
 	"go.thesmos.sh/kanon/internal/fixture/union"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
+)
+
+// codec.Hash and codec.Clip are the kanon.Sizer fixtures.
+var (
+	_ kanon.Sizer = codec.Hash{}
+	_ kanon.Sizer = codec.Clip("")
+)
+
+// A codec.Clip longer than the 4 bytes that its SizeKanon counts, and the
+// field of codec.Codecs that the error of its encode names.
+const (
+	clipLong   = "kanon"
+	codecsType = "Codecs"
+	clipField  = "Clip"
+	clipNumber = 12
 )
 
 // defaultDepth pins the nesting limit of the zero Options.
@@ -108,6 +124,21 @@ func TestValidator(t *testing.T) {
 				}
 				assert.Equal(t, *e, want,
 					"the DecodeError names the field and the offset of the value, and wraps the error of ValidateKanon")
+			})
+	})
+}
+
+func TestSizer(t *testing.T) {
+	t.Parallel()
+	t.Run("MarshalBinary", func(t *testing.T) {
+		t.Parallel()
+		t.Run("returns an EncodeError with ErrSize for an encoding of another length than SizeKanon",
+			func(t *testing.T) {
+				t.Parallel()
+				_, err := (&codec.Codecs{Clip: clipLong}).MarshalBinary()
+				e := assert.ErrorAs[*kanon.EncodeError](t, err, "MarshalBinary returns an EncodeError")
+				want := kanon.EncodeError{Type: codecsType, Field: clipField, Number: clipNumber, Err: kanon.ErrSize}
+				assert.Equal(t, *e, want, "the EncodeError names the field and wraps ErrSize")
 			})
 	})
 }

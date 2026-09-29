@@ -27,3 +27,5 @@ under `../rfc`.
 | [0020](0020-zero-opaque-values-are-absent.md) | Leave out the zero value of an opaque type whose equality compares every bit | Accepted |
 | [0021](0021-views-read-opaque-fields.md) | Generate view types that read one field from an encoding, opaque fields included | Accepted |
 | [0022](0022-validated-types-encode-as-underlying.md) | Encode a named type other than a struct with ValidateKanon as its underlying type | Accepted |
+| [0023](0023-view-index-in-one-scan.md) | Generate an index per view type that reads its fields after one scan | Accepted |
+| [0024](0024-opaque-types-size-and-presence.md) | Size an opaque value with SizeKanon and test its presence with IsZero | Accepted |

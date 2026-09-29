@@ -86,6 +86,9 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 	}
 	if s.view != nil {
 		checks = append(checks, Check{Name: viewCheck, Run: s.views})
+		if _, ok := s.view.MethodByName(indexName); ok {
+			checks = append(checks, Check{Name: indexCheck, Run: s.indexes})
+		}
 	}
 	return append(checks,
 		Check{Name: "DecodeKanon/decodes into a receiver that decoded before as into a zero one", Run: s.reuse},

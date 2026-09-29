@@ -981,7 +981,8 @@ func (m *Values) cloneKanon(c *Values) {
 // instead, since a decode merges the occurrences. The bytes that a method
 // returns for a string, a byte slice and a struct alias the view. A value of a
 // type that encodes itself decodes with the method of its type, and the offsets
-// of the errors of a method are offsets in the view.
+// of the errors of a method are offsets in the view. IndexKanon reads the
+// fields of the view with one scan.
 type ValuesView []byte
 
 // Level returns the value of the field Level of the encoding in v. It returns
@@ -1222,6 +1223,364 @@ func (v ValuesView) Fixed() (Tick, error) {
 	i, err := wire.Find(v, 24<<3|wire.Fixed64, "Values.Fixed")
 	if err != nil || i < 0 {
 		return 0, err
+	}
+	u, _ := wire.Uint64(v[i:])
+	x := Tick(u)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Fixed", 24, i)
+	}
+	return x, nil
+}
+
+// ValuesIndex is the index of a ValuesView: the view and the offsets of the
+// values of the fields that its methods read, which IndexKanon records in one
+// scan. Each method of ValuesIndex returns what the method of ValuesView of the
+// same name returns, without a scan.
+type ValuesIndex struct {
+	v ValuesView
+	// at records, per method, 1 + the offset of the value of the last
+	// occurrence of its field, and 0 when the encoding has none.
+	at [15]int
+}
+
+// IndexKanon returns the index of the encoding in v, from one scan of the
+// encoding. It fails where a method of ValuesView fails before it reads a
+// value: at a malformed tag or value, at an occurrence of a field that a method
+// reads with another wire format, and at the second occurrence of a struct
+// field.
+func (v ValuesView) IndexKanon() (ValuesIndex, error) {
+	ix := ValuesIndex{v: v}
+	for i := 0; i < len(v); {
+		at := i
+		tag, n := wire.Uvarint(v[i:])
+		if n <= 0 {
+			return ValuesIndex{}, wire.ReadError(n, "Values", 0, i)
+		}
+		i += n
+		skipped, err := wire.Skip(v[i:], tag, "Values", 0, at)
+		if err != nil {
+			return ValuesIndex{}, err
+		}
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Level", at)
+			}
+			ix.at[0] = i + 1
+		case 2:
+			if tag != 2<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Amount", at)
+			}
+			ix.at[1] = i + 1
+		case 3:
+			if tag != 3<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Tick", at)
+			}
+			ix.at[2] = i + 1
+		case 4:
+			if tag != 4<<3|wire.Bytes {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Bytes, "Values.Code", at)
+			}
+			ix.at[3] = i + 1
+		case 5:
+			if tag != 5<<3|wire.Fixed64 {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Fixed64, "Values.Ratio", at)
+			}
+			ix.at[4] = i + 1
+		case 8:
+			if tag != 8<<3|wire.Bytes {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Bytes, "Values.Hash", at)
+			}
+			ix.at[5] = i + 1
+		case 9:
+			if tag != 9<<3|wire.Bytes {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Bytes, "Values.Blob", at)
+			}
+			ix.at[6] = i + 1
+		case 25:
+			if tag != 25<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Port", at)
+			}
+			ix.at[7] = i + 1
+		case 11:
+			if tag != 11<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Flag", at)
+			}
+			ix.at[8] = i + 1
+		case 12:
+			if tag != 12<<3|wire.Fixed32 {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Fixed32, "Values.Weight", at)
+			}
+			ix.at[9] = i + 1
+		case 13:
+			if tag != 13<<3|wire.Fixed64 {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Fixed64, "Values.Wave", at)
+			}
+			ix.at[10] = i + 1
+		case 14:
+			if tag != 14<<3|wire.Bytes {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Bytes, "Values.Phase", at)
+			}
+			ix.at[11] = i + 1
+		case 15:
+			if tag != 15<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Grade", at)
+			}
+			ix.at[12] = i + 1
+		case 16:
+			if tag != 16<<3|wire.Varint {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Next", at)
+			}
+			ix.at[13] = i + 1
+		case 24:
+			if tag != 24<<3|wire.Fixed64 {
+				return ValuesIndex{}, wire.FormatError(tag, wire.Fixed64, "Values.Fixed", at)
+			}
+			ix.at[14] = i + 1
+		}
+		i += skipped
+	}
+	return ix, nil
+}
+
+// Level returns the value of the field Level, as ValuesView.Level returns it,
+// at the offset that the index records.
+func (ix ValuesIndex) Level() (Level, error) {
+	v, i := ix.v, ix.at[0]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	if u != uint64(uint8(u)) {
+		return 0, wire.RangeError(u, "uint8", "Values.Level", 1, i)
+	}
+	x := Level(u)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Level", 1, i)
+	}
+	return x, nil
+}
+
+// Amount returns the value of the field Amount, as ValuesView.Amount returns
+// it, at the offset that the index records.
+func (ix ValuesIndex) Amount() (Amount, error) {
+	v, i := ix.v, ix.at[1]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	x := Amount(wire.Unzigzag(u))
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Amount", 2, i)
+	}
+	return x, nil
+}
+
+// Tick returns the value of the field Tick, as ValuesView.Tick returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Tick() (Tick, error) {
+	v, i := ix.v, ix.at[2]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	x := Tick(u)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Tick", 3, i)
+	}
+	return x, nil
+}
+
+// Code returns the value of the field Code, as ValuesView.Code returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Code() (Code, error) {
+	v, i := ix.v, ix.at[3]-1
+	if i < 0 {
+		return "", nil
+	}
+	l, n := wire.Uvarint(v[i:])
+	x := Code(v[i+n : i+n+int(l)])
+	if err := x.ValidateKanon(); err != nil {
+		return "", wire.UnmarshalError(err, "Values.Code", 4, i)
+	}
+	return x, nil
+}
+
+// Ratio returns the value of the field Ratio, as ValuesView.Ratio returns it,
+// at the offset that the index records.
+func (ix ValuesIndex) Ratio() (Ratio, error) {
+	v, i := ix.v, ix.at[4]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uint64(v[i:])
+	x := Ratio(math.Float64frombits(u))
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Ratio", 5, i)
+	}
+	return x, nil
+}
+
+// Hash returns the value of the field Hash, as ValuesView.Hash returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Hash() (Hash, error) {
+	v, i := ix.v, ix.at[5]-1
+	if i < 0 {
+		return Hash{}, nil
+	}
+	l, n := wire.Uvarint(v[i:])
+	if l != 4 {
+		return Hash{}, wire.LengthError(l, 4, "Values.Hash", 8, i)
+	}
+	var x Hash
+	copy(x[:], v[i+n:])
+	if err := x.ValidateKanon(); err != nil {
+		return Hash{}, wire.UnmarshalError(err, "Values.Hash", 8, i)
+	}
+	return x, nil
+}
+
+// Blob returns the value of the field Blob, as ValuesView.Blob returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Blob() (Blob, error) {
+	v, i := ix.v, ix.at[6]-1
+	if i < 0 {
+		return nil, nil
+	}
+	l, n := wire.Uvarint(v[i:])
+	x := Blob(v[i+n : i+n+int(l)])
+	if err := x.ValidateKanon(); err != nil {
+		return nil, wire.UnmarshalError(err, "Values.Blob", 9, i)
+	}
+	return x, nil
+}
+
+// Port returns the value of the field Port, as ValuesView.Port returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Port() (Port, error) {
+	v, i := ix.v, ix.at[7]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	if u != uint64(uint16(u)) {
+		return 0, wire.RangeError(u, "uint16", "Values.Port", 25, i)
+	}
+	x := Port(u)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Port", 25, i)
+	}
+	return x, nil
+}
+
+// Flag returns the value of the field Flag, as ValuesView.Flag returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Flag() (Flag, error) {
+	v, i := ix.v, ix.at[8]-1
+	if i < 0 {
+		return false, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	x := Flag(u != 0)
+	if err := x.ValidateKanon(); err != nil {
+		return false, wire.UnmarshalError(err, "Values.Flag", 11, i)
+	}
+	return x, nil
+}
+
+// Weight returns the value of the field Weight, as ValuesView.Weight returns
+// it, at the offset that the index records.
+func (ix ValuesIndex) Weight() (Weight, error) {
+	v, i := ix.v, ix.at[9]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uint32(v[i:])
+	x := Weight(math.Float32frombits(u))
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Weight", 12, i)
+	}
+	return x, nil
+}
+
+// Wave returns the value of the field Wave, as ValuesView.Wave returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Wave() (Wave, error) {
+	v, i := ix.v, ix.at[10]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uint64(v[i:])
+	x := Wave(complex(math.Float32frombits(uint32(u)), math.Float32frombits(uint32(u>>32))))
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Wave", 13, i)
+	}
+	return x, nil
+}
+
+// Phase returns the value of the field Phase, as ValuesView.Phase returns it,
+// at the offset that the index records.
+func (ix ValuesIndex) Phase() (Phase, error) {
+	v, i := ix.v, ix.at[11]-1
+	if i < 0 {
+		return 0, nil
+	}
+	l, n := wire.Uvarint(v[i:])
+	if l != 16 {
+		return 0, wire.LengthError(l, 16, "Values.Phase", 14, i)
+	}
+	re, _ := wire.Uint64(v[i+n:])
+	im, _ := wire.Uint64(v[i+n+8:])
+	x := Phase(complex(math.Float64frombits(re), math.Float64frombits(im)))
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Phase", 14, i)
+	}
+	return x, nil
+}
+
+// Grade returns the value of the field Grade, as ValuesView.Grade returns it,
+// at the offset that the index records.
+func (ix ValuesIndex) Grade() (Grade, error) {
+	v, i := ix.v, ix.at[12]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	s := wire.Unzigzag(u)
+	if s != int64(int16(s)) {
+		return 0, wire.RangeError(s, "int16", "Values.Grade", 15, i)
+	}
+	x := Grade(s)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Grade", 15, i)
+	}
+	return x, nil
+}
+
+// Next returns the value of the field Next, as ValuesView.Next returns it, at
+// the offset that the index records.
+func (ix ValuesIndex) Next() (Level, error) {
+	v, i := ix.v, ix.at[13]-1
+	if i < 0 {
+		return 0, nil
+	}
+	u, _ := wire.Uvarint(v[i:])
+	if u != uint64(uint8(u)) {
+		return 0, wire.RangeError(u, "uint8", "Values.Next", 16, i)
+	}
+	x := Level(u)
+	if err := x.ValidateKanon(); err != nil {
+		return 0, wire.UnmarshalError(err, "Values.Next", 16, i)
+	}
+	return x, nil
+}
+
+// Fixed returns the value of the field Fixed, as ValuesView.Fixed returns it,
+// at the offset that the index records.
+func (ix ValuesIndex) Fixed() (Tick, error) {
+	v, i := ix.v, ix.at[14]-1
+	if i < 0 {
+		return 0, nil
 	}
 	u, _ := wire.Uint64(v[i:])
 	x := Tick(u)

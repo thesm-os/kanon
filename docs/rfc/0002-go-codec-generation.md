@@ -8,7 +8,7 @@ updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021, ADR-0022
+produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021, ADR-0022, ADR-0023, ADR-0024
 ---
 
 # RFC-0002: Generated Go codecs, their runtime and their public interface
@@ -152,8 +152,20 @@ The generator encodes every type that gob and json encode:
   when it equals the zero value of its type and `==` compares every bit of the type, which
   rules out a float, a complex number and an interface in it. The generated code compares
   the value with the zero value and does not call a method of the type for it, so a zero
-  value that the type cannot encode, such as a zero digest, leaves its field out. An opaque
-  value of any other type is present when its encoding has at least one byte.
+  value that the type cannot encode, such as a zero digest, leaves its field out. It calls
+  `IsZero() bool` in place of `==` when the type declares it, which must report true for the
+  zero value alone, so that a digest of a size byte and 64 bytes of room tests its size byte
+  instead of 65 bytes. An opaque value of any other type is present when its encoding has at
+  least one byte.
+- A type that encodes itself and declares `SizeKanon() int`, a `kanon.Sizer`, is sized with
+  `SizeKanon` instead of an encode, and its append method writes the encoding into its room in
+  place. The encode still calls the encode method of every value that it writes, and fails
+  with `ErrSize` for an encoding of another length. For a type whose `==` does not compare
+  every bit, a field is present when its `SizeKanon` is not 0. On a struct of 17 fields with 6
+  opaque values shaped like a digest and an identifier of a size byte and 64 or 32 bytes of
+  room, an `AppendBinary` takes 32 ns with `SizeKanon` and `IsZero`, and 64 ns without,
+  measured on one core. The same struct with byte arrays in place of the opaque types takes
+  32 ns.
 - A named type other than a struct with the method `func (T) ValidateKanon() error`, a
   `kanon.Validator`, as a value of its underlying type, ahead of its binary, gob and text
   methods. A `-type` directive of its package generates the method, and a method written by
@@ -202,8 +214,9 @@ package kanon
 //
 // SizeKanon, EncodeKanon and AppendBinary into a buffer with spare capacity
 // do not allocate, except for an opaque type without an append method, an
-// opaque encoding longer than 128 bytes, a map of more than 16 keys other
-// than bools, and a value whose ValidateKanon allocates. DecodeKanon with a
+// opaque encoding longer than 128 bytes of a type that is not a Sizer, a
+// map of more than 16 keys other than bools, and a value whose
+// ValidateKanon allocates. DecodeKanon with a
 // Slab into a receiver that decoded before does not allocate, except for an
 // opaque value, a time in a zone that the platform allocates, a map with
 // more than 16 values that refer to memory, a map key that refers to
@@ -222,10 +235,11 @@ type Message interface {
 	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
 	// and returns their count. When buf is shorter than SizeKanon bytes, it
 	// writes nothing and returns io.ErrShortBuffer. It returns an
-	// *EncodeError when an opaque value fails to encode itself, the
-	// ValidateKanon of a Validator rejects a value, an interface stores a
-	// type its list does not name, or a map has an invalid key or two keys
-	// of one projection. After an error, buf does
+	// *EncodeError when an opaque value fails to encode itself or encodes to
+	// another length than the SizeKanon of a Sizer, the ValidateKanon of a
+	// Validator rejects a value, an interface stores a type its list does not
+	// name, or a map has an invalid key or two keys of one projection. After
+	// an error, buf does
 	// not contain a valid encoding, and AppendBinary returns its buffer
 	// unchanged.
 	EncodeKanon(buf []byte) (int, error)
@@ -287,6 +301,18 @@ type Validator interface {
 	ValidateKanon() error
 }
 
+// Sizer is the method of a type that encodes itself and knows the length of
+// its encoding without encoding. SizeKanon means what it means in Message:
+// the length of the bytes that kanon writes for the value, without a tag and
+// a length. The generated code sizes a value of a Sizer with it and appends
+// the encoding into that room in place. An encoding of another length fails
+// with ErrSize.
+type Sizer interface {
+	// SizeKanon returns the length of the encoding of the receiver that the
+	// encode method of its family returns.
+	SizeKanon() int
+}
+
 // Options control DecodeKanon and MergeKanon. The zero Options copy the
 // input once and apply DefaultDepth.
 type Options struct {
@@ -344,14 +370,18 @@ func (e *DecodeError) Error() string
 // of a ValidateKanon.
 func (e *DecodeError) Unwrap() error
 
-// ErrUnlistedType is the cause of an EncodeError for an interface that
-// stores a type its list does not name.
-var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+// Causes of an EncodeError: an interface that stores a type its list does
+// not name, and a value of a Sizer whose encoding has another length than
+// its SizeKanon.
+var (
+	ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+	ErrSize         = errors.New("kanon: encoding length differs from SizeKanon")
+)
 
 // EncodeError is the error of EncodeKanon: the struct type, the field and
 // its number, and the cause, which is ErrUnlistedType, ErrInvalidKey,
-// ErrAmbiguousKey, the error of an opaque value's own encoding or the error
-// of a ValidateKanon.
+// ErrAmbiguousKey, ErrSize, the error of an opaque value's own encoding or
+// the error of a ValidateKanon.
 type EncodeError struct {
 	Type   string
 	Field  string
@@ -535,6 +565,37 @@ merges the occurrences and one byte slice cannot hold the merge. For the record 
 `72 03 0a 01 61 72 02 10 01`, a decode merges `Item{Name: "a", Count: 1}`, and
 `RecordView.Item` fails with `ErrRepeatedView` at offset 5.
 
+Each method of a view scans the encoding from its start, so a caller that reads k fields
+through the view scans the encoding k times. The generator also declares an index type per
+view, which reads every field after one scan:
+
+```go
+// OrderIndex is the index of an OrderView: the view and the offsets of the
+// values of the fields that its methods read, which IndexKanon records in
+// one scan.
+type OrderIndex struct {
+	v  OrderView
+	at [3]int
+}
+
+// IndexKanon returns the index of the encoding in v, from one scan of the
+// encoding.
+func (v OrderView) IndexKanon() (OrderIndex, error)
+
+// ID returns the value of the field ID, as OrderView.ID returns it, at the
+// offset that the index records.
+func (x OrderIndex) ID() ([]byte, error)
+```
+
+`IndexKanon` records the offset of the last occurrence of each field that the view reads. It
+fails where a method of the view fails before it reads a value: at a malformed tag or value,
+at an occurrence of a field that a method reads with another wire format, and at the second
+occurrence of a struct field. Each method of the index reads its field at the recorded offset
+and returns what the method of the view returns. The method name ends in `Kanon`, so that it
+cannot collide with the method of a field named `Index`. On a struct of 17 fields,
+10 of them opaque, reading two fields takes 48 ns through the index and 74 ns through two view
+methods, measured on one core.
+
 ### The conformance suite
 
 `kanontest` checks a generated codec against the wire format: every check runs from a `Spec`
@@ -547,6 +608,12 @@ rejections and error causes, checks the allocation contract, fuzzes the decoder,
 encodings in a golden file per type. The suite defines conformance for this implementation,
 and its golden files are test vectors for others. `kanontest.Codec[T]` constrains the codec to
 `*T`, which implements `kanon.Message`.
+
+The reference encoder checks the encoding of a `kanon.Sizer` against its `SizeKanon` as the
+generated code does. A sample counts an encoding of another length as a value that fails to
+encode. The index check compares the error of `IndexKanon` with the first error, by
+offset, of the reference scans of the fields that the view reads, and each method of the index
+with the reference view of its field.
 
 The reference encoder and decoder call the `ValidateKanon` of a `kanon.Validator` as the
 generated code does. A sample counts such a value as one that can fail to encode.
@@ -622,7 +689,14 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
 - The inline varint path adds about 5 lines per varint read and write site.
 - A struct that keeps unknown fields has one exported `[]byte` field that is not part of its
   data model, and its encoding is canonical only while that field is nil.
-- Views scan from the start on every call, so reading k fields costs k scans.
+- A view method scans from the start on every call. `IndexKanon` reads k fields with one scan,
+  and its index takes one `int` per field that the view reads.
+- `IsZero` must report true for the zero value alone. A type whose `IsZero` reports true for
+  another value loses that value, and the conformance suite detects it only for the values
+  that it samples.
+- The generated code trusts `SizeKanon` to size the encoding of a `kanon.Sizer`, so a
+  `SizeKanon` that disagrees with the encode method fails every encode of such a value with
+  `ErrSize`.
 - A map whose keys can decode to distinct Go values of one projection, such as pointer keys,
   sorts those keys after every decode, which costs n log n and allocates above 16 keys.
 - Every decode error allocates a `*DecodeError`.

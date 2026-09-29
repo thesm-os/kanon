@@ -38,10 +38,16 @@ var (
 	ErrRepeatedView = errors.New("kanon: struct field occurs twice in a view")
 )
 
-// ErrUnlistedType is the cause of an [EncodeError] for an interface that
-// stores a value of a type that the tag option types of its field does not
-// list.
-var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+// ErrUnlistedType and ErrSize are causes of an [EncodeError], which
+// errors.Is matches through [EncodeError.Unwrap].
+var (
+	// ErrUnlistedType marks an interface that stores a value of a type that
+	// the tag option types of its field does not list.
+	ErrUnlistedType = errors.New("kanon: type not listed in the tag option types")
+	// ErrSize marks a value of a [Sizer] whose encode method returns another
+	// length than its SizeKanon, which sized the room of the value.
+	ErrSize = errors.New("kanon: encoding length differs from SizeKanon")
+)
 
 // Causes of an [EncodeError] and of a [DecodeError] for a map key. The
 // projection of a key is its encoding, with every float component of -0.0
@@ -119,8 +125,8 @@ type EncodeError struct {
 	// Number is the field number of Field.
 	Number int
 	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
-	// [ErrAmbiguousKey], the error of a type that encodes itself, or the
-	// error of the ValidateKanon of a [Validator].
+	// [ErrAmbiguousKey], [ErrSize], the error of a type that encodes itself,
+	// or the error of the ValidateKanon of a [Validator].
 	Err error
 }
 

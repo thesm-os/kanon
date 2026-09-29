@@ -18,6 +18,16 @@
 // out, so equal values encode to identical bytes. A decoder skips a field
 // number it does not know, so a struct can gain and lose fields.
 //
+// # Types that encode themselves
+//
+// A value of a type with binary, gob or text methods encodes as the bytes
+// that the first of those families returns. For such a type whose ==
+// compares every bit, a field at the zero value is absent, and the generated
+// code leaves it out without a call of a method of the type. It calls the
+// method IsZero() bool in place of == when the type declares it, which must
+// report true for the zero value alone. A [Sizer] sizes its values with
+// SizeKanon in place of an encode.
+//
 // # Decoding without a copy
 //
 // Every decoded string is a substring of the slab that [Options] name, a
@@ -34,8 +44,9 @@
 // [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey] and
 // [ErrRepeatedView], the error of a type that decodes itself, or the error
 // of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
-// that wraps [ErrUnlistedType], [ErrInvalidKey] or [ErrAmbiguousKey], the
-// error of a type that encodes itself, or the error of ValidateKanon.
+// that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
+// [ErrSize], the error of a type that encodes itself, or the error of
+// ValidateKanon.
 // errors.Is and errors.As classify both.
 //
 // # Versions

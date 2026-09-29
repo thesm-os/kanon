@@ -11,6 +11,7 @@ A `go:generate` directive names the types:
 - The generated code does not use reflection.
 - kanon encodes every type that `encoding/gob` and `encoding/json` encode: slices and maps nested to any depth, maps with any comparable key type, struct keys included, arrays, pointers, complex numbers, `time.Time`, and interfaces with a list of their concrete types.
 - A type with binary, gob or text methods, such as `MarshalBinary` and `UnmarshalBinary`, encodes through them.
+- A named type that is not a struct can encode as its underlying type instead, with a check of its values that kanon calls on every encode and decode.
 - Equal values encode to identical bytes, because map keys are sorted and absent fields are left out.
 - Each field encodes under a number that the generated file records, so a struct can gain and lose fields between an encode and a decode.
 - An encode into a buffer with spare capacity does not allocate.
@@ -140,12 +141,14 @@ if derr, ok := errors.AsType[*kanon.DecodeError](err); ok {
 }
 ```
 
-An encode returns a `*kanon.EncodeError` in four cases:
+An encode returns a `*kanon.EncodeError` in six cases:
 
 - A map key has a NaN component.
 - Two keys of one map encode alike.
 - An interface contains a type that its list does not name.
 - A type that encodes itself returns an error.
+- The encoding of a type that declares `SizeKanon` has another length than `SizeKanon` returns, and the error wraps `kanon.ErrSize`.
+- The `ValidateKanon` method of a type rejects a value.
 
 ## Field numbers
 
@@ -200,6 +203,35 @@ kanon leaves out a field of a function or a channel type, as gob does.
 An embedded struct encodes as one field named after its type, as in gob.
 kanon does not promote the fields of an embedded struct, which `encoding/json` does.
 
+## Types with methods of their own
+
+A type with binary, gob or text methods encodes as the bytes that the first of those families returns.
+Such a type can also declare these methods, which make its encode cheaper:
+
+- `SizeKanon() int` returns the length of that encoding. kanon sizes the value with it instead of encoding it twice, and appends the encoding into its buffer in place.
+- `IsZero() bool` reports whether the value is the zero value, which kanon leaves out of a field. kanon calls it instead of comparing the whole value with `==`, so it must report true for the zero value alone.
+
+A named type that is not a struct can encode as its underlying type instead.
+Name it in the directive, and name a method that checks a value with `-validate`:
+
+```go
+type Fixed64 int64
+
+//go:generate go tool kanon -type=Fixed64 -validate=valid
+
+func (f Fixed64) valid() error {
+	if f == math.MinInt64 {
+		return errOutOfRange
+	}
+	return nil
+}
+```
+
+kanon generates `ValidateKanon() error`, which calls `valid`, and calls it on every value that it encodes or decodes.
+The encode or the decode of a value that it rejects fails.
+Adding `ValidateKanon` to a type with binary, gob or text methods, or removing it, changes the encoding of every field of the type.
+A check of the field numbers does not detect that change.
+
 ## Views
 
 Add `-views` to the directive to generate a view type per struct type:
@@ -217,7 +249,20 @@ id, err := shop.OrderView(data).ID() // id aliases data
 
 A string or byte slice field returns its bytes, which alias the view.
 Slices, maps, interfaces and union members have no method.
-Each call scans the encoding from its start, so a read of k fields costs k scans.
+
+Each method call scans the encoding from its start.
+To read two or more fields, index the view once:
+
+```go
+index, err := shop.OrderView(data).IndexKanon()
+if err != nil {
+	return err
+}
+id, err := index.ID()
+```
+
+`IndexKanon` scans the encoding once and records the offset of every field that the view reads.
+Each method of the index returns what the method of the view with the same name returns.
 
 ## Frames and batches
 

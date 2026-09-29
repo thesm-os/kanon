@@ -379,6 +379,36 @@ func (e *emitter) selfEncode(v *value, x, errVar string) {
 	e.line("enc, %s := %s.%s()", errVar, x, v.self.marshaler)
 }
 
+// putSized writes the statements of the put function of v, a kanon.Sizer,
+// which writes the value that x points at into the end of buf: they size
+// the value with SizeKanon, encode it into that room in place through the
+// append method of its family, or through its encode method and a copy,
+// and return the error of wire.SizeError for a length that SizeKanon did
+// not return, and for a length that the room cannot take.
+func (e *emitter) putSized(v *value) {
+	w := e.wire()
+	e.line("n := x.%s()", sizeKanonName)
+	e.line("if uint(n) > uint(len(buf)) {")
+	e.line("return 0, %sSizeError(loc, num)", w)
+	e.line("}")
+	e.line("i := len(buf) - n")
+	if v.self.appender != "" {
+		e.line("enc, err := x.%s(buf[i:i:len(buf)])", v.self.appender)
+	} else {
+		e.line("enc, err := x.%s()", v.self.marshaler)
+	}
+	e.line("if err != nil {")
+	e.line("return 0, %sMarshalError(err, loc, num)", w)
+	e.line("}")
+	e.line("if len(enc) != n {")
+	e.line("return 0, %sSizeError(loc, num)", w)
+	e.line("}")
+	if v.self.appender == "" {
+		e.line("copy(buf[i:], enc)")
+	}
+	e.line("return n, nil")
+}
+
 // putHelper writes the put function of the values of v: the function that
 // writes the encoding of an inline struct or of a value of a type that
 // encodes itself without its length, and of a slice, an array, a map, a
@@ -402,6 +432,15 @@ func (e *emitter) putHelper(name string, v *value) {
 			e.line("func %s(buf []byte, m *%s) int {", name, typ)
 		}
 		e.encodeBody(m, m.fails)
+		return
+	}
+	if v.kind == kindBinary && v.self.sizer {
+		e.doc(text + "the " + typ + " that x points at" + room + " The room is the length that the SizeKanon " +
+			"of x returns. It fails when x fails to encode itself, and when its encoding has another length.")
+		e.line("func %s(buf []byte, x *%s, loc string, num int) (int, error) {", name, typ)
+		e.putSized(v)
+		e.line("}")
+		e.line("")
 		return
 	}
 	if v.kind == kindBinary {

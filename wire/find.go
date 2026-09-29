@@ -3,8 +3,6 @@
 
 package wire
 
-import "go.thesmos.sh/kanon"
-
 // repeat selects what a scan of an encoding does with a second occurrence
 // of the field that it looks for.
 type repeat uint8
@@ -36,8 +34,7 @@ func Find(data []byte, tag uint64, loc string) (int, error) {
 // field whose tag is tag, as [Find] returns it, for the view of a struct
 // field: a decode merges two occurrences of a struct, which one byte slice
 // cannot hold. It fails as Find fails, and for a second occurrence of the
-// field with a *kanon.DecodeError that wraps kanon.ErrRepeatedView at its
-// tag.
+// field with the error of [RepeatedError] at its tag.
 func FindOne(data []byte, tag uint64, loc string) (int, error) {
 	return scan(data, tag, loc, rejectRepeat)
 }
@@ -64,7 +61,7 @@ func scan(data []byte, tag uint64, loc string, r repeat) (int, error) {
 				return -1, FormatError(t, int(tag&7), loc, start)
 			}
 			if at != -1 && r == rejectRepeat {
-				return -1, decodeError(kanon.ErrRepeatedView, loc, int(tag>>3), start, "")
+				return -1, RepeatedError(loc, int(tag>>3), start)
 			}
 			at = i
 		}

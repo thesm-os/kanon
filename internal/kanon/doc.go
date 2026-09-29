@@ -75,6 +75,13 @@
 // helpers of the file, the functions of its inline structs, slices, arrays,
 // maps, pointers and interfaces, take the name of the source file as a
 // prefix, so that two code files of one package declare distinct names.
+// With -views, each -type struct also gets a view type, <T>View, and its
+// index type, <T>Index, which IndexKanon of the view fills from one scan.
+//
+// A type that encodes itself and declares SizeKanon() int, a kanon.Sizer, is
+// sized with that method and appended into its room in place. The presence
+// of a value of a type that declares IsZero() bool, and whose == compares
+// every bit, is tested with that method in place of ==.
 //
 // An encode writes backward from the end of its buffer, in ascending field
 // number, so that the length of a nested value is known when its prefix is

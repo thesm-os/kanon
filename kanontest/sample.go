@@ -390,7 +390,7 @@ func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 		r.scalar(src, v, depth)
 		if x, ok := r.failure(s.typ); ok && src.fail() {
 			v.Set(x)
-		} else if _, err := marshal(v); err != nil {
+		} else if _, err := encodeSelf(v); err != nil {
 			v.Set(r.success(s.typ))
 		}
 	default:
@@ -641,33 +641,33 @@ func other(f float64) float64 {
 	return table[0]
 }
 
-// failure returns a value of t, a type that encodes itself, that its
-// encode method rejects: the first value of the value tables that it
-// rejects. It reports false when it rejects none.
+// failure returns a value of t, a type that encodes itself, that fails to
+// encode, as [encodeSelf] reports it: the first value of the value tables
+// that does. It reports false when none does.
 func (r *resolver) failure(t reflect.Type) (reflect.Value, bool) {
 	var fail reflect.Value
 	found := false
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
 		r.scalar(table(i), v, 0)
-		if _, err := marshal(v); !found && err != nil {
+		if _, err := encodeSelf(v); !found && err != nil {
 			fail, found = v, true
 		}
 	}
 	return fail, found
 }
 
-// success returns a value of t, a type that encodes itself, that its
-// encode method accepts: the first value of the value tables that it
-// accepts, or the zero value when it accepts none, so that a sample fails
-// to encode only where a failing source fails it.
+// success returns a value of t, a type that encodes itself, that encodes,
+// as [encodeSelf] reports it: the first value of the value tables that
+// does, or the zero value when none does, so that a sample fails to encode
+// only where a failing source fails it.
 func (r *resolver) success(t reflect.Type) reflect.Value {
 	ok := reflect.Zero(t)
 	found := false
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
 		r.scalar(table(i), v, 0)
-		if _, err := marshal(v); !found && err == nil {
+		if _, err := encodeSelf(v); !found && err == nil {
 			ok, found = v, true
 		}
 	}

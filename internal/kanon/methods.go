@@ -51,6 +51,13 @@ type selfCodec struct {
 	appender    string
 	marshaler   string
 	unmarshaler string
+	// sizer reports that the type is a kanon.Sizer: its SizeKanon returns
+	// the length of the encoding, which the generated code sizes the values
+	// of the type with, and appends the encoding into.
+	sizer bool
+	// zeroer reports that the type declares IsZero() bool, which the
+	// generated code tests the presence of a value with in place of ==.
+	zeroer bool
 }
 
 // selfCodecs returns the families of methods through which a type encodes
@@ -71,7 +78,8 @@ func selfCodecs() []selfCodec {
 // decode method, and whose append method or encode method, the pointer to t
 // has, with the signatures of packages encoding and encoding/gob. The
 // appender of the result is empty when t has the encode method of the
-// family alone.
+// family alone. The result records whether the pointer to t has SizeKanon()
+// int and IsZero() bool.
 func selfCodecOf(t *types.Named) (selfCodec, bool) {
 	s := methodsOf(t)
 	encoded := []types.Type{byteSlice(), errorType()}
@@ -84,6 +92,8 @@ func selfCodecOf(t *types.Named) (selfCodec, bool) {
 		if !appends {
 			c.appender = ""
 		}
+		c.sizer = s.has(sizeKanonName, nil, []types.Type{types.Typ[types.Int]})
+		c.zeroer = s.has(isZeroName, nil, []types.Type{types.Typ[types.Bool]})
 		return c, true
 	}
 	return selfCodec{}, false

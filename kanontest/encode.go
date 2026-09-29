@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -325,8 +326,11 @@ func (e *encoder) appendKind(b []byte, s *shape, x reflect.Value, loc string, nu
 	case kindInline:
 		return e.appendBytes(b, e.encodeStruct(s.layout, x))
 	case kindBinary:
-		body, err := marshal(x)
-		if err != nil {
+		body, err := encodeSelf(x)
+		if errors.Is(err, errSize) {
+			e.fail(wire.SizeError(loc, num))
+			body = failed()
+		} else if err != nil {
 			e.fail(wire.MarshalError(err, loc, num))
 			body = failed()
 		}
