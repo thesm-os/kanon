@@ -20,10 +20,25 @@
 // Usage:
 //
 //	kanon -type=T[,T...] [-views] [file]
+//	kanon inspect [-frames | -batch] [-hex] [-json] [file]
 //	kanon -version
 //
 // The exit status is 0 on success, 1 when the generation or the check of
 // the field numbers fails, and 2 for a usage error.
+//
+// # Inspect
+//
+// kanon inspect prints the fields of a kanon encoding without its Go types:
+// the number, the wire format and every reading of each value, in the text
+// notation of protoscope or as JSON with -json. It reads the file, or the
+// standard input without one, as one struct encoding, as a stream of frames
+// with -frames, or as a batch with -batch, and reads hexadecimal digits with
+// -hex:
+//
+//	echo '0a 01 78 10 0e' | go tool kanon inspect -hex
+//
+// Its exit status is 0 when the whole input parses, 1 when a part of it
+// does not, and 2 for a usage error.
 //
 // # Field numbers
 //
@@ -71,6 +86,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.thesmos.sh/kanon/internal/inspect"
 	"go.thesmos.sh/kanon/internal/kanon"
 	"go.thesmos.sh/kanon/internal/version"
 )
@@ -84,6 +100,10 @@ const (
 
 // commandName names the command in its messages.
 const commandName = "kanon"
+
+// inspectCommand is the first argument that runs the inspector with the
+// arguments after it. A source file ends in .go, so it is not a file name.
+const inspectCommand = "inspect"
 
 // fileEnv is the environment variable in which go generate names the file
 // that contains the directive.
@@ -119,16 +139,21 @@ const (
 // umask.
 const fileMode = 0o666
 
-// main runs kanon with the arguments and the environment of the process,
-// and exits with the status that run returns.
+// main runs kanon with the arguments, the environment and the standard
+// streams of the process, and exits with the status that run returns.
 func main() {
-	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
 
 // run executes kanon with the command-line arguments args, reads the
 // environment through getenv, and writes the version to stdout and the
-// diagnostics to stderr. It returns the exit status.
-func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
+// diagnostics to stderr. With inspect as the first argument, it runs the
+// inspector on the arguments after it, which reads stdin when they name no
+// file. It returns the exit status.
+func run(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == inspectCommand {
+		return inspect.Command(args[1:], stdin, stdout, stderr)
+	}
 	opts, err := kanon.ParseOptions(args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return exitOK

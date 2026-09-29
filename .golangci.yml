@@ -181,8 +181,10 @@ linters:
       # uint64 varints and fixed-width words they encode as. Every conversion
       # is bounded by a preceding check or is the conversion the wire format
       # defines. The wide samples of sample.go count up from 0 and convert the
-      # count to every integer type of a sample.
-      - path: '^(wire/[a-z]+|frame/[a-z]+|batch/[a-z]+|internal/kanon/(emitter|decode|size)|kanontest/(encode|decode|sample))\.go$'
+      # count to every integer type of a sample. The text and the JSON of the
+      # inspector read the bits of a fixed-width value as a signed integer,
+      # which is one of the readings they print.
+      - path: '^(wire/[a-z]+|frame/[a-z]+|batch/[a-z]+|internal/kanon/(emitter|decode|size)|kanontest/(encode|decode|sample)|internal/inspect/(text|json))\.go$'
         linters: [gosec]
         text: "G115:"
 

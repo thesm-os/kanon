@@ -1,0 +1,98 @@
+{
+  "fields": [
+    {
+      "field": 1,
+      "wire": "bytes",
+      "offset": 0,
+      "length": 2,
+      "hex": "6869",
+      "text": "hi",
+      "fields": [
+        {
+          "field": 13,
+          "wire": "varint",
+          "offset": 0,
+          "unsigned": 105,
+          "zigzag": -53
+        }
+      ],
+      "varints": [
+        {
+          "unsigned": 104,
+          "zigzag": 52
+        },
+        {
+          "unsigned": 105,
+          "zigzag": -53
+        }
+      ]
+    },
+    {
+      "field": 2,
+      "wire": "varint",
+      "offset": 4,
+      "unsigned": 14,
+      "zigzag": 7
+    },
+    {
+      "field": 4,
+      "wire": "fixed64",
+      "offset": 6,
+      "unsigned": 18446744073709551615,
+      "signed": -1,
+      "float": "NaN"
+    },
+    {
+      "field": 5,
+      "wire": "fixed32",
+      "offset": 15,
+      "unsigned": 1069547520,
+      "signed": 1069547520,
+      "float": "1.5"
+    },
+    {
+      "field": 3,
+      "wire": "bytes",
+      "offset": 20,
+      "length": 0,
+      "hex": "",
+      "text": ""
+    },
+    {
+      "field": 2,
+      "wire": "bytes",
+      "offset": 22,
+      "length": 3,
+      "hex": "020406",
+      "varints": [
+        {
+          "unsigned": 2,
+          "zigzag": 1
+        },
+        {
+          "unsigned": 4,
+          "zigzag": 2
+        },
+        {
+          "unsigned": 6,
+          "zigzag": 3
+        }
+      ]
+    },
+    {
+      "field": 4,
+      "wire": "bytes",
+      "offset": 27,
+      "length": 1,
+      "hex": "ff"
+    },
+    {
+      "field": 6,
+      "wire": "fixed64",
+      "offset": 30,
+      "unsigned": 4609434218613702656,
+      "signed": 4609434218613702656,
+      "float": "1.5"
+    }
+  ]
+}

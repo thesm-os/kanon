@@ -1,0 +1,26 @@
+{
+  "width": 4,
+  "records": [
+    {
+      "record": 0,
+      "offset": 2,
+      "size": 2,
+      "fields": [
+        {
+          "field": 1,
+          "wire": "varint",
+          "offset": 0,
+          "unsigned": 2,
+          "zigzag": 1
+        }
+      ]
+    },
+    {
+      "record": 1,
+      "offset": 4,
+      "size": 1,
+      "fields": [],
+      "error": "kanon: record 1 at offset 0: unexpected EOF"
+    }
+  ]
+}

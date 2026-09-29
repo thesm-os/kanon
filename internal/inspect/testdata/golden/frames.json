@@ -1,0 +1,58 @@
+{
+  "frames": [
+    {
+      "frame": 0,
+      "offset": 0,
+      "size": 7,
+      "checksum": false,
+      "type": 1,
+      "fields": [
+        {
+          "field": 1,
+          "wire": "bytes",
+          "offset": 0,
+          "length": 1,
+          "hex": "61",
+          "text": "a",
+          "varints": [
+            {
+              "unsigned": 97,
+              "zigzag": -49
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "frame": 1,
+      "offset": 7,
+      "size": 8,
+      "checksum": true,
+      "type": 1,
+      "fields": []
+    },
+    {
+      "frame": 2,
+      "offset": 15,
+      "size": 8,
+      "error": "frame: checksum mismatch"
+    },
+    {
+      "frame": 3,
+      "offset": 23,
+      "size": 7,
+      "checksum": false,
+      "type": 1,
+      "fields": [
+        {
+          "field": 1,
+          "wire": "varint",
+          "offset": 0,
+          "unsigned": 1,
+          "zigzag": -1
+        }
+      ],
+      "error": "kanon: frame 3 at offset 2: unexpected EOF"
+    }
+  ]
+}
