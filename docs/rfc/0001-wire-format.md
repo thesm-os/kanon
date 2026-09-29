@@ -4,11 +4,11 @@ title: The kanon wire format
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0019
+produces-adr: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0019, ADR-0020
 ---
 
 # RFC-0001: The kanon wire format
@@ -131,9 +131,17 @@ zero value of its type. A field is present when:
 | byte array | at least one byte is not zero |
 | time | not the zero time (January 1, year 1, 00:00:00) in UTC. The zero instant in another location is present |
 | struct | its encoding has at least one byte |
-| opaque | its encoding has at least one byte |
+| opaque | not the zero value of its type, for a type whose equality compares every bit: one without a float, complex or interface component. Otherwise, its encoding has at least one byte |
 | pointer, interface | not nil. A pointer to a zero value is present |
 | union member | its discriminator selects it, whatever the value |
+
+An absent field decodes to the zero value. An encoder that leaves out exactly the zero value
+of a type loses nothing, because the decode yields the value that the encode was given. An
+opaque value at the zero value of such a type is absent without a call of the application's
+encoding. That encoding may have no form for the zero value or may write bytes for it. The
+application's decoding must not yield the zero value from the encoding of another value: the
+encode of that decoded value leaves the field out. A float of -0.0 compares equal to +0.0, so a
+type with a float component keeps the rule of the encoding length.
 
 **Unknown fields.** A decoder must skip a field whose number it does not know, by its wire
 format, and continue with the next field. It may keep the skipped bytes, tag included, and an
@@ -469,6 +477,16 @@ Each vector is the encoding of one struct value. Field numbers are given per str
 |---|---|
 | `{Payload: {1, 2, 3}}` | `0a 03 01 02 03` |
 | `{Payload: {}}` | (empty) |
+
+**Opaque** `{Digest Digest = 1, Stamp Stamp = 2}`, where the equality of both types compares
+every bit, `Digest` encodes itself as its bytes and has no encoding for its zero value, and
+`Stamp` encodes itself as a 4-byte big-endian count, its zero value included
+
+| Value | Bytes |
+|---|---|
+| `{}` | (empty) |
+| `{Digest: {ab cd}}` | `0a 02 ab cd` |
+| `{Stamp: 1}` | `12 04 00 00 00 01` |
 
 **Fixture** `{ID string = 1, Score int64 = 4, Enabled bool = 6, Ref [32]byte = 8, Tags []string = 9}`
 

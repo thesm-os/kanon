@@ -4,11 +4,11 @@ title: Generated Go codecs, their runtime and their public interface
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013
+produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021
 ---
 
 # RFC-0002: Generated Go codecs, their runtime and their public interface
@@ -141,7 +141,12 @@ The generator encodes every type that gob and json encode:
   of its first field for an anonymous struct type.
 - A type with `MarshalBinary` and `UnmarshalBinary`, `GobEncode` and `GobDecode`, or
   `MarshalText` and `UnmarshalText`, as an opaque value through the first of those families it
-  has. `AppendBinary` or `AppendText` is used when the type has it.
+  has. `AppendBinary` or `AppendText` is used when the type has it. An opaque value is absent
+  when it equals the zero value of its type and `==` compares every bit of the type, which
+  rules out a float, a complex number and an interface in it. The generated code compares
+  the value with the zero value and does not call a method of the type for it, so a zero
+  value that the type cannot encode, such as a zero digest, leaves its field out. An opaque
+  value of any other type is present when its encoding has at least one byte.
 - Interfaces with a `types` list, inside maps, slices, arrays, pointers and unions included.
 - Generic struct instantiations, which share the field numbers of their generic type.
 
@@ -430,12 +435,23 @@ fields is above it, so an out-of-line call per one-byte read would cost about 2 
 
 `SizeKanon` computes the size in one pass, and `EncodeKanon` writes backward from the end of
 the buffer in a second pass, so that each nested value's length is known when its prefix is
-written and every value is written once. Map keys sort in a stack array of 16 keys, or of 16
-key-value pairs when the key type has no lookup that finds every key, such as a float. A key
-writes every -0.0 as +0.0. The encode fails with `ErrInvalidKey` for a key with a NaN
-component, and with `ErrAmbiguousKey` when two adjacent sorted keys order equal, which neither
-check allocates for. Unions encode with one `switch` on the discriminator. Every value that the
-wire format says is absent is left out.
+written and every value is written once. A map sorts its keys before it writes its entries:
+
+- Integer and string keys with values other than structs, arrays and opaque values sort with
+  their values as key-value pairs in a stack array, with an insertion sort, in a map of at
+  most 16 entries. A larger map with such keys sorts its keys in a slice of its length, and a
+  lookup finds the value of each key.
+- A key type that a lookup cannot always find, such as a float, sorts with its values as
+  key-value pairs in a stack array of 16 pairs.
+- Any other key type sorts in a stack array of 16 keys, and a lookup finds the value of each
+  key.
+- Bool keys need no sort: the encode writes the entry of false before the entry of true.
+
+The sort of a map of more than 16 entries allocates. A key writes every -0.0 as +0.0. The
+encode fails with `ErrInvalidKey` for a key with a NaN component, and with `ErrAmbiguousKey`
+when two adjacent sorted keys order equal, which neither check allocates for. Unions encode
+with one `switch` on the discriminator. Every value that the wire format says is absent is
+left out.
 
 ### Views
 
@@ -452,13 +468,21 @@ func (v OrderView) ID() ([]byte, error)
 
 // Line returns the encoding of the Line field, or nil.
 func (v OrderView) Line() (LineView, error)
+
+// Ref returns the value of the Ref field, an opaque value, which the
+// UnmarshalBinary of its type decodes from the field's bytes.
+func (v OrderView) Ref() (Ref, error)
 ```
 
 A method exists for each exported field of a bool, integer, float, complex, string, byte slice,
-byte array, time or struct type, and for a pointer to one. Slices, maps, interfaces, union
-members and opaque types have no method. A string or byte slice field returns its bytes, which alias
-the view, so that a read needs neither a copy nor package unsafe. A storage engine reads an
-index key or evaluates a filter from the view without allocating.
+byte array, time, struct or opaque type, and for a pointer to one. Slices, maps, interfaces and
+union members have no method. A string or byte slice field returns its bytes, which alias
+the view, so that a read needs neither a copy nor package unsafe. An opaque field returns the
+value that the decode method of its family, `UnmarshalBinary`, `GobDecode` or
+`UnmarshalText`, sets from the field's bytes, and the zero value when the encoding has no such
+field. It allocates what that method allocates, and an error of that method is the cause of
+the `*DecodeError` that it returns. A storage engine reads an index key or evaluates a filter
+from the view without allocating.
 
 A view checks the tags and lengths of the encoding and the wire format of the field that a
 method reads. It does not check the rest of the schema, so a caller that needs a full check

@@ -1,10 +1,10 @@
 ---
 adr: 0013
 title: Generate view types that read one field from an encoding
-status: Accepted
+status: Superseded
 date: 2026-09-27
 supersedes: none
-superseded-by: none
+superseded-by: ADR-0021
 rfc: RFC-0002
 ---
 
@@ -12,7 +12,7 @@ rfc: RFC-0002
 
 ## Status
 
-Accepted
+Superseded by [ADR-0021](0021-views-read-opaque-fields.md).
 
 ## Context
 
