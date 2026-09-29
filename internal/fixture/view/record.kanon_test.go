@@ -56,6 +56,7 @@ var kanonSpecRecord = kanontest.Spec[Record]{
 		{Name: "Children", Number: 18},
 		{Name: "Token", Number: 19},
 		{Name: "TokenPtr", Number: 20},
+		{Name: "Seal", Number: 21},
 	},
 	View: RecordView(nil),
 }

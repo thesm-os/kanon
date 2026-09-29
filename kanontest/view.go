@@ -49,7 +49,7 @@ func (s *suite[T, P]) views(tb assert.TB) {
 				tb.Fatalf("%s returns the error of the reference decode\ngot:  %v\nwant: %v", name, err, wantErr)
 			}
 			if wantErr == nil {
-				assert.Equal(tb, s.r.viewPrint(f, out[0]), s.r.viewPrint(f, want),
+				assert.Equal(tb, s.r.viewPrint(s.l, f, out[0]), s.r.viewPrint(s.l, f, want),
 					name+" returns the value of the reference decode, which their fingerprints compare")
 			}
 		}
@@ -104,14 +104,22 @@ func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error)
 }
 
 // viewPrint returns the bytes that compare x, a result of the view method of
-// the field f: the bytes that the method returns for a string, a byte slice
-// and a struct, and the fingerprint of any other value.
-func (r *resolver) viewPrint(f *field, x reflect.Value) []byte {
+// the field f of a struct of l: the bytes that the method returns for a
+// string, a byte slice and a struct, no bytes for a value that the encoding
+// leaves out, as [encoder.present] reports it, and the fingerprint of any
+// other value. A value that the encoding leaves out is the result for a
+// field that the encoding does not contain, and neither a method of its
+// type nor its ValidateKanon has to accept it.
+func (r *resolver) viewPrint(l *layout, f *field, x reflect.Value) []byte {
 	if x.Kind() == reflect.Slice {
 		return x.Bytes()
 	}
+	s, loc := f.viewShape(), l.loc(f)
 	e := &encoder{r: r, mode: modeFingerprint}
-	return e.appendValue(nil, f.viewShape(), x, "", f.Number)
+	if !e.present(s, x, loc, f.Number) {
+		return nil
+	}
+	return e.appendValue(nil, s, x, loc, f.Number)
 }
 
 // viewShape returns the shape of the value that the view method of f reads:

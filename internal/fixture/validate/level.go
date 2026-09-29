@@ -5,7 +5,7 @@ package validate
 
 import "errors"
 
-//go:generate go tool kanon -type=Level,Amount,Code,Ratio,Tags,Scores,Hash,Blob,Span -validate=valid
+//go:generate go tool kanon -type=Level,Amount,Code,Ratio,Tags,Scores,Hash,Blob,Span,Port -validate=valid
 
 // LevelMax is the highest valid Level.
 const LevelMax Level = 3

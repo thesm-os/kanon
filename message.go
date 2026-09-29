@@ -150,8 +150,9 @@ type Cloner[T any] interface {
 // encodes or decodes, except a zero value that the encoding leaves out. An
 // error fails the encode with an [*EncodeError], and the decode with a
 // [*DecodeError] at the offset of the value, whose cause is that error. A
-// view method calls it on the value that it returns. SizeKanon, Reset and
-// CloneKanon do not call it.
+// view method calls it on the value of a field that the encoding contains,
+// and returns the zero value for a field that the encoding leaves out.
+// SizeKanon, Reset and CloneKanon do not call it.
 //
 // # Allocation contract
 //

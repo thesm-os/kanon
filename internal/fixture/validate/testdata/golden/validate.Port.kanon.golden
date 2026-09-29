@@ -1,0 +1,8 @@
+value 0: fails: validate: port 0 is reserved
+value 1: 0801
+value 2: 087f
+value 3: 088001
+value 4: 08ff7f
+value 5: 08808001
+value 6: 08ffff03
+value 7: 08ac02

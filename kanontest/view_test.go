@@ -23,6 +23,19 @@ func (nameless) Name() ([]byte, error) { return nil, nil }
 // Count returns the Count of the encoding in v.
 func (v nameless) Count() (uint32, error) { return view.ItemView(v).Count() }
 
+// doubled is a view of view.Item whose Count returns twice the count, which
+// differs from the count for every count but 0.
+type doubled []byte
+
+// Name returns the Name of the encoding in v.
+func (v doubled) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns twice the Count of the encoding in v.
+func (v doubled) Count() (uint32, error) {
+	n, err := view.ItemView(v).Count()
+	return 2 * n, err
+}
+
 // unchecked is a view of view.Item whose Count returns the low 32 bits of a
 // varint of any range.
 type unchecked []byte
@@ -83,6 +96,11 @@ func TestView(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: nameless(nil)}, viewCheck,
 				"nameless.Name returns the value of the reference decode")
+		})
+		t.Run("fails for a view method of a number that returns another value", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: doubled(nil)}, viewCheck,
+				"doubled.Count returns the value of the reference decode")
 		})
 		t.Run("fails for a view method that returns another error", func(t *testing.T) {
 			t.Parallel()

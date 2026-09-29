@@ -23,6 +23,7 @@ var kanonSpecValues = kanontest.Spec[Values]{
 		{Name: "Hash", Number: 8},
 		{Name: "Blob", Number: 9},
 		{Name: "Span", Number: 10},
+		{Name: "Port", Number: 25},
 		{Name: "Flag", Number: 11},
 		{Name: "Weight", Number: 12},
 		{Name: "Wave", Number: 13},

@@ -2,7 +2,7 @@
 // source: record.go
 
 //kanon:numbers Item Name=1 Count=2
-//kanon:numbers Record Flag=1 Int8=2 Level=3 Uint16=4 Fixed=5 Float32=6 Float64=7 Complex=8 Wave=9 Text=10 Blob=11 Digest=12 At=13 Item=14 Label=15 Ref=16 ItemPtr=17 Children=18 Token=19 TokenPtr=20
+//kanon:numbers Record Flag=1 Int8=2 Level=3 Uint16=4 Fixed=5 Float32=6 Float64=7 Complex=8 Wave=9 Text=10 Blob=11 Digest=12 At=13 Item=14 Label=15 Ref=16 ItemPtr=17 Children=18 Token=19 TokenPtr=20 Seal=21
 
 package view
 
@@ -318,6 +318,9 @@ func (m *Record) SizeKanon() int {
 	if m.TokenPtr != nil {
 		n += 2 + wire.SizeBytes(_record_sizeCodecToken(m.TokenPtr))
 	}
+	if m.Seal != (codec.Seal{}) {
+		n += 2 + wire.SizeBytes(_record_sizeCodecSeal(&m.Seal))
+	}
 	return n
 }
 
@@ -347,6 +350,15 @@ func (m *Record) EncodeKanon(buf []byte) (int, error) {
 // two keys of one projection.
 func (m *Record) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
+	if m.Seal != (codec.Seal{}) {
+		w, err := _record_putCodecSeal(buf[:i], &m.Seal, "Record.Seal", 21)
+		if err != nil {
+			return 0, err
+		}
+		i -= w
+		i = wire.PutUvarint(buf, i, uint64(w))
+		i = wire.PutTag(buf, i, 21<<3|wire.Bytes)
+	}
 	if m.TokenPtr != nil {
 		w, err := _record_putCodecToken(buf[:i], m.TokenPtr, "Record.TokenPtr", 20)
 		if err != nil {
@@ -530,6 +542,7 @@ func (m *Record) decodeKanon(data []byte, slab string, off, depth int) error {
 	m.At = time.Time{}
 	m.Children = m.Children[:0]
 	m.Token = 0
+	m.Seal = codec.Seal{}
 	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
 	if seen[0]&(1<<0) == 0 {
 		m.Item.Reset()
@@ -869,6 +882,20 @@ func (m *Record) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
+		case 21:
+			if tag != 21<<3|wire.Bytes {
+				return seen, wire.FormatError(tag, wire.Bytes, "Record.Seal", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return seen, wire.ReadError(n, "Record.Seal", 21, off+i)
+			}
+			i += n
+			m.Seal = codec.Seal{}
+			if err := m.Seal.UnmarshalBinary(data[i : i+int(l)]); err != nil {
+				return seen, wire.UnmarshalError(err, "Record.Seal", 21, off+i)
+			}
+			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "Record", 0, off+at)
 			if err != nil {
@@ -911,6 +938,7 @@ func (m *Record) Reset() {
 	m.Children = m.Children[:0]
 	m.Token = 0
 	m.TokenPtr = nil
+	m.Seal = codec.Seal{}
 }
 
 // CloneKanon returns a copy of m that shares no memory with m or with the slab
@@ -951,6 +979,7 @@ func (m *Record) cloneKanon(c *Record) {
 	c.Children = slices.Clone(m.Children)
 	c.Token = m.Token
 	c.TokenPtr = _record_clonePtrCodecToken(m.TokenPtr)
+	c.Seal = m.Seal
 }
 
 // RecordView is the encoding of a Record. Each method reads one field by
@@ -1186,6 +1215,20 @@ func (v RecordView) TokenPtr() (codec.Token, error) {
 	return x, nil
 }
 
+// Seal returns the value of the field Seal of the encoding in v.
+func (v RecordView) Seal() (codec.Seal, error) {
+	i, err := wire.Find(v, 21<<3|wire.Bytes, "Record.Seal")
+	if err != nil || i < 0 {
+		return codec.Seal{}, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	var x codec.Seal
+	if err := x.UnmarshalBinary(v[i+n : i+n+int(l)]); err != nil {
+		return codec.Seal{}, wire.UnmarshalError(err, "Record.Seal", 21, i+n)
+	}
+	return x, nil
+}
+
 // _record_sizeSliceInt32 returns the length of the encoding of the elements of
 // x, a []int32.
 func _record_sizeSliceInt32(x []int32) int {
@@ -1206,6 +1249,30 @@ func _record_sizeCodecToken(x *codec.Token) int {
 		return 1
 	}
 	return len(enc)
+}
+
+// _record_sizeCodecSeal returns the length of the encoding of the codec.Seal
+// that x points at, and 1 when x fails to encode itself, so that the value is
+// present and its encode reports the failure.
+func _record_sizeCodecSeal(x *codec.Seal) int {
+	var scratch [128]byte
+	enc, err := x.AppendBinary(scratch[:0])
+	if err != nil {
+		return 1
+	}
+	return len(enc)
+}
+
+// _record_putCodecSeal writes the encoding of the codec.Seal that x points at
+// into the end of buf, which has room for it, and returns its length. It fails
+// when x fails to encode itself.
+func _record_putCodecSeal(buf []byte, x *codec.Seal, loc string, num int) (int, error) {
+	var scratch [128]byte
+	enc, err := x.AppendBinary(scratch[:0])
+	if err != nil {
+		return 0, wire.MarshalError(err, loc, num)
+	}
+	return copy(buf[len(buf)-len(enc):], enc), nil
 }
 
 // _record_putCodecToken writes the encoding of the codec.Token that x points at

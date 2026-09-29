@@ -76,3 +76,10 @@ func (x Blob) ValidateKanon() error {
 func (x Span) ValidateKanon() error {
 	return x.valid()
 }
+
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Port as
+// a value of its underlying type uint16 and calls ValidateKanon on every value
+// of Port that it encodes or decodes.
+func (x Port) ValidateKanon() error {
+	return x.valid()
+}

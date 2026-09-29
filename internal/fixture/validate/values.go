@@ -37,6 +37,7 @@ type Values struct {
 	Hash    Hash
 	Blob    Blob
 	Span    Span
+	Port    Port
 	Flag    Flag
 	Weight  Weight
 	Wave    Wave

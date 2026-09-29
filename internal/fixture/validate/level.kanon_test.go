@@ -53,3 +53,8 @@ func TestKanonBlob(t *testing.T) {
 func TestKanonSpan(t *testing.T) {
 	kanontest.RunValue[Span](t)
 }
+
+// TestKanonPort runs the conformance suite on Port.
+func TestKanonPort(t *testing.T) {
+	kanontest.RunValue[Port](t)
+}

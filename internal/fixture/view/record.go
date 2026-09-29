@@ -25,8 +25,8 @@ type Level int32
 // Record has a field of each type that a view reads: a bool, integers of
 // every width and the fixed-size encoding, floats, complex numbers,
 // strings, byte slices, byte arrays, a time, a struct with a view type and
-// one without, a type that encodes itself, and pointers to them. Its slice
-// has no view method.
+// one without, types that encode themselves, one of which has no encoding of
+// its zero value, and pointers to them. Its slice has no view method.
 type Record struct {
 	Flag     bool
 	Int8     int8
@@ -48,4 +48,5 @@ type Record struct {
 	Children []int32
 	Token    codec.Token
 	TokenPtr *codec.Token
+	Seal     codec.Seal
 }

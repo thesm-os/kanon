@@ -277,9 +277,10 @@ type Cloner[T any] interface {
 // Validator is the method of a named type other than a struct, which the
 // generated code encodes as its underlying type. The generated code calls
 // ValidateKanon on every value of the type that it encodes or decodes,
-// except a zero value that the encoding leaves out, and on the value that a
-// view method returns, and fails the encode, the decode or the view with
-// its error. SizeKanon, Reset and CloneKanon do not call it.
+// except a zero value that the encoding leaves out, and on the value of a
+// field that a view method reads, and fails the encode, the decode or the
+// view with its error. A view method returns the zero value for a field that
+// the encoding leaves out. SizeKanon, Reset and CloneKanon do not call it.
 type Validator interface {
 	// ValidateKanon returns nil for a value that kanon encodes and decodes,
 	// and the reason that it rejects any other value.
@@ -521,7 +522,9 @@ from the view without allocating.
 A field of a `kanon.Validator` returns the value of its underlying type converted to its type,
 after its `ValidateKanon` accepts the value: a byte slice aliases the view, and a string is a
 copy of the bytes, which allocates. An error of `ValidateKanon` is the cause of the
-`*DecodeError` at the offset of the value.
+`*DecodeError` at the offset of the value. A field that the encoding does not contain returns
+the zero value without a call of `ValidateKanon`, as an opaque field returns it without a call
+of its decode method.
 
 A view checks the tags and lengths of the encoding and the wire format of the field that a
 method reads. It does not check the rest of the schema, so a caller that needs a full check
