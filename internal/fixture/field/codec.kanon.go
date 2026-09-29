@@ -33,23 +33,23 @@ func (m *Codecs) SizeKanon() int {
 		return 0
 	}
 	n := 0
-	if s := _codec_sizeCodecToken(&m.Token); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Token != 0 {
+		n += 1 + wire.SizeBytes(_codec_sizeCodecToken(&m.Token))
 	}
-	if s := _codec_sizeCodecTicket(&m.Ticket); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Ticket != 0 {
+		n += 1 + wire.SizeBytes(_codec_sizeCodecTicket(&m.Ticket))
 	}
-	if s := _codec_sizeCodecGrade(&m.Grade); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Grade != 0 {
+		n += 1 + wire.SizeBytes(_codec_sizeCodecGrade(&m.Grade))
 	}
-	if s := _codec_sizeCodecWord(&m.Word); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Word != (codec.Word{}) {
+		n += 1 + wire.SizeBytes(_codec_sizeCodecWord(&m.Word))
 	}
-	if s := _codec_sizeCodecStamp(&m.Stamp); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Stamp != (codec.Stamp{}) {
+		n += 1 + wire.SizeBytes(_codec_sizeCodecStamp(&m.Stamp))
 	}
-	if s := _codec_sizeExternalCode(&m.Code); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Code != 0 {
+		n += 1 + wire.SizeBytes(_codec_sizeExternalCode(&m.Code))
 	}
 	return n
 }
@@ -79,44 +79,56 @@ func (m *Codecs) EncodeKanon(buf []byte) (int, error) {
 // has a key with a NaN component or two keys of one projection.
 func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
-	if w, err := _codec_putExternalCode(buf[:i], &m.Code, "Codecs.Code", 6); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Code != 0 {
+		w, err := _codec_putExternalCode(buf[:i], &m.Code, "Codecs.Code", 6)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 6<<3|wire.Bytes)
 	}
-	if w, err := _codec_putCodecStamp(buf[:i], &m.Stamp, "Codecs.Stamp", 5); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Stamp != (codec.Stamp{}) {
+		w, err := _codec_putCodecStamp(buf[:i], &m.Stamp, "Codecs.Stamp", 5)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 5<<3|wire.Bytes)
 	}
-	if w, err := _codec_putCodecWord(buf[:i], &m.Word, "Codecs.Word", 4); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Word != (codec.Word{}) {
+		w, err := _codec_putCodecWord(buf[:i], &m.Word, "Codecs.Word", 4)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 4<<3|wire.Bytes)
 	}
-	if w, err := _codec_putCodecGrade(buf[:i], &m.Grade, "Codecs.Grade", 3); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Grade != 0 {
+		w, err := _codec_putCodecGrade(buf[:i], &m.Grade, "Codecs.Grade", 3)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 3<<3|wire.Bytes)
 	}
-	if w, err := _codec_putCodecTicket(buf[:i], &m.Ticket, "Codecs.Ticket", 2); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Ticket != 0 {
+		w, err := _codec_putCodecTicket(buf[:i], &m.Ticket, "Codecs.Ticket", 2)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 2<<3|wire.Bytes)
 	}
-	if w, err := _codec_putCodecToken(buf[:i], &m.Token, "Codecs.Token", 1); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Token != 0 {
+		w, err := _codec_putCodecToken(buf[:i], &m.Token, "Codecs.Token", 1)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 1<<3|wire.Bytes)

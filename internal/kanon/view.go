@@ -24,8 +24,9 @@ func (e *emitter) viewType(m *target) {
 		"encoding, without decoding the rest, and returns the zero value when the encoding has no such " +
 		"field, and the last value when it has several. A method of a struct fails with " +
 		"kanon.ErrRepeatedView for a second occurrence instead, since a decode merges the occurrences. The " +
-		"bytes that a method returns for a string, a byte slice and a struct alias the view, and the offsets " +
-		"of its errors are offsets in the view.")
+		"bytes that a method returns for a string, a byte slice and a struct alias the view. A value of a " +
+		"type that encodes itself decodes with the method of its type, and the offsets of the errors of a " +
+		"method are offsets in the view.")
 	e.line("type %s []byte", name)
 	e.line("")
 	for _, f := range m.fields {
@@ -40,9 +41,11 @@ func (e *emitter) viewType(m *target) {
 // the value of every occurrence of the field, so the value that it returns
 // is complete, and the method checks only what the type of the field adds:
 // the range of an integer, the length of an array and of a complex number,
-// and the fields of a time. The method of a struct finds the field with
+// and the fields of a time. A type that encodes itself decodes the bytes of
+// the field with the decode method of its family, whose error is the cause
+// of the error of the method. The method of a struct finds the field with
 // wire.FindOne, which fails for a second occurrence, since one byte slice
-// cannot hold the merge of two encodings.
+// cannot contain the merge of two encodings.
 func (e *emitter) viewMethod(m *target, view string, f *field) {
 	v := f.val
 	if v.kind == kindPointer {
@@ -90,6 +93,13 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 		e.line("var x %s", result)
 		e.line("copy(x[:], v[i+n:])")
 		e.line("return x, nil")
+	case kindBinary:
+		e.line("l, n := %sUvarint(v[i:])", w)
+		e.line("var x %s", result)
+		e.line("if err := %s(v[i+n : i+n+int(l)]); err != nil {", method("x", v.self.unmarshaler))
+		e.fail(w + "UnmarshalError(err, " + loc + ", " + num + ", i+n)")
+		e.line("}")
+		e.line("return x, nil")
 	default:
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.line("return %s(v[i+n : i+n+int(l)]), nil", result)
@@ -127,15 +137,15 @@ func (e *emitter) viewResult(v *value) string {
 }
 
 // viewed reports whether a view type has a method for a field whose value is
-// v: a bool, a number, a string, a byte slice, a byte array, a time or a
-// struct, or a pointer to one of them.
+// v: a bool, a number, a string, a byte slice, a byte array, a time, a struct
+// or a type that encodes itself, or a pointer to one of them.
 func viewed(v *value) bool {
 	if v.kind == kindPointer {
 		v = v.elem
 	}
 	switch v.kind {
 	case kindBool, kindInt, kindUint, kindFixed32, kindFixed64, kindFloat32, kindFloat64, kindComplex64,
-		kindComplex128, kindString, kindBytes, kindByteArray, kindTime, kindStruct:
+		kindComplex128, kindString, kindBytes, kindByteArray, kindTime, kindStruct, kindBinary:
 		return true
 	default:
 		return false

@@ -41,8 +41,8 @@ func (m *Label) SizeKanon() int {
 	if m.Rank != 0 {
 		n += 1 + wire.SizeUvarint(wire.Zigzag(int64(m.Rank)))
 	}
-	if s := _label_sizeMark(&m.Mark); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Mark != 0 {
+		n += 1 + wire.SizeBytes(_label_sizeMark(&m.Mark))
 	}
 	return n
 }
@@ -72,9 +72,11 @@ func (m *Label) EncodeKanon(buf []byte) (int, error) {
 // has a key with a NaN component or two keys of one projection.
 func (m *Label) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
-	if w, err := _label_putMark(buf[:i], &m.Mark, "Label.Mark", 4); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Mark != 0 {
+		w, err := _label_putMark(buf[:i], &m.Mark, "Label.Mark", 4)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 4<<3|wire.Bytes)

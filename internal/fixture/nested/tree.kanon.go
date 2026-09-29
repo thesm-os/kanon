@@ -410,18 +410,32 @@ func _tree_putMapInt32Tree(buf []byte, x map[int32]Tree) int {
 // the end of buf, which has room for it, and returns its length.
 func _tree_putMapStringPtrTree(buf []byte, x map[string]*Tree) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _tree_putPtrTree(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, *Tree]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _tree_putPtrTree(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _tree_putPtrTree(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i

@@ -8,14 +8,17 @@
 // [Note] appends text of any length, on both sides of the stack array that
 // the generated code appends into. [Parity] encodes itself through
 // MarshalBinary to one bit, so that two map keys of it can have one
-// projection. The encoding of each fails for one value, and the decoding
-// for malformed data, so that the generated tests reach the error branches
-// of the code that calls them. [Codecs] has a field of each, and
-// [Appenders] a field of each with an append method.
+// projection. [Seal] has no encoding for its zero value, which a field of
+// it leaves out. == reports -0.0 equal to +0.0 in a [Reading] and does not
+// apply to a [Blob]. A field of either is present when its encoding has
+// bytes. The encoding of each type fails for one value and the decoding for
+// malformed data, so that the generated tests run the error branches of the
+// code that calls them. [Codecs] has a field of each, and [Appenders] a
+// field of each with an append method.
 //
 // # Dependency position
 //
-// codec imports encoding/binary, errors, math, strings and unicode/utf8
-// from the standard library, and its generated code the kanon runtime. The
-// fixtures import it.
+// codec imports encoding/binary, errors, math, slices, strings and
+// unicode/utf8 from the standard library, and its generated code the kanon
+// runtime. The fixtures import it.
 package codec

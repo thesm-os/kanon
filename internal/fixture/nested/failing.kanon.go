@@ -35,8 +35,8 @@ func (m *Failing) SizeKanon() int {
 		return 0
 	}
 	n := 0
-	if s := _failing_sizeCodecWord(&m.Word); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Word != (codec.Word{}) {
+		n += 1 + wire.SizeBytes(_failing_sizeCodecWord(&m.Word))
 	}
 	return n
 }
@@ -66,9 +66,11 @@ func (m *Failing) EncodeKanon(buf []byte) (int, error) {
 // has a key with a NaN component or two keys of one projection.
 func (m *Failing) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
-	if w, err := _failing_putCodecWord(buf[:i], &m.Word, "Failing.Word", 1); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Word != (codec.Word{}) {
+		w, err := _failing_putCodecWord(buf[:i], &m.Word, "Failing.Word", 1)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 1<<3|wire.Bytes)

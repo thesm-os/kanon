@@ -8,13 +8,16 @@ package codec
 // Codecs has a field of each type of the package, so that its generated
 // tests call every method of those types.
 type Codecs struct {
-	Token  Token
-	Ticket Ticket
-	Grade  Grade
-	Word   Word
-	Stamp  Stamp
-	Note   Note
-	Parity Parity
+	Token   Token
+	Ticket  Ticket
+	Grade   Grade
+	Word    Word
+	Stamp   Stamp
+	Note    Note
+	Parity  Parity
+	Seal    Seal
+	Reading Reading
+	Blob    Blob
 }
 
 // Appenders has a field of each type of the package with an append method,
@@ -25,4 +28,5 @@ type Appenders struct {
 	Grade Grade
 	Stamp Stamp
 	Note  Note
+	Seal  Seal
 }

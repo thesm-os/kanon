@@ -78,8 +78,8 @@ func (m *Variants) SizeKanon() int {
 	if !m.Deadline.IsZero() || m.Deadline.Location() != time.UTC {
 		n += 1 + wire.SizeBytes(wire.SizeTime(m.Deadline))
 	}
-	if s := _variant_sizeCodecToken(&m.Token); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Token != 0 {
+		n += 1 + wire.SizeBytes(_variant_sizeCodecToken(&m.Token))
 	}
 	if m.Rank != 0 {
 		n += 1 + wire.SizeUvarint(wire.Zigzag(int64(m.Rank)))
@@ -126,9 +126,11 @@ func (m *Variants) encodeKanon(buf []byte) (int, error) {
 		i = wire.PutUvarint(buf, i, wire.Zigzag(int64(m.Rank)))
 		i = wire.PutTag(buf, i, 11<<3|wire.Varint)
 	}
-	if w, err := _variant_putCodecToken(buf[:i], &m.Token, "Variants.Token", 10); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Token != 0 {
+		w, err := _variant_putCodecToken(buf[:i], &m.Token, "Variants.Token", 10)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 10<<3|wire.Bytes)
@@ -2238,18 +2240,32 @@ func _variant_putSliceInt32(buf []byte, x []int32) int {
 // the end of buf, which has room for it, and returns its length.
 func _variant_putMapStringInt32(buf []byte, x map[string]int32) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mv)))
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, int32]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(pairs[k].Value)))
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mv)))
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -2293,18 +2309,32 @@ func _variant_putSlicePtrSquare(buf []byte, x []*Square) int {
 // its length.
 func _variant_putMapStringPtrSquare(buf []byte, x map[string]*Square) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _variant_putPtrSquare(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, *Square]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _variant_putPtrSquare(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _variant_putPtrSquare(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i

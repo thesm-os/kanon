@@ -10,8 +10,9 @@ import (
 
 //go:generate go tool kanon -type=Codecs
 
-// Codecs has a field of each type that encodes itself. A field encodes when
-// its encoding has bytes.
+// Codecs has a field of each type that encodes itself. == compares every bit
+// of each of these types, so a field encodes when it is not the zero value
+// of its type.
 type Codecs struct {
 	Token  codec.Token
 	Ticket codec.Ticket

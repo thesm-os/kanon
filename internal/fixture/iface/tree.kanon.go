@@ -449,24 +449,44 @@ func _tree_putSliceAny(buf []byte, x []any, loc string, num int) (int, error) {
 // value that fails to encode, which loc and num locate.
 func _tree_putMapStringAny(buf []byte, x map[string]any, loc string, num int) (int, error) {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		{
-			w, err := _tree_putAny(buf[:i], mv, loc, num)
-			if err != nil {
-				return 0, err
-			}
-			i -= w
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, any]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
 		}
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			{
+				w, err := _tree_putAny(buf[:i], pairs[k].Value, loc, num)
+				if err != nil {
+					return 0, err
+				}
+				i -= w
+			}
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			{
+				w, err := _tree_putAny(buf[:i], mv, loc, num)
+				if err != nil {
+					return 0, err
+				}
+				i -= w
+			}
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i, nil

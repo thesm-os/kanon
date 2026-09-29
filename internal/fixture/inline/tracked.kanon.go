@@ -458,8 +458,8 @@ func _tracked_sizeHolder(m *Holder) int {
 	if _tracked_presentArray2SliceInt32(&m.Lists) {
 		n += 1 + wire.SizeBytes(_tracked_sizeArray2SliceInt32(&m.Lists))
 	}
-	if s := _tracked_sizeCodecWord(&m.Word); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Word != (codec.Word{}) {
+		n += 1 + wire.SizeBytes(_tracked_sizeCodecWord(&m.Word))
 	}
 	return n
 }
@@ -472,9 +472,11 @@ func _tracked_sizeHolder(m *Holder) int {
 // projection.
 func _tracked_putHolder(buf []byte, m *Holder) (int, error) {
 	i := len(buf)
-	if w, err := _tracked_putCodecWord(buf[:i], &m.Word, "Holder.Word", 5); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Word != (codec.Word{}) {
+		w, err := _tracked_putCodecWord(buf[:i], &m.Word, "Holder.Word", 5)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 5<<3|wire.Bytes)
@@ -628,18 +630,32 @@ func _tracked_putArray2SliceInt32(buf []byte, x *[2][]int32) int {
 // the end of buf, which has room for it, and returns its length.
 func _tracked_putMapStringInt32(buf []byte, x map[string]int32) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mv)))
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, int32]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(pairs[k].Value)))
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mv)))
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i

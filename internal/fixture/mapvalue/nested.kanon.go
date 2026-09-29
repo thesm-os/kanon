@@ -582,18 +582,32 @@ func _nested_sizeGraph(x Graph) int {
 // which has room for it, and returns its length.
 func _nested_putGraph(buf []byte, x Graph) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putGraph(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, Graph]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putGraph(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putGraph(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -630,24 +644,44 @@ func _nested_putMapStringHolder(buf []byte, x map[string]Holder) int {
 // num locate.
 func _nested_putMapStringPtrExternalLabel(buf []byte, x map[string]*external.Label, loc string, num int) (int, error) {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		{
-			w, err := _nested_putPtrExternalLabel(buf[:i], mv, loc, num)
-			if err != nil {
-				return 0, err
-			}
-			i -= w
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, *external.Label]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
 		}
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			{
+				w, err := _nested_putPtrExternalLabel(buf[:i], pairs[k].Value, loc, num)
+				if err != nil {
+					return 0, err
+				}
+				i -= w
+			}
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			{
+				w, err := _nested_putPtrExternalLabel(buf[:i], mv, loc, num)
+				if err != nil {
+					return 0, err
+				}
+				i -= w
+			}
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i, nil
@@ -657,18 +691,32 @@ func _nested_putMapStringPtrExternalLabel(buf []byte, x map[string]*external.Lab
 // into the end of buf, which has room for it, and returns its length.
 func _nested_putMapStringPtrInner(buf []byte, x map[string]*Inner) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putPtrInner(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, *Inner]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putPtrInner(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putPtrInner(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -678,18 +726,32 @@ func _nested_putMapStringPtrInner(buf []byte, x map[string]*Inner) int {
 // into the end of buf, which has room for it, and returns its length.
 func _nested_putMapStringPtrInt32(buf []byte, x map[string]*int32) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putPtrInt32(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, *int32]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putPtrInt32(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putPtrInt32(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -744,17 +806,30 @@ func _nested_putMapStringArray3Int32(buf []byte, x map[string][3]int32) int {
 // returns its length.
 func _nested_putMapInt32MapStringBool(buf []byte, x map[int32]map[string]bool) int {
 	i := len(buf)
-	var arr [16]int32
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putMapStringBool(buf[:i], mv)
-		i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[int32, map[string]bool]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putMapStringBool(buf[:i], pairs[k].Value)
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]int32, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putMapStringBool(buf[:i], mv)
+			i = wire.PutUvarint(buf, i, wire.Zigzag(int64(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -765,18 +840,32 @@ func _nested_putMapInt32MapStringBool(buf []byte, x map[int32]map[string]bool) i
 // returns its length.
 func _nested_putMapStringMapInt64String(buf []byte, x map[string]map[int64]string) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putMapInt64String(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, map[int64]string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putMapInt64String(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putMapInt64String(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -787,18 +876,32 @@ func _nested_putMapStringMapInt64String(buf []byte, x map[string]map[int64]strin
 // its length.
 func _nested_putMapStringSliceInt32(buf []byte, x map[string][]int32) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i -= _nested_putSliceInt32(buf[:i], mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, []int32]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i -= _nested_putSliceInt32(buf[:i], pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i -= _nested_putSliceInt32(buf[:i], mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -1694,18 +1797,32 @@ func _nested_putArray3Int32(buf []byte, x *[3]int32) int {
 // the end of buf, which has room for it, and returns its length.
 func _nested_putMapStringBool(buf []byte, x map[string]bool) int {
 	i := len(buf)
-	var arr [16]string
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutBool(buf, i, mv)
-		i = wire.PutRaw(buf, i, mk)
-		i = wire.PutUvarint(buf, i, uint64(len(mk)))
+	if len(x) <= 16 {
+		type pair = wire.Pair[string, bool]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutBool(buf, i, pairs[k].Value)
+			i = wire.PutRaw(buf, i, pairs[k].Key)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Key)))
+		}
+	} else {
+		keys := make([]string, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutBool(buf, i, mv)
+			i = wire.PutRaw(buf, i, mk)
+			i = wire.PutUvarint(buf, i, uint64(len(mk)))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -1715,18 +1832,32 @@ func _nested_putMapStringBool(buf []byte, x map[string]bool) int {
 // the end of buf, which has room for it, and returns its length.
 func _nested_putMapInt64String(buf []byte, x map[int64]string) int {
 	i := len(buf)
-	var arr [16]int64
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, wire.Zigzag(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[int64, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, wire.Zigzag(pairs[k].Key))
+		}
+	} else {
+		keys := make([]int64, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, wire.Zigzag(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i

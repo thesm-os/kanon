@@ -30,7 +30,7 @@ var labelKey = kanontest.Struct{
 }
 
 // recordSpec describes view.Record, a struct of every scalar type, a time,
-// nested structs and pointers.
+// nested structs, a type that encodes itself and pointers.
 var recordSpec = kanontest.Spec[view.Record]{Fields: []kanontest.Field{
 	{Name: "Flag", Number: 1},
 	{Name: "Int8", Number: 2},
@@ -50,6 +50,8 @@ var recordSpec = kanontest.Spec[view.Record]{Fields: []kanontest.Field{
 	{Name: "Ref", Number: 16},
 	{Name: "ItemPtr", Number: 17},
 	{Name: "Children", Number: 18},
+	{Name: "Token", Number: 19},
+	{Name: "TokenPtr", Number: 20},
 }}
 
 // fields returns the fields of a Spec named names, numbered from 1 in that

@@ -40,8 +40,8 @@ func (m *Embedded) SizeKanon() int {
 	if m.Label != nil {
 		n += 1 + wire.SizeBytes(m.Label.SizeKanon())
 	}
-	if s := _embedded_sizeCodecToken(&m.Token); s > 0 {
-		n += 1 + wire.SizeBytes(s)
+	if m.Token != 0 {
+		n += 1 + wire.SizeBytes(_embedded_sizeCodecToken(&m.Token))
 	}
 	if m.Note != "" {
 		n += 1 + wire.SizeBytes(len(m.Note))
@@ -79,9 +79,11 @@ func (m *Embedded) encodeKanon(buf []byte) (int, error) {
 		i = wire.PutUvarint(buf, i, uint64(len(m.Note)))
 		i = wire.PutTag(buf, i, 4<<3|wire.Bytes)
 	}
-	if w, err := _embedded_putCodecToken(buf[:i], &m.Token, "Embedded.Token", 3); err != nil {
-		return 0, err
-	} else if w > 0 {
+	if m.Token != 0 {
+		w, err := _embedded_putCodecToken(buf[:i], &m.Token, "Embedded.Token", 3)
+		if err != nil {
+			return 0, err
+		}
 		i -= w
 		i = wire.PutUvarint(buf, i, uint64(w))
 		i = wire.PutTag(buf, i, 3<<3|wire.Bytes)

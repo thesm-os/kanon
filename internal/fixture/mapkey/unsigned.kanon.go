@@ -638,18 +638,32 @@ func _unsigned_sizeMapHandleString(x map[Handle]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapHandleString(buf []byte, x map[Handle]string) int {
 	i := len(buf)
-	var arr [16]Handle
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Handle, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Handle, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -659,18 +673,32 @@ func _unsigned_putMapHandleString(buf []byte, x map[Handle]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapIndexString(buf []byte, x map[Index]string) int {
 	i := len(buf)
-	var arr [16]Index
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Index, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Index, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -680,18 +708,32 @@ func _unsigned_putMapIndexString(buf []byte, x map[Index]string) int {
 // the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapSizeString(buf []byte, x map[Size]string) int {
 	i := len(buf)
-	var arr [16]Size
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Size, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Size, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -701,18 +743,32 @@ func _unsigned_putMapSizeString(buf []byte, x map[Size]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapCountString(buf []byte, x map[Count]string) int {
 	i := len(buf)
-	var arr [16]Count
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Count, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Count, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -722,18 +778,32 @@ func _unsigned_putMapCountString(buf []byte, x map[Count]string) int {
 // the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapPortString(buf []byte, x map[Port]string) int {
 	i := len(buf)
-	var arr [16]Port
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Port, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Port, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -743,18 +813,32 @@ func _unsigned_putMapPortString(buf []byte, x map[Port]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapStatusString(buf []byte, x map[Status]string) int {
 	i := len(buf)
-	var arr [16]Status
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[Status, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]Status, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -764,18 +848,32 @@ func _unsigned_putMapStatusString(buf []byte, x map[Status]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUintptrString(buf []byte, x map[uintptr]string) int {
 	i := len(buf)
-	var arr [16]uintptr
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[uintptr, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]uintptr, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -785,18 +883,32 @@ func _unsigned_putMapUintptrString(buf []byte, x map[uintptr]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUint64String(buf []byte, x map[uint64]string) int {
 	i := len(buf)
-	var arr [16]uint64
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, mk)
+	if len(x) <= 16 {
+		type pair = wire.Pair[uint64, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, pairs[k].Key)
+		}
+	} else {
+		keys := make([]uint64, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, mk)
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -806,18 +918,32 @@ func _unsigned_putMapUint64String(buf []byte, x map[uint64]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUint32String(buf []byte, x map[uint32]string) int {
 	i := len(buf)
-	var arr [16]uint32
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[uint32, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]uint32, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -827,18 +953,32 @@ func _unsigned_putMapUint32String(buf []byte, x map[uint32]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUint16String(buf []byte, x map[uint16]string) int {
 	i := len(buf)
-	var arr [16]uint16
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[uint16, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]uint16, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -848,18 +988,32 @@ func _unsigned_putMapUint16String(buf []byte, x map[uint16]string) int {
 // into the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUint8String(buf []byte, x map[uint8]string) int {
 	i := len(buf)
-	var arr [16]uint8
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[uint8, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]uint8, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i
@@ -869,18 +1023,32 @@ func _unsigned_putMapUint8String(buf []byte, x map[uint8]string) int {
 // the end of buf, which has room for it, and returns its length.
 func _unsigned_putMapUintString(buf []byte, x map[uint]string) int {
 	i := len(buf)
-	var arr [16]uint
-	keys := arr[:0]
-	for mk := range x {
-		keys = append(keys, mk)
-	}
-	slices.Sort(keys)
-	for k := len(keys) - 1; k >= 0; k-- {
-		mk := keys[k]
-		mv := x[mk]
-		i = wire.PutRaw(buf, i, mv)
-		i = wire.PutUvarint(buf, i, uint64(len(mv)))
-		i = wire.PutUvarint(buf, i, uint64(mk))
+	if len(x) <= 16 {
+		type pair = wire.Pair[uint, string]
+		var arr [16]pair
+		pairs := arr[:0]
+		for mk, mv := range x {
+			pairs = append(pairs, pair{Key: mk, Value: mv})
+		}
+		wire.SortPairs(pairs)
+		for k := len(pairs) - 1; k >= 0; k-- {
+			i = wire.PutRaw(buf, i, pairs[k].Value)
+			i = wire.PutUvarint(buf, i, uint64(len(pairs[k].Value)))
+			i = wire.PutUvarint(buf, i, uint64(pairs[k].Key))
+		}
+	} else {
+		keys := make([]uint, 0, len(x))
+		for mk := range x {
+			keys = append(keys, mk)
+		}
+		slices.Sort(keys)
+		for k := len(keys) - 1; k >= 0; k-- {
+			mk := keys[k]
+			mv := x[mk]
+			i = wire.PutRaw(buf, i, mv)
+			i = wire.PutUvarint(buf, i, uint64(len(mv)))
+			i = wire.PutUvarint(buf, i, uint64(mk))
+		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
 	return len(buf) - i

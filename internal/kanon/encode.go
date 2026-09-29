@@ -167,6 +167,18 @@ func (e *emitter) putField(m *target, f *field) {
 	switch v.kind {
 	case kindStruct, kindBinary:
 		call := e.contentCall(v, x, loc, num)
+		if zeroAbsent(v) {
+			e.line("if %s {", e.present(v, x))
+			e.line("w, err := %s", call)
+			e.line("if err != nil {")
+			e.line("return 0, err")
+			e.line("}")
+			e.line("i -= w")
+			e.line("i = %sPutUvarint(buf, i, uint64(w))", e.wire())
+			e.putTag(f.num, wireBytes)
+			e.line("}")
+			return
+		}
 		if v.fails {
 			e.line("if w, err := %s; err != nil {", call)
 			e.line("return 0, err")
@@ -197,7 +209,8 @@ func (e *emitter) putField(m *target, f *field) {
 // its discriminator selects, before buf[i]: its value whatever it is, and
 // the zero value of the type that it points at for a nil pointer, as
 // [emitter.memberTarget] sets it. The one value of a type that
-// [value.zeroOnly] reports is a constant, which reads no target.
+// [value.zeroOnly] reports is a constant, so its statements do not read a
+// target.
 func (e *emitter) putMember(m *target, f *field) {
 	x, v, loc, num := "m."+f.name, f.val, fieldLoc(m, f), strconv.Itoa(f.num)
 	if v.kind != kindPointer {
@@ -454,11 +467,13 @@ func (e *emitter) putHelper(name string, v *value) {
 // [classifier.single] reports it, allows one entry at most, which needs no
 // order, and wire.OneKey fails a map with two such keys of an ambiguous key
 // type, as [emitter.ambiguous] reports. Bool keys write true, then false.
-// The keys that [lookupable] reports sort in a stack array of mapKeyBuffer
-// keys, and a lookup finds the value of each. Any other key sorts with its
-// value, as a [wire.Pair], in a stack array of mapKeyBuffer pairs. The
-// sorted keys pass the checks of [emitter.keyChecks] before the first one
-// writes, and the loop writes the entries while err is nil.
+// A key that [lookupable] does not report sorts with its value, as a
+// [wire.Pair], in a stack array of mapKeyBuffer pairs. An integer or string
+// key with a value that [small] reports writes as [emitter.putOrderedMap]
+// states. Any other key sorts in a stack array of mapKeyBuffer keys, and a
+// lookup finds the value of each. The sorted keys pass the checks of
+// [emitter.keyChecks] before the first one writes, and the loop writes the
+// entries while err is nil.
 func (e *emitter) putMap(v *value) bool {
 	mk, mv := loopVar(v.key, "mk"), loopVar(v.elem, "mv")
 	if e.cls.single(v.key) {
@@ -506,6 +521,10 @@ func (e *emitter) putMap(v *value) bool {
 		e.line("}")
 		return checked
 	}
+	if ordered(v.key) && small(v.elem) && mv != blankName {
+		e.putOrderedMap(v)
+		return false
+	}
 	e.line("var arr [%d]%s", mapKeyBuffer, e.p.typ(v.key.typ))
 	e.line("keys := arr[:0]")
 	e.line("for mk := range x {")
@@ -528,6 +547,58 @@ func (e *emitter) putMap(v *value) bool {
 	e.keyPutScoped(v.key, "mk")
 	e.line("}")
 	return checked
+}
+
+// putOrderedMap writes the statements that write the map x of v, whose keys
+// are integers or strings and whose values [small] reports. Such keys are
+// neither floats nor ambiguous, so no check precedes the first one. A map of
+// at most mapKeyBuffer entries sorts its entries as [wire.Pair] values in a
+// stack array with wire.SortPairs, so that no lookup finds a value after the
+// sort. A larger map sorts its keys with slices.Sort in a slice of its
+// length, which the encode allocates, and a lookup finds the value of each
+// key, since a lookup of an integer or string key costs less than a
+// comparison through a function value, which the sort of pairs would call.
+func (e *emitter) putOrderedMap(v *value) {
+	w := e.wire()
+	key := e.p.typ(v.key.typ)
+	e.line("if len(x) <= %d {", mapKeyBuffer)
+	e.line("type pair = %sPair[%s, %s]", w, key, e.p.typ(v.elem.typ))
+	e.line("var arr [%d]pair", mapKeyBuffer)
+	e.line("pairs := arr[:0]")
+	e.line("for mk, mv := range x {")
+	e.line("pairs = append(pairs, pair{Key: mk, Value: mv})")
+	e.line("}")
+	e.line("%sSortPairs(pairs)", w)
+	e.line("for k := len(pairs) - 1; k >= 0; k-- {")
+	e.putScoped(v.elem, "pairs[k].Value")
+	e.keyPutScoped(v.key, "pairs[k].Key")
+	e.line("}")
+	e.line("} else {")
+	e.line("keys := make([]%s, 0, len(x))", key)
+	e.line("for mk := range x {")
+	e.line("keys = append(keys, mk)")
+	e.line("}")
+	e.line("%s.Sort(keys)", e.std(slicesPath))
+	e.line("for k := len(keys) - 1; k >= 0; k-- {")
+	e.line("mk := keys[k]")
+	e.line("mv := x[mk]")
+	e.putScoped(v.elem, "mv")
+	e.keyPutScoped(v.key, "mk")
+	e.line("}")
+	e.line("}")
+}
+
+// small reports whether a value of v is small enough that its copy into a
+// [wire.Pair] costs less than the lookup of the value after a sort of the
+// keys: a value of any kind but a struct, an array, a byte array and a type
+// that encodes itself, whose sizes have no bound.
+func small(v *value) bool {
+	switch v.kind {
+	case kindStruct, kindArray, kindByteArray, kindBinary:
+		return false
+	default:
+		return true
+	}
 }
 
 // whileNoError returns the operand of && that the condition of a loop

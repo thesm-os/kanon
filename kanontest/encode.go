@@ -161,9 +161,11 @@ func (e *encoder) appendSelected(b []byte, l *layout, f *field, x reflect.Value)
 // appendField appends the field f, whose value is x and whose errors loc
 // names, when it is present or a selected union member: its tag and the
 // value that the tag introduces, with a length before a pointer and an
-// interface there. The value of a struct and of a type that encodes itself
-// encodes before its presence is known, as the generated code encodes it,
-// so its failure counts when the value has no bytes.
+// interface there. A type that encodes itself and whose == compares every
+// bit is absent at its zero value, which does not encode. The value of a
+// struct and of any other type that encodes itself encodes before its
+// presence is known, as the generated code encodes it, so its failure
+// counts when the value has no bytes.
 func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, member bool) []byte {
 	s := f.shape
 	if s.kind == kindPointer {
@@ -174,6 +176,11 @@ func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, m
 	}
 	var value []byte
 	if member {
+		value = e.appendValue(nil, s, x, loc, f.Number)
+	} else if s.zeroAbsent {
+		if x.IsZero() {
+			return b
+		}
 		value = e.appendValue(nil, s, x, loc, f.Number)
 	} else if s.kind == kindStruct || s.kind == kindInline || s.kind == kindBinary {
 		if value = e.appendValue(nil, s, x, loc, f.Number); len(value) == 1 {
@@ -195,12 +202,13 @@ func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, m
 // present: a bool when it is true, a number when a bit of it is set, a
 // string, a slice and a map with an element, a time that is not at the zero
 // instant or not in UTC, an array with a present element, a pointer and an
-// interface that are not nil, and any other value whose encoding has bytes
-// after its length. In a map key, a float and a complex number are present
-// when they are not zero, since the projection writes -0.0 as +0.0. A value
-// that fails to encode itself has no bytes, and its failure is not
-// recorded: the generated code sizes it without an error. loc and num
-// locate the field of x.
+// interface that are not nil, a type that encodes itself and whose ==
+// compares every bit when it is not its zero value, and any other value
+// whose encoding has bytes after its length. In a map key, a float and a
+// complex number are present when they are not zero, since the projection
+// writes -0.0 as +0.0. A value that fails to encode itself has no bytes, and
+// its failure is not recorded: the generated code sizes it without an error.
+// loc and num locate the field of x.
 func (e *encoder) present(s *shape, x reflect.Value, loc string, num int) bool {
 	switch s.kind {
 	case kindFloat:
@@ -227,6 +235,9 @@ func (e *encoder) present(s *shape, x reflect.Value, loc string, num int) bool {
 		t, _ := reflect.TypeAssert[time.Time](x)
 		return !t.IsZero() || t.Location() != time.UTC
 	case kindStruct, kindInline, kindBinary:
+		if s.zeroAbsent {
+			return !x.IsZero()
+		}
 		scratch := &encoder{r: e.r, mode: e.mode, key: e.key}
 		return len(scratch.appendValue(nil, s, x, loc, num)) > 1
 	case kindPointer, kindInterface:

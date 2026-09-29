@@ -33,22 +33,22 @@ func (m *Codecs) SizeKanon() int {
 		return 0
 	}
 	n := 0
-	if _codec_presentArray2CodecToken(&m.Token) {
+	if m.Token != ([2]codec.Token{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2CodecToken(&m.Token))
 	}
-	if _codec_presentArray2CodecTicket(&m.Ticket) {
+	if m.Ticket != ([2]codec.Ticket{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2CodecTicket(&m.Ticket))
 	}
-	if _codec_presentArray2CodecGrade(&m.Grade) {
+	if m.Grade != ([2]codec.Grade{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2CodecGrade(&m.Grade))
 	}
-	if _codec_presentArray2CodecWord(&m.Word) {
+	if m.Word != ([2]codec.Word{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2CodecWord(&m.Word))
 	}
-	if _codec_presentArray2CodecStamp(&m.Stamp) {
+	if m.Stamp != ([2]codec.Stamp{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2CodecStamp(&m.Stamp))
 	}
-	if _codec_presentArray2ExternalCode(&m.Code) {
+	if m.Code != ([2]external.Code{}) {
 		n += 1 + wire.SizeBytes(_codec_sizeArray2ExternalCode(&m.Code))
 	}
 	return n
@@ -79,7 +79,7 @@ func (m *Codecs) EncodeKanon(buf []byte) (int, error) {
 // has a key with a NaN component or two keys of one projection.
 func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
-	if _codec_presentArray2ExternalCode(&m.Code) {
+	if m.Code != ([2]external.Code{}) {
 		w, err := _codec_putArray2ExternalCode(buf[:i], &m.Code, "Codecs.Code", 6)
 		if err != nil {
 			return 0, err
@@ -87,7 +87,7 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 		i -= w
 		i = wire.PutTag(buf, i, 6<<3|wire.Bytes)
 	}
-	if _codec_presentArray2CodecStamp(&m.Stamp) {
+	if m.Stamp != ([2]codec.Stamp{}) {
 		w, err := _codec_putArray2CodecStamp(buf[:i], &m.Stamp, "Codecs.Stamp", 5)
 		if err != nil {
 			return 0, err
@@ -95,7 +95,7 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 		i -= w
 		i = wire.PutTag(buf, i, 5<<3|wire.Bytes)
 	}
-	if _codec_presentArray2CodecWord(&m.Word) {
+	if m.Word != ([2]codec.Word{}) {
 		w, err := _codec_putArray2CodecWord(buf[:i], &m.Word, "Codecs.Word", 4)
 		if err != nil {
 			return 0, err
@@ -103,7 +103,7 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 		i -= w
 		i = wire.PutTag(buf, i, 4<<3|wire.Bytes)
 	}
-	if _codec_presentArray2CodecGrade(&m.Grade) {
+	if m.Grade != ([2]codec.Grade{}) {
 		w, err := _codec_putArray2CodecGrade(buf[:i], &m.Grade, "Codecs.Grade", 3)
 		if err != nil {
 			return 0, err
@@ -111,7 +111,7 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 		i -= w
 		i = wire.PutTag(buf, i, 3<<3|wire.Bytes)
 	}
-	if _codec_presentArray2CodecTicket(&m.Ticket) {
+	if m.Ticket != ([2]codec.Ticket{}) {
 		w, err := _codec_putArray2CodecTicket(buf[:i], &m.Ticket, "Codecs.Ticket", 2)
 		if err != nil {
 			return 0, err
@@ -119,7 +119,7 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 		i -= w
 		i = wire.PutTag(buf, i, 2<<3|wire.Bytes)
 	}
-	if _codec_presentArray2CodecToken(&m.Token) {
+	if m.Token != ([2]codec.Token{}) {
 		w, err := _codec_putArray2CodecToken(buf[:i], &m.Token, "Codecs.Token", 1)
 		if err != nil {
 			return 0, err
@@ -345,16 +345,6 @@ func (m *Codecs) cloneKanon(c *Codecs) {
 	c.Code = m.Code
 }
 
-// _codec_presentArray2CodecToken reports whether a field whose value is the
-// [2]codec.Token that x points at is present: whether an element of it is.
-func _codec_presentArray2CodecToken(x *[2]codec.Token) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeCodecToken(&x[k]) > 0
-	}
-	return present
-}
-
 // _codec_sizeArray2CodecToken returns the length of the encoding of the
 // elements of x, a [2]codec.Token.
 func _codec_sizeArray2CodecToken(x *[2]codec.Token) int {
@@ -363,16 +353,6 @@ func _codec_sizeArray2CodecToken(x *[2]codec.Token) int {
 		n += wire.SizeBytes(_codec_sizeCodecToken(&x[k]))
 	}
 	return n
-}
-
-// _codec_presentArray2CodecTicket reports whether a field whose value is the
-// [2]codec.Ticket that x points at is present: whether an element of it is.
-func _codec_presentArray2CodecTicket(x *[2]codec.Ticket) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeCodecTicket(&x[k]) > 0
-	}
-	return present
 }
 
 // _codec_sizeArray2CodecTicket returns the length of the encoding of the
@@ -385,16 +365,6 @@ func _codec_sizeArray2CodecTicket(x *[2]codec.Ticket) int {
 	return n
 }
 
-// _codec_presentArray2CodecGrade reports whether a field whose value is the
-// [2]codec.Grade that x points at is present: whether an element of it is.
-func _codec_presentArray2CodecGrade(x *[2]codec.Grade) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeCodecGrade(&x[k]) > 0
-	}
-	return present
-}
-
 // _codec_sizeArray2CodecGrade returns the length of the encoding of the
 // elements of x, a [2]codec.Grade.
 func _codec_sizeArray2CodecGrade(x *[2]codec.Grade) int {
@@ -403,16 +373,6 @@ func _codec_sizeArray2CodecGrade(x *[2]codec.Grade) int {
 		n += wire.SizeBytes(_codec_sizeCodecGrade(&x[k]))
 	}
 	return n
-}
-
-// _codec_presentArray2CodecWord reports whether a field whose value is the
-// [2]codec.Word that x points at is present: whether an element of it is.
-func _codec_presentArray2CodecWord(x *[2]codec.Word) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeCodecWord(&x[k]) > 0
-	}
-	return present
 }
 
 // _codec_sizeArray2CodecWord returns the length of the encoding of the elements
@@ -425,16 +385,6 @@ func _codec_sizeArray2CodecWord(x *[2]codec.Word) int {
 	return n
 }
 
-// _codec_presentArray2CodecStamp reports whether a field whose value is the
-// [2]codec.Stamp that x points at is present: whether an element of it is.
-func _codec_presentArray2CodecStamp(x *[2]codec.Stamp) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeCodecStamp(&x[k]) > 0
-	}
-	return present
-}
-
 // _codec_sizeArray2CodecStamp returns the length of the encoding of the
 // elements of x, a [2]codec.Stamp.
 func _codec_sizeArray2CodecStamp(x *[2]codec.Stamp) int {
@@ -443,16 +393,6 @@ func _codec_sizeArray2CodecStamp(x *[2]codec.Stamp) int {
 		n += wire.SizeBytes(_codec_sizeCodecStamp(&x[k]))
 	}
 	return n
-}
-
-// _codec_presentArray2ExternalCode reports whether a field whose value is the
-// [2]external.Code that x points at is present: whether an element of it is.
-func _codec_presentArray2ExternalCode(x *[2]external.Code) bool {
-	present := false
-	for k := range x {
-		present = present || _codec_sizeExternalCode(&x[k]) > 0
-	}
-	return present
 }
 
 // _codec_sizeArray2ExternalCode returns the length of the encoding of the

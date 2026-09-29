@@ -70,14 +70,21 @@ func (e *emitter) sizeBody(m *target) {
 }
 
 // sizeField writes the statements that add the length of the field f, a
-// field that is not a union member, to n when f is present: a struct and a
-// type that encodes itself when their encoding has bytes, a pointer and an
-// interface when they are not nil, and any other field as
-// [emitter.present] states.
+// field that is not a union member, to n when f is present: a type that
+// encodes itself when it is not the zero value, for a type that
+// [zeroAbsent] reports, a struct and any other type that encodes itself
+// when their encoding has bytes, a pointer and an interface when they are
+// not nil, and any other field as [emitter.present] states.
 func (e *emitter) sizeField(f *field) {
 	x, v, ts := "m."+f.name, f.val, tagSize(f.num)
 	switch v.kind {
 	case kindStruct, kindBinary:
+		if zeroAbsent(v) {
+			e.line("if %s {", e.present(v, x))
+			e.line("n += %d + %sSizeBytes(%s)", ts, e.wire(), e.content(v, x))
+			e.line("}")
+			return
+		}
 		e.line("if s := %s; s > 0 {", e.content(v, x))
 		e.line("n += %d + %sSizeBytes(s)", ts, e.wire())
 		e.line("}")
@@ -188,12 +195,14 @@ func (e *emitter) content(v *value, x string) string {
 // zero, a float and a complex number when a bit of them is set, so that
 // negative zero is present, a string, a byte slice, a slice and a map when
 // they are not empty, a time when it is not at the zero instant or not in
-// UTC, so that the zone of a time at the zero instant survives, an array
-// when an element is present, a struct and a type that encodes itself when
-// their encoding has bytes, and a pointer and an interface when they are
-// not nil. In the projection of a map key, which writes -0.0 as +0.0, a
-// float and a complex number are present when they are not zero. The
-// condition is an operand of || without parentheses.
+// UTC, so that a decode keeps the zone of a time at the zero instant, an
+// array when an element is present, a type that encodes itself when it is
+// not the zero value, for a type that [zeroAbsent] reports, a struct and any
+// other type that encodes itself when their encoding has bytes, and a
+// pointer and an interface when they are not nil. In the projection of a map
+// key, which writes -0.0 as +0.0, a float and a complex number are present
+// when they are not zero. The condition is an operand of || without
+// parentheses.
 func (e *emitter) present(v *value, x string) string {
 	switch v.kind {
 	case kindBool:
@@ -220,6 +229,9 @@ func (e *emitter) present(v *value, x string) string {
 		}
 		return e.fn(e.keyOp(opPresent, v), v) + "(" + addr(x) + ")"
 	case kindStruct, kindBinary:
+		if zeroAbsent(v) {
+			return x + " != " + e.zeroOperand(v.typ)
+		}
 		return e.content(v, x) + " > 0"
 	default:
 		return x + " != nil"
@@ -377,8 +389,8 @@ func (e *emitter) sizeInterface(v *value) {
 
 // presentHelper writes the function that reports whether a field of the
 // array type of v is present: whether an element of it is. The loop tests
-// the elements up to the first present one, and has no branch that the
-// values of an element type cannot reach, such as the end of an array of a
+// the elements up to the first present one and the function returns after
+// the loop, so that every statement of the function runs for an element
 // type whose every value is present.
 func (e *emitter) presentHelper(name string, v *value) {
 	typ := e.p.typ(v.typ)
@@ -423,17 +435,52 @@ func constSize(v *value) (int, bool) {
 // bitwise reports whether the values of v compare with == exactly as their
 // presence decides: a value equals the zero value of its type exactly when
 // a field of it is absent. It reports true for a bool, an integer, a string,
-// a byte array, a pointer, and an array of such values. A float differs at
-// negative zero, and a struct, an interface and a type that encodes itself
-// at values that encode to no bytes or panic under ==.
+// a byte array, a pointer, a type that [zeroAbsent] reports, and an array of
+// such values. A float differs at negative zero, and a struct, an interface
+// and any other type that encodes itself at values that encode to no bytes
+// or panic under ==.
 func bitwise(v *value) bool {
 	switch v.kind {
 	case kindBool, kindInt, kindUint, kindFixed32, kindFixed64, kindString, kindByteArray, kindPointer:
 		return true
+	case kindBinary:
+		return zeroAbsent(v)
 	case kindArray:
 		return bitwise(v.elem)
 	default:
 		return false
+	}
+}
+
+// zeroAbsent reports whether a value of v, a type that encodes itself, is
+// absent exactly when it equals the zero value of its type, since == compares
+// every bit of the type, as [bitwiseType] reports. The encode then leaves out
+// the zero value without a call of the methods of the type, which can have no
+// encoding for it or write bytes for it.
+func zeroAbsent(v *value) bool {
+	return v.kind == kindBinary && bitwiseType(v.typ)
+}
+
+// bitwiseType reports whether == compares every bit of a value of the Go
+// type t: t consists of bools, integers, strings, pointers and channels, in
+// arrays and structs. A float compares equal at -0.0 and +0.0, and an
+// interface can store a value that == panics on, so a type that contains
+// either does not. A slice, a map and a function have no ==.
+func bitwiseType(t types.Type) bool {
+	switch u := t.Underlying().(type) {
+	case *types.Basic:
+		return u.Info()&(types.IsFloat|types.IsComplex) == 0
+	case *types.Array:
+		return bitwiseType(u.Elem())
+	case *types.Struct:
+		for f := range u.Fields() {
+			if !bitwiseType(f.Type()) {
+				return false
+			}
+		}
+		return true
+	default:
+		return types.Comparable(u) && !types.IsInterface(u)
 	}
 }
 

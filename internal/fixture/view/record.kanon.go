@@ -2,7 +2,7 @@
 // source: record.go
 
 //kanon:numbers Item Name=1 Count=2
-//kanon:numbers Record Flag=1 Int8=2 Level=3 Uint16=4 Fixed=5 Float32=6 Float64=7 Complex=8 Wave=9 Text=10 Blob=11 Digest=12 At=13 Item=14 Label=15 Ref=16 ItemPtr=17 Children=18
+//kanon:numbers Record Flag=1 Int8=2 Level=3 Uint16=4 Fixed=5 Float32=6 Float64=7 Complex=8 Wave=9 Text=10 Blob=11 Digest=12 At=13 Item=14 Label=15 Ref=16 ItemPtr=17 Children=18 Token=19 TokenPtr=20
 
 package view
 
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/wire"
 )
 
@@ -222,8 +223,9 @@ func (m *Item) cloneKanon(c *Item) {
 // encoding has no such field, and the last value when it has several. A method
 // of a struct fails with kanon.ErrRepeatedView for a second occurrence instead,
 // since a decode merges the occurrences. The bytes that a method returns for a
-// string, a byte slice and a struct alias the view, and the offsets of its
-// errors are offsets in the view.
+// string, a byte slice and a struct alias the view. A value of a type that
+// encodes itself decodes with the method of its type, and the offsets of the
+// errors of a method are offsets in the view.
 type ItemView []byte
 
 // Name returns the value of the field Name of the encoding in v.
@@ -310,6 +312,12 @@ func (m *Record) SizeKanon() int {
 	if len(m.Children) > 0 {
 		n += 2 + wire.SizeBytes(_record_sizeSliceInt32(m.Children))
 	}
+	if m.Token != 0 {
+		n += 2 + wire.SizeBytes(_record_sizeCodecToken(&m.Token))
+	}
+	if m.TokenPtr != nil {
+		n += 2 + wire.SizeBytes(_record_sizeCodecToken(m.TokenPtr))
+	}
 	return n
 }
 
@@ -338,6 +346,24 @@ func (m *Record) EncodeKanon(buf []byte) (int, error) {
 // has a key with a NaN component or two keys of one projection.
 func (m *Record) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
+	if m.TokenPtr != nil {
+		w, err := _record_putCodecToken(buf[:i], m.TokenPtr, "Record.TokenPtr", 20)
+		if err != nil {
+			return 0, err
+		}
+		i -= w
+		i = wire.PutUvarint(buf, i, uint64(w))
+		i = wire.PutTag(buf, i, 20<<3|wire.Bytes)
+	}
+	if m.Token != 0 {
+		w, err := _record_putCodecToken(buf[:i], &m.Token, "Record.Token", 19)
+		if err != nil {
+			return 0, err
+		}
+		i -= w
+		i = wire.PutUvarint(buf, i, uint64(w))
+		i = wire.PutTag(buf, i, 19<<3|wire.Bytes)
+	}
 	if len(m.Children) > 0 {
 		i -= _record_putSliceInt32(buf[:i], m.Children)
 		i = wire.PutTag(buf, i, 18<<3|wire.Bytes)
@@ -502,6 +528,7 @@ func (m *Record) decodeKanon(data []byte, slab string, off, depth int) error {
 	m.Digest = [8]byte{}
 	m.At = time.Time{}
 	m.Children = m.Children[:0]
+	m.Token = 0
 	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
 	if seen[0]&(1<<0) == 0 {
 		m.Item.Reset()
@@ -514,6 +541,9 @@ func (m *Record) decodeKanon(data []byte, slab string, off, depth int) error {
 	}
 	if seen[0]&(1<<3) == 0 {
 		m.ItemPtr = nil
+	}
+	if seen[0]&(1<<4) == 0 {
+		m.TokenPtr = nil
 	}
 	return err
 }
@@ -803,6 +833,41 @@ func (m *Record) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 				return seen, err
 			}
 			i += int(l)
+		case 19:
+			if tag != 19<<3|wire.Bytes {
+				return seen, wire.FormatError(tag, wire.Bytes, "Record.Token", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return seen, wire.ReadError(n, "Record.Token", 19, off+i)
+			}
+			i += n
+			m.Token = 0
+			if err := m.Token.UnmarshalBinary(data[i : i+int(l)]); err != nil {
+				return seen, wire.UnmarshalError(err, "Record.Token", 19, off+i)
+			}
+			i += int(l)
+		case 20:
+			if tag != 20<<3|wire.Bytes {
+				return seen, wire.FormatError(tag, wire.Bytes, "Record.TokenPtr", off+at)
+			}
+			if depth < 1 {
+				return seen, wire.DepthError("Record.TokenPtr", 20, off+i)
+			}
+			if m.TokenPtr == nil {
+				m.TokenPtr = new(codec.Token)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return seen, wire.ReadError(n, "Record.TokenPtr", 20, off+i)
+			}
+			i += n
+			*m.TokenPtr = 0
+			if err := m.TokenPtr.UnmarshalBinary(data[i : i+int(l)]); err != nil {
+				return seen, wire.UnmarshalError(err, "Record.TokenPtr", 20, off+i)
+			}
+			i += int(l)
+			seen[0] |= 1 << 4
 		default:
 			n, err := wire.Skip(data[i:], tag, "Record", 0, off+at)
 			if err != nil {
@@ -843,6 +908,8 @@ func (m *Record) Reset() {
 	m.ItemPtr = nil
 	clear(m.Children[:cap(m.Children)])
 	m.Children = m.Children[:0]
+	m.Token = 0
+	m.TokenPtr = nil
 }
 
 // CloneKanon returns a copy of m that shares no memory with m or with the slab
@@ -881,6 +948,8 @@ func (m *Record) cloneKanon(c *Record) {
 	c.Ref = _record_clonePtrInt32(m.Ref)
 	c.ItemPtr = _record_clonePtrItem(m.ItemPtr)
 	c.Children = slices.Clone(m.Children)
+	c.Token = m.Token
+	c.TokenPtr = _record_clonePtrCodecToken(m.TokenPtr)
 }
 
 // RecordView is the encoding of a Record. Each method reads one field by
@@ -888,8 +957,9 @@ func (m *Record) cloneKanon(c *Record) {
 // when the encoding has no such field, and the last value when it has several.
 // A method of a struct fails with kanon.ErrRepeatedView for a second occurrence
 // instead, since a decode merges the occurrences. The bytes that a method
-// returns for a string, a byte slice and a struct alias the view, and the
-// offsets of its errors are offsets in the view.
+// returns for a string, a byte slice and a struct alias the view. A value of a
+// type that encodes itself decodes with the method of its type, and the offsets
+// of the errors of a method are offsets in the view.
 type RecordView []byte
 
 // Flag returns the value of the field Flag of the encoding in v.
@@ -1087,6 +1157,34 @@ func (v RecordView) ItemPtr() (ItemView, error) {
 	return ItemView(v[i+n : i+n+int(l)]), nil
 }
 
+// Token returns the value of the field Token of the encoding in v.
+func (v RecordView) Token() (codec.Token, error) {
+	i, err := wire.Find(v, 19<<3|wire.Bytes, "Record.Token")
+	if err != nil || i < 0 {
+		return 0, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	var x codec.Token
+	if err := x.UnmarshalBinary(v[i+n : i+n+int(l)]); err != nil {
+		return 0, wire.UnmarshalError(err, "Record.Token", 19, i+n)
+	}
+	return x, nil
+}
+
+// TokenPtr returns the value of the field TokenPtr of the encoding in v.
+func (v RecordView) TokenPtr() (codec.Token, error) {
+	i, err := wire.Find(v, 20<<3|wire.Bytes, "Record.TokenPtr")
+	if err != nil || i < 0 {
+		return 0, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	var x codec.Token
+	if err := x.UnmarshalBinary(v[i+n : i+n+int(l)]); err != nil {
+		return 0, wire.UnmarshalError(err, "Record.TokenPtr", 20, i+n)
+	}
+	return x, nil
+}
+
 // _record_sizeSliceInt32 returns the length of the encoding of the elements of
 // x, a []int32.
 func _record_sizeSliceInt32(x []int32) int {
@@ -1095,6 +1193,30 @@ func _record_sizeSliceInt32(x []int32) int {
 		n += wire.SizeUvarint(wire.Zigzag(int64(x[k])))
 	}
 	return n
+}
+
+// _record_sizeCodecToken returns the length of the encoding of the codec.Token
+// that x points at, and 1 when x fails to encode itself, so that the value is
+// present and its encode reports the failure.
+func _record_sizeCodecToken(x *codec.Token) int {
+	var scratch [128]byte
+	enc, err := x.AppendBinary(scratch[:0])
+	if err != nil {
+		return 1
+	}
+	return len(enc)
+}
+
+// _record_putCodecToken writes the encoding of the codec.Token that x points at
+// into the end of buf, which has room for it, and returns its length. It fails
+// when x fails to encode itself.
+func _record_putCodecToken(buf []byte, x *codec.Token, loc string, num int) (int, error) {
+	var scratch [128]byte
+	enc, err := x.AppendBinary(scratch[:0])
+	if err != nil {
+		return 0, wire.MarshalError(err, loc, num)
+	}
+	return copy(buf[len(buf)-len(enc):], enc), nil
 }
 
 // _record_putSliceInt32 writes the encoding of x, a []int32, into the end of
@@ -1154,4 +1276,13 @@ func _record_clonePtrItem(x *Item) *Item {
 		return nil
 	}
 	return x.CloneKanon()
+}
+
+// _record_clonePtrCodecToken returns a pointer to a copy of the value that x, a
+// *codec.Token, points at, and nil for a nil x.
+func _record_clonePtrCodecToken(x *codec.Token) *codec.Token {
+	if x == nil {
+		return nil
+	}
+	return new(*x)
 }

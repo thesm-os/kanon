@@ -434,8 +434,9 @@ func (m *Private) cloneKanon(c *Private) {
 // when the encoding has no such field, and the last value when it has several.
 // A method of a struct fails with kanon.ErrRepeatedView for a second occurrence
 // instead, since a decode merges the occurrences. The bytes that a method
-// returns for a string, a byte slice and a struct alias the view, and the
-// offsets of its errors are offsets in the view.
+// returns for a string, a byte slice and a struct alias the view. A value of a
+// type that encodes itself decodes with the method of its type, and the offsets
+// of the errors of a method are offsets in the view.
 type PrivateView []byte
 
 // Name returns the value of the field Name of the encoding in v.
@@ -642,8 +643,9 @@ func (m *PrivateKey) cloneKanon(c *PrivateKey) {
 // value when the encoding has no such field, and the last value when it has
 // several. A method of a struct fails with kanon.ErrRepeatedView for a second
 // occurrence instead, since a decode merges the occurrences. The bytes that a
-// method returns for a string, a byte slice and a struct alias the view, and
-// the offsets of its errors are offsets in the view.
+// method returns for a string, a byte slice and a struct alias the view. A
+// value of a type that encodes itself decodes with the method of its type, and
+// the offsets of the errors of a method are offsets in the view.
 type PrivateKeyView []byte
 
 // Name returns the value of the field Name of the encoding in v.

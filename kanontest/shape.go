@@ -96,6 +96,10 @@ type shape struct {
 	// variants lists the concrete types that an interface stores, in the
 	// order of the Types of its field.
 	variants []variant
+	// zeroAbsent reports that a value of a type that encodes itself is
+	// absent exactly when it is the zero value of its type, since == compares
+	// every bit of the type, as [bitwiseType] reports.
+	zeroAbsent bool
 }
 
 // variant is a concrete type that an interface stores, and its number.
@@ -378,7 +382,7 @@ func (r *resolver) shapeOf(t reflect.Type, o opts) (*shape, error) {
 		return s, nil
 	}
 	if familyOf(t) != 0 {
-		s.kind = kindBinary
+		s.kind, s.zeroAbsent = kindBinary, bitwiseType(t)
 		return s, nil
 	}
 	var err error
@@ -527,6 +531,31 @@ func unsent(t reflect.Type) bool {
 		t = t.Elem()
 	}
 	return t.Kind() == reflect.Func || t.Kind() == reflect.Chan
+}
+
+// bitwiseType reports whether == compares every bit of a value of t, as the
+// generator decides it for a type that encodes itself: t consists of bools,
+// integers, strings, pointers and channels, in arrays and structs. A float
+// compares equal at -0.0 and +0.0, and an interface can store a value that
+// == panics on, so a type that contains either does not. A slice, a map and
+// a function have no ==.
+func bitwiseType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128, reflect.Interface,
+		reflect.Slice, reflect.Map, reflect.Func:
+		return false
+	case reflect.Array:
+		return bitwiseType(t.Elem())
+	case reflect.Struct:
+		for f := range t.Fields() {
+			if !bitwiseType(f.Type) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
+	}
 }
 
 // leftOut reports whether the encoding leaves out the struct field sf, whose
