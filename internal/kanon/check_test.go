@@ -33,6 +33,9 @@ const (
 	// codecKey is the key under which the code file of A records S as an
 	// inline struct.
 	codecKey = "example.com/m/dep.S"
+	// codecBase is the code file of A at a base revision that records S as an
+	// inline struct with the numbers of codecNumbers.
+	codecBase = "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n"
 )
 
 // check returns the error of Check for the struct type A of the module of
@@ -185,37 +188,50 @@ func TestCheck(t *testing.T) {
 		codecs := []struct {
 			name    string
 			numbers string
-			base    string
+			base    map[string]string
 			want    string
 		}{
 			{
 				name:    "returns nil for a struct of another package whose codec keeps the recorded numbers",
 				numbers: codecNumbers,
-				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+				base:    map[string]string{codeName: codecBase},
 			},
 			{
 				name: "returns nil for a struct of another package with a codec that the base revision does not " +
 					"record",
-				base: "//kanon:numbers A S=1\n",
+				base: map[string]string{codeName: "//kanon:numbers A S=1\n"},
 			},
 			{
 				name:    "returns an error for each field of a struct of another package whose codec renumbers it",
 				numbers: codecNumbers,
-				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " Y=1 X=2\n",
+				base: map[string]string{
+					codeName: "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " Y=1 X=2\n",
+				},
 				want: "kanon: field Y of " + codecKey + " has number 2, and the base revision gives it number 1\n" +
 					"kanon: field X of " + codecKey + " has number 1, and the base revision gives it number 2",
 			},
 			{
 				name: "returns an error for a struct of another package whose package records no numbers for it",
-				base: "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+				base: map[string]string{codeName: codecBase},
 				want: "kanon: " + codecKey + " encodes through a kanon codec whose package records no numbers for " +
 					"it, and the base revision records its fields: kanon cannot check them",
 			},
 			{
 				name:    "returns an error for a code file of the package of such a struct that does not parse",
 				numbers: "//kanon:numbers\n",
-				base:    "//kanon:numbers A S=1\n//kanon:numbers " + codecKey + " X=1 Y=2\n",
+				base:    map[string]string{codeName: codecBase},
 				want:    "kanon: a numbers line names no struct",
+			},
+			{
+				name: "returns an error for two code files of the base revision that record different numbers for " +
+					"a struct of another package",
+				numbers: codecNumbers,
+				base: map[string]string{
+					"b.kanon.go": codecBase,
+					"c.kanon.go": "//kanon:numbers " + codecKey + " X=2 Y=1\n",
+				},
+				want: "kanon: b.kanon.go and c.kanon.go record different numbers for " + codecKey + ": " +
+					"regenerate the one that does not generate " + codecKey,
 			},
 		}
 		for _, tt := range codecs {
@@ -225,7 +241,7 @@ func TestCheck(t *testing.T) {
 				if tt.numbers != "" {
 					files["dep/dep.kanon.go"] = tt.numbers
 				}
-				err := checkFiles(t, files, map[string]string{codeName: tt.base})
+				err := checkFiles(t, files, tt.base)
 				if tt.want == "" {
 					assert.NoError(t, err, "Check passes the numbers of the struct")
 					return
