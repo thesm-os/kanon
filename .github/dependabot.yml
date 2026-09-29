@@ -1,0 +1,15 @@
+version: 2
+
+updates:
+  # The actions of the workflows. The Go modules have no version updates:
+  # go.dokimi.dev/assert has no releases, and Dependabot's security updates
+  # cover a vulnerable module.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "ci"
