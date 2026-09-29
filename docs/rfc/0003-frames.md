@@ -4,7 +4,7 @@ title: Frames for messages on a stream
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
@@ -148,6 +148,12 @@ func (r *Reader) Next() (id uint64, payload []byte, err error)
 // the first successful Next and after a failed one, and ErrNilMessage for
 // a nil m, a typed nil pointer included.
 func (r *Reader) Decode(m kanon.Message) error
+
+// Checksummed reports whether the frame that the last successful call of
+// Next read has a checksum, which Next compared with the CRC-32C of the
+// frame. It reports false before the first successful Next and after a
+// failed one.
+func (r *Reader) Checksummed() bool
 ```
 
 `Decode` builds the slab with `unsafe.String` over the reader's buffer, so a decode into a

@@ -19,6 +19,8 @@
 // and [ErrTooLarge], the position in the stream can be inside a frame, and
 // the caller closes the stream. A stream that ends between frames returns
 // io.EOF, and one that ends inside a frame returns io.ErrUnexpectedEOF.
+// [Reader.Checksummed] reports whether the frame that Next read has a
+// checksum.
 //
 // NewReader wraps a stream that does not implement io.ByteReader in a
 // bufio.Reader, as encoding/gob does, so that reading a length costs no call

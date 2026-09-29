@@ -107,6 +107,20 @@ func (b Batch) Len() int {
 	return b.count
 }
 
+// Width returns the length in bytes of the offsets of the index: 4, or 8
+// when bit 0 of the flags is set, and 0 for the zero Batch.
+func (b Batch) Width() int {
+	return b.width
+}
+
+// Offset returns the offset in the batch of the encoding of message i, the
+// offset that Decode passes in the kanon.Options of the message. It panics
+// when i is out of range, as an index into a slice of the messages does.
+func (b Batch) Offset(i int) int {
+	start, _ := b.bounds(i)
+	return start
+}
+
 // Record returns the encoding of message i, which aliases the slab of b and
 // has no capacity past its end. It panics when i is out of range, as an
 // index into a slice of the messages does.

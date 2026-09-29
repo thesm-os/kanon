@@ -35,6 +35,9 @@ type Reader struct {
 	// current reports that the last call of Next succeeded, so that
 	// payload is the payload of a frame.
 	current bool
+	// checksummed reports that the last call of Next succeeded for a frame
+	// with a checksum.
+	checksummed bool
 }
 
 // byteReader is a stream that reads byte by byte.
@@ -69,7 +72,7 @@ func NewReader(r io.Reader) *Reader {
 // and a frame too short for its checksum, [ErrVersion], [ErrFlags] and
 // [ErrChecksum].
 func (r *Reader) Next() (id uint64, payload []byte, err error) {
-	r.current = false
+	r.current, r.checksummed = false, false
 	length, err := r.length()
 	if err != nil {
 		return 0, nil, err
@@ -111,6 +114,14 @@ func (r *Reader) Decode(m kanon.Message) error {
 	}
 	slab := unsafe.String(unsafe.SliceData(r.payload), len(r.payload))
 	return m.DecodeKanon(r.payload, kanon.Options{Slab: slab})
+}
+
+// Checksummed reports whether the frame that the last successful call of
+// Next read has a checksum, which Next compared with the CRC-32C of the
+// frame. It reports false before the first successful call of Next and
+// after a failed one.
+func (r *Reader) Checksummed() bool {
+	return r.checksummed
 }
 
 // length reads the length uvarint of the next frame as binary.ReadUvarint
@@ -169,6 +180,7 @@ func (r *Reader) parse() (uint64, error) {
 		}
 	}
 	r.payload = r.buf[start:end]
+	r.checksummed = flags&flagChecksum != 0
 	return id, nil
 }
 

@@ -60,16 +60,17 @@ func (w *Writer) Append(m kanon.Message) error {
 	}
 	offset := len(buf) - headerSize
 	size := m.SizeKanon()
-	// total is the length of the batch with m, which adds one offset per
-	// message and the count to the buffer up to the end of m. The sums fit a
-	// uint64 for any int. With 4-byte offsets, the encodings end below 2^32.
+	// end is the length of the buffer with m, and total the length of the
+	// batch with m, which adds one offset per message and the count to end.
+	// The sums fit a uint64 for any int. With 4-byte offsets, the encodings
+	// end below 2^32.
 	end := uint64(len(buf)) + uint64(size)
 	total := end + uint64(w.count+1)*uint64(width) + countSize
 	pastNarrow := width == narrow && (uint64(offset)+uint64(size))>>32 != 0
 	if pastNarrow || uint64(w.count) == maxCount || total&^math.MaxInt != 0 {
 		return ErrTooBig
 	}
-	buf = slices.Grow(buf, size)[:len(buf)+size]
+	buf = slices.Grow(buf, size)[:end]
 	if _, err := m.EncodeKanon(buf); err != nil {
 		return err
 	}

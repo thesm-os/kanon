@@ -4,7 +4,7 @@ title: Batches of messages for storage blocks
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
@@ -127,6 +127,15 @@ func ParseAlias(data []byte) (Batch, error)
 
 // Len returns the number of messages.
 func (b Batch) Len() int
+
+// Width returns the length in bytes of the offsets of the index: 4, or 8
+// when bit 0 of the flags is set, and 0 for the zero Batch.
+func (b Batch) Width() int
+
+// Offset returns the offset in the batch of the encoding of message i, the
+// offset that Decode passes in its kanon.Options. It panics when i is out
+// of range, as a slice index does.
+func (b Batch) Offset(i int) int
 
 // Record returns the encoding of message i. It panics when i is out of
 // range, as a slice index does.

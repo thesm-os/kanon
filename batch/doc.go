@@ -33,8 +33,8 @@
 //
 // [Writer.Append] and [Writer.Bytes] do not allocate when an earlier batch
 // of the writer was at least as long and had at least as many messages.
-// [ParseAlias], [Batch.Len] and [Batch.Record] do not allocate, and [Parse]
-// allocates the copy. [Batch.Decode] does not allocate for a message whose
+// [ParseAlias], [Batch.Len], [Batch.Width], [Batch.Offset] and [Batch.Record]
+// do not allocate, and [Parse] allocates the copy. [Batch.Decode] does not allocate for a message whose
 // decode with a slab does not allocate.
 //
 // # Concurrency

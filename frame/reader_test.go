@@ -277,6 +277,40 @@ func TestReader(t *testing.T) {
 			assert.Equal(t, got.Name, "b", "the next frame overwrites the string of the first message")
 		})
 	})
+	t.Run("Checksummed", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			in   []byte
+			want bool
+		}{
+			{name: "reports true for a frame with a checksum", in: checkedFrame, want: true},
+			{name: "reports false for a frame without a checksum", in: emptyFrame, want: false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				r := frame.NewReader(bytes.NewReader(tt.in))
+				_, _, err := r.Next()
+				assert.NoError(t, err, "Next reads the frame")
+				assert.Equal(t, r.Checksummed(), tt.want, "Checksummed reports the checksum of the frame")
+			})
+		}
+		t.Run("reports false before the first frame", func(t *testing.T) {
+			t.Parallel()
+			r := frame.NewReader(bytes.NewReader(checkedFrame))
+			assert.False(t, r.Checksummed(), "Checksummed reports no frame")
+		})
+		t.Run("reports false after a failed Next", func(t *testing.T) {
+			t.Parallel()
+			r := frame.NewReader(bytes.NewReader(slices.Concat(checkedFrame, badChecksum)))
+			_, _, err := r.Next()
+			assert.NoError(t, err, "Next reads the first frame")
+			_, _, err = r.Next()
+			assert.ErrorIs(t, err, frame.ErrChecksum, "Next fails for the second frame")
+			assert.False(t, r.Checksummed(), "Checksummed reports no frame")
+		})
+	})
 }
 
 func TestReaderAllocs(t *testing.T) {
