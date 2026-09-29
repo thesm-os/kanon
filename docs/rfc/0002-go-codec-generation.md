@@ -8,7 +8,7 @@ updated: 2026-09-29
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021
+produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021, ADR-0022
 ---
 
 # RFC-0002: Generated Go codecs, their runtime and their public interface
@@ -51,12 +51,19 @@ one copy per generated file.
 //go:generate go tool kanon -type=Order,Line
 ```
 
-- `-type` names one or more struct types of the package, separated by commas. It is required.
+- `-type` names one or more types of the package, separated by commas: struct types, and named
+  bools, numbers, strings, slices, arrays and maps. It is required. A struct type gets its
+  codec, and any other type gets the `ValidateKanon` method of the Types section.
 - kanon writes `<base>.kanon.go` and `<base>.kanon_test.go`, where `<base>` is the name of the
   file with the directive, which `go generate` names in `GOFILE`. Outside `go generate`, the
   file is the only argument.
 - kanon writes a file only when its content changes.
-- `-views` also generates the view types of the Views section.
+- `-views` also generates the view types of the Views section, one per struct type.
+- `-validate=name` names a method `func (T) name() error` that each type of `-type` other
+  than a struct declares on a value receiver. The method can be unexported. The generated
+  `ValidateKanon` returns its error, and without the flag it returns nil. Generation fails
+  when such a type lacks the method or declares `ValidateKanon` itself, and when `-validate`
+  is set and `-type` names only struct types.
 - With `KANON_CHECK=<revision>`, kanon checks the field numbers against the generated files at
   that git revision and writes nothing.
 - The exit status is 0 on success, 1 when generation or the check fails, and 2 on a usage
@@ -147,6 +154,17 @@ The generator encodes every type that gob and json encode:
   the value with the zero value and does not call a method of the type for it, so a zero
   value that the type cannot encode, such as a zero digest, leaves its field out. An opaque
   value of any other type is present when its encoding has at least one byte.
+- A named type other than a struct with the method `func (T) ValidateKanon() error`, a
+  `kanon.Validator`, as a value of its underlying type, ahead of its binary, gob and text
+  methods. A `-type` directive of its package generates the method, and a method written by
+  hand works alike. The generated code calls the method on every value of the type that it
+  encodes or decodes, except a zero value that the encoding leaves out, and fails with its
+  error. The tag option `fixed`, the order of map keys and the view methods treat the type as
+  its underlying type. The generator rejects the method on a struct type, on a pointer
+  receiver and with another signature, and on a type whose only value is its zero value,
+  since a constant encoding has no value to check. A named interface type whose method set
+  has the method encodes as any other interface. The wire format lists adding or removing the
+  method on a type with binary, gob or text methods as incompatible in both directions.
 - Interfaces with a `types` list, inside maps, slices, arrays, pointers and unions included.
 - Generic struct instantiations, which share the field numbers of their generic type.
 
@@ -184,13 +202,14 @@ package kanon
 //
 // SizeKanon, EncodeKanon and AppendBinary into a buffer with spare capacity
 // do not allocate, except for an opaque type without an append method, an
-// opaque encoding longer than 128 bytes, and a map of more than 16 keys
-// other than bools. DecodeKanon with a Slab into a receiver that decoded
-// before does not allocate, except for an opaque value, a time in a zone
-// that the platform allocates, a map with more than 16 values that refer to
-// memory, a map key that refers to memory, and a value that an interface
-// stores by value. Without a Slab, a decode allocates the copy of its input
-// once when T contains a string.
+// opaque encoding longer than 128 bytes, a map of more than 16 keys other
+// than bools, and a value whose ValidateKanon allocates. DecodeKanon with a
+// Slab into a receiver that decoded before does not allocate, except for an
+// opaque value, a time in a zone that the platform allocates, a map with
+// more than 16 values that refer to memory, a map key that refers to
+// memory, a value that an interface stores by value, and a value whose
+// ValidateKanon allocates. Without a Slab, a decode allocates the copy of
+// its input once when T contains a string.
 type Message interface {
 	encoding.BinaryAppender
 	encoding.BinaryMarshaler
@@ -203,9 +222,10 @@ type Message interface {
 	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
 	// and returns their count. When buf is shorter than SizeKanon bytes, it
 	// writes nothing and returns io.ErrShortBuffer. It returns an
-	// *EncodeError when an opaque value fails to encode itself, an
-	// interface stores a type its list does not name, or a map has an
-	// invalid key or two keys of one projection. After an error, buf does
+	// *EncodeError when an opaque value fails to encode itself, the
+	// ValidateKanon of a Validator rejects a value, an interface stores a
+	// type its list does not name, or a map has an invalid key or two keys
+	// of one projection. After an error, buf does
 	// not contain a valid encoding, and AppendBinary returns its buffer
 	// unchanged.
 	EncodeKanon(buf []byte) (int, error)
@@ -252,6 +272,18 @@ type Cloner[T any] interface {
 	// of one projection, which does not encode, can have one entry for them
 	// in the copy. A nil receiver returns nil.
 	CloneKanon() *T
+}
+
+// Validator is the method of a named type other than a struct, which the
+// generated code encodes as its underlying type. The generated code calls
+// ValidateKanon on every value of the type that it encodes or decodes,
+// except a zero value that the encoding leaves out, and on the value that a
+// view method returns, and fails the encode, the decode or the view with
+// its error. SizeKanon, Reset and CloneKanon do not call it.
+type Validator interface {
+	// ValidateKanon returns nil for a value that kanon encodes and decodes,
+	// and the reason that it rejects any other value.
+	ValidateKanon() error
 }
 
 // Options control DecodeKanon and MergeKanon. The zero Options copy the
@@ -306,8 +338,9 @@ type DecodeError struct {
 func (e *DecodeError) Error() string
 
 // Unwrap returns the cause: io.ErrUnexpectedEOF, ErrMalformed, ErrRange,
-// ErrDepth, ErrUnknownType, ErrInvalidKey, ErrAmbiguousKey or
-// ErrRepeatedView.
+// ErrDepth, ErrUnknownType, ErrInvalidKey, ErrAmbiguousKey,
+// ErrRepeatedView, the error of an opaque value's own decoding or the error
+// of a ValidateKanon.
 func (e *DecodeError) Unwrap() error
 
 // ErrUnlistedType is the cause of an EncodeError for an interface that
@@ -316,7 +349,8 @@ var ErrUnlistedType = errors.New("kanon: type not listed in the tag option types
 
 // EncodeError is the error of EncodeKanon: the struct type, the field and
 // its number, and the cause, which is ErrUnlistedType, ErrInvalidKey,
-// ErrAmbiguousKey or the error of an opaque value's own encoding.
+// ErrAmbiguousKey, the error of an opaque value's own encoding or the error
+// of a ValidateKanon.
 type EncodeError struct {
 	Type   string
 	Field  string
@@ -484,6 +518,11 @@ field. It allocates what that method allocates, and an error of that method is t
 the `*DecodeError` that it returns. A storage engine reads an index key or evaluates a filter
 from the view without allocating.
 
+A field of a `kanon.Validator` returns the value of its underlying type converted to its type,
+after its `ValidateKanon` accepts the value: a byte slice aliases the view, and a string is a
+copy of the bytes, which allocates. An error of `ValidateKanon` is the cause of the
+`*DecodeError` at the offset of the value.
+
 A view checks the tags and lengths of the encoding and the wire format of the field that a
 method reads. It does not check the rest of the schema, so a caller that needs a full check
 decodes. A method of any field but a struct returns the last occurrence of the field, as a
@@ -505,6 +544,19 @@ rejections and error causes, checks the allocation contract, fuzzes the decoder,
 encodings in a golden file per type. The suite defines conformance for this implementation,
 and its golden files are test vectors for others. `kanontest.Codec[T]` constrains the codec to
 `*T`, which implements `kanon.Message`.
+
+The reference encoder and decoder call the `ValidateKanon` of a `kanon.Validator` as the
+generated code does. A sample counts such a value as one that can fail to encode.
+`kanontest.RunValue[T kanon.Validator]` checks the method of each type other than a struct
+that a `-type` flag names, over the value tables of its underlying type:
+
+- The method allocates nothing for a value that it accepts.
+- For a type with binary, gob or text methods, the method accepts a value exactly when the
+  encode method of the type's family accepts it, and the decode method of the family decodes
+  the encoding of each accepted value to the value. A directive without the `-validate` that
+  its type needs fails this check.
+- A golden file pins the encoding of each value that the method accepts, as field 1 of a
+  struct, and the error of each value that it rejects.
 
 ### Module layout
 
@@ -571,6 +623,10 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
 - A map whose keys can decode to distinct Go values of one projection, such as pointer keys,
   sorts those keys after every decode, which costs n log n and allocates above 16 keys.
 - Every decode error allocates a `*DecodeError`.
+- Adding `ValidateKanon` to a type with binary, gob or text methods, or removing it, changes
+  the encoding of every field of the type. The field numbers stay the same, so the check mode
+  passes. The golden files of the conformance suite fail.
+- The view method of a string field of a `kanon.Validator` allocates a copy of the string.
 
 ## Unresolved and future work
 

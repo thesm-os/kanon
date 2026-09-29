@@ -163,11 +163,11 @@ func TestCheck(t *testing.T) {
 			assert.NoError(t, kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, base),
 				"Check passes the reserved number")
 		})
-		t.Run("returns the error of Generate for options without a struct type", func(t *testing.T) {
+		t.Run("returns the error of Generate for options without a type", func(t *testing.T) {
 			t.Parallel()
 			err := kanon.Check(module(t, map[string]string{"a.go": checkXY}), "a.go", kanon.Options{}, nil)
 			assert.HasError(t, err, "Check fails without -type")
-			assert.Equal(t, err.Error(), "kanon: -type is required: name the struct types to generate codecs for",
+			assert.Equal(t, err.Error(), "kanon: -type is required: name the types to generate code for",
 				"Check states why the generation fails")
 		})
 	})

@@ -72,6 +72,24 @@ func TestClassify(t *testing.T) {
 				files: map[string]string{source: structA("X map[string]chan int")},
 				want:  "kanon: a.go:4:2: A.X: type chan int is not supported",
 			},
+			{
+				name: "returns an error for a kanon.Validator of a byte array with no bytes",
+				files: map[string]string{
+					source: "type E [0]byte\n\nfunc (E) ValidateKanon() error { return nil }\n\n" +
+						structA("E []E"),
+				},
+				want: "kanon: a.go:8:2: A.E: ValidateKanon of type example.com/m.E has nothing to check: the zero " +
+					"value is the only value of the type",
+			},
+			{
+				name: "returns an error for a kanon.Validator of an array of arrays with no elements",
+				files: map[string]string{
+					source: "type E [2][0]int32\n\nfunc (E) ValidateKanon() error { return nil }\n\n" +
+						structA("E []E"),
+				},
+				want: "kanon: a.go:8:2: A.E: ValidateKanon of type example.com/m.E has nothing to check: the zero " +
+					"value is the only value of the type",
+			},
 		}
 		// hiddenPart is the reason of the errors for the types that contain
 		// sub.hidden, which sub.Alias denotes.

@@ -46,7 +46,7 @@ func TestMethods(t *testing.T) {
 		t.Run("encodes a struct that declares the kanon methods through its methods", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{
-				"options.go": "// Options stands in for the options of the runtime.\ntype Options struct{}\n",
+				"options.go": "// Options takes the place of the options of the runtime.\ntype Options struct{}\n",
 				"sub/a.go": "import kanon \"go.thesmos.sh/kanon\"\n\ntype T struct {\n\tX int32\n}\n" +
 					kanonMethods("T") + structA("T T"),
 			})
@@ -57,5 +57,40 @@ func TestMethods(t *testing.T) {
 			assert.Equal(t, numbersLines(files[codeName]), []string{"//kanon:numbers A T=1"},
 				"the code file numbers no field of the struct")
 		})
+		failures := []struct {
+			name  string
+			types string
+			field string
+			want  string
+		}{
+			{
+				name:  "returns an error for a field type whose ValidateKanon has another signature",
+				types: "type N int32\n\nfunc (N) ValidateKanon() bool { return true }\n\n",
+				field: "F N",
+				want: "kanon: a.go:8:2: A.F: example.com/m.N.ValidateKanon has the signature func() bool: declare " +
+					"it as func() error",
+			},
+			{
+				name:  "returns an error for a field type with ValidateKanon on a pointer receiver",
+				types: "type N int32\n\nfunc (*N) ValidateKanon() error { return nil }\n\n",
+				field: "F N",
+				want: "kanon: a.go:8:2: A.F: example.com/m.N.ValidateKanon has a pointer receiver: declare it on a " +
+					"value receiver",
+			},
+			{
+				name:  "returns an error for a field of a struct type with ValidateKanon",
+				types: "type S struct {\n\tX int32\n}\n\nfunc (S) ValidateKanon() error { return nil }\n\n",
+				field: "S S",
+				want: "kanon: a.go:10:2: A.S: struct type example.com/m.S declares ValidateKanon, which applies to " +
+					"types that are not structs",
+			},
+		}
+		for _, tt := range failures {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, generateError(t, map[string]string{source: tt.types + structA(tt.field)}), tt.want,
+					"Generate states why the field fails")
+			})
+		}
 	})
 }

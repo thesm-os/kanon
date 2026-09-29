@@ -22,8 +22,8 @@ const (
 // encodeFailure states the failure of the encoding methods and functions of
 // a struct whose encoding can fail. [emitter.doc] wraps its words.
 const encodeFailure = `It fails when the value of a field fails to encode: a type that encodes itself returns an
-error, an interface stores a type that the tag option types of its field does not list, or a map has a key with a
-NaN component or two keys of one projection.`
+error, ValidateKanon of a type rejects a value, an interface stores a type that the tag option types of its field
+does not list, or a map has a key with a NaN component or two keys of one projection.`
 
 // neverFails states the error of the encoding methods of a struct whose
 // encoding cannot fail.
@@ -241,11 +241,12 @@ func (e *emitter) putFramed(v *value, x, loc, num string) {
 // put writes the statements that write the encoding of x, an addressable
 // value of v, before buf[i] and move i to its first byte. The statements of
 // a value whose encoding can fail return the error for the field that loc
-// and num locate. The statements of a time, a struct, a type that encodes
-// itself and a value whose encoding can fail declare variables, which
-// [emitter.putScoped] scopes. The statements of a value that
-// [value.zeroOnly] reports write its constant encoding and do not read x,
-// and the statements of any other value do.
+// and num locate: a kanon.Validator first calls its ValidateKanon, before
+// the values that it contains. The statements of a time, a struct, a type
+// that encodes itself and a value whose encoding can fail declare
+// variables, which [emitter.putScoped] scopes. The statements of a value
+// that [value.zeroOnly] reports write its constant encoding and do not read
+// x, and the statements of any other value do.
 func (e *emitter) put(v *value, x, loc, num string) {
 	w := e.wire()
 	if v.zeroOnly() {
@@ -256,6 +257,7 @@ func (e *emitter) put(v *value, x, loc, num string) {
 		}
 		return
 	}
+	e.validPut(v, x, loc, num)
 	switch v.kind {
 	case kindBool:
 		e.line("i = %sPutBool(buf, i, %s)", w, as(v, x, types.Bool))

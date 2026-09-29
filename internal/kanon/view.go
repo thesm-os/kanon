@@ -61,7 +61,11 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 	}
 	w := e.wire()
 	loc, num := fieldLoc(m, f), strconv.Itoa(f.num)
-	e.doc(f.name + " returns the value of the field " + f.name + " of the encoding in v.")
+	doc := f.name + " returns the value of the field " + f.name + " of the encoding in v."
+	if v.validate {
+		doc += " It returns the error of " + validateKanonName + " for a value that the method rejects."
+	}
+	e.doc(doc)
 	e.line("func (v %s) %s() (%s, error) {", view, f.name, result)
 	e.line("i, err := %s%s(v, %s, %s)", w, find, e.tag(f.num, v.kind.wire()), loc)
 	e.line("if err != nil || i < 0 {")
@@ -71,13 +75,13 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 	switch v.kind {
 	case kindBool, kindInt, kindUint:
 		e.line("u, _ := %sUvarint(v[i:])", w)
-		e.line("return %s, nil", e.varint(v, "u", place{loc: loc, num: num, at: "i"}))
+		e.viewReturn(v, e.varint(v, "u", place{loc: loc, num: num, at: "i"}), loc, num)
 	case kindFixed32, kindFloat32:
 		e.line("u, _ := %sUint32(v[i:])", w)
-		e.line("return %s, nil", e.fixed(v, "u"))
+		e.viewReturn(v, e.fixed(v, "u"), loc, num)
 	case kindFixed64, kindFloat64, kindComplex64:
 		e.line("u, _ := %sUint64(v[i:])", w)
-		e.line("return %s, nil", e.fixed(v, "u"))
+		e.viewReturn(v, e.fixed(v, "u"), loc, num)
 	case kindTime:
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.line("return %sTime(v[i+n:i+n+int(l)], %s, %s, i+n)", w, loc, num)
@@ -86,13 +90,13 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 		e.viewLength(complex128Width, loc, num)
 		e.line("re, _ := %sUint64(v[i+n:])", w)
 		e.line("im, _ := %sUint64(v[i+n+%d:])", w, fixed64Width)
-		e.line("return %s, nil", e.cast(v, "complex("+m+".Float64frombits(re), "+m+".Float64frombits(im))",
-			types.Complex128))
+		e.viewReturn(v, e.cast(v, "complex("+m+".Float64frombits(re), "+m+".Float64frombits(im))",
+			types.Complex128), loc, num)
 	case kindByteArray:
 		e.viewLength(v.size, loc, num)
 		e.line("var x %s", result)
 		e.line("copy(x[:], v[i+n:])")
-		e.line("return x, nil")
+		e.viewReturn(v, "x", loc, num)
 	case kindBinary:
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.line("var x %s", result)
@@ -102,7 +106,7 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 		e.line("return x, nil")
 	default:
 		e.line("l, n := %sUvarint(v[i:])", w)
-		e.line("return %s(v[i+n : i+n+int(l)]), nil", result)
+		e.viewReturn(v, result+"(v[i+n : i+n+int(l)])", loc, num)
 	}
 	e.line("}")
 	e.line("")
@@ -121,10 +125,15 @@ func (e *emitter) viewLength(size int64, loc, num string) {
 // viewResult returns the result type of the view method of a field whose
 // value, or the value that it points at, is v: the bytes of a string and a
 // byte slice, the view type of a struct that the code file declares one
-// for and the bytes of any other struct, and the type of v otherwise.
+// for and the bytes of any other struct, and the type of v otherwise. A
+// string or a byte slice of a kanon.Validator takes its type, whose
+// ValidateKanon the method calls.
 func (e *emitter) viewResult(v *value) string {
 	switch v.kind {
 	case kindString, kindBytes:
+		if v.validate {
+			return e.p.typ(v.typ)
+		}
 		return byteSliceType
 	case kindStruct:
 		if named, ok := types.Unalias(v.typ).(*types.Named); ok && v.inline == nil && e.views[named.Obj()] {

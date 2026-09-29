@@ -334,8 +334,27 @@ func timeTable() [drawCount]time.Time {
 // build returns a value of the shape s from src, nesting depth levels
 // below it at most: a slice, a map, a pointer, an interface and a struct
 // at depth 0 take their zero value. A map leaves out a key that orders
-// equal to one it has, which has no order in the encoding.
+// equal to one it has, which has no order in the encoding. A value of a
+// kanon.Validator counts as one value that can fail: it takes a value that
+// its ValidateKanon rejects when src fails it, and a value that it accepts
+// in place of a rejected one otherwise, so that a sample fails to encode
+// only where a failing source fails it.
 func (r *resolver) build(src source, s *shape, depth int) reflect.Value {
+	v := r.shaped(src, s, depth)
+	if !s.validate {
+		return v
+	}
+	if x, ok := r.rejected(s); ok && src.fail() {
+		v.Set(x)
+	} else if validate(v) != nil {
+		v.Set(r.accepted(s))
+	}
+	return v
+}
+
+// shaped returns a value of the shape s from src, as [resolver.build]
+// builds it, before the ValidateKanon of a kanon.Validator decides it.
+func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 	v := reflect.New(s.typ).Elem()
 	if depth == 0 && s.level() {
 		return v
@@ -649,6 +668,38 @@ func (r *resolver) success(t reflect.Type) reflect.Value {
 		v := reflect.New(t).Elem()
 		r.scalar(table(i), v, 0)
 		if _, err := marshal(v); !found && err == nil {
+			ok, found = v, true
+		}
+	}
+	return ok
+}
+
+// rejected returns a value of s, the shape of a kanon.Validator, that its
+// ValidateKanon rejects: the first value of the value tables that it
+// rejects, as [resolver.shaped] builds them. It reports false when it
+// rejects none.
+func (r *resolver) rejected(s *shape) (reflect.Value, bool) {
+	var fail reflect.Value
+	found := false
+	for i := range drawCount {
+		v := r.shaped(table(i), s, nesting)
+		if !found && validate(v) != nil {
+			fail, found = v, true
+		}
+	}
+	return fail, found
+}
+
+// accepted returns a value of s, the shape of a kanon.Validator, that its
+// ValidateKanon accepts: the first value of the value tables that it
+// accepts, as [resolver.shaped] builds them, or the zero value when it
+// accepts none.
+func (r *resolver) accepted(s *shape) reflect.Value {
+	ok := reflect.Zero(s.typ)
+	found := false
+	for i := range drawCount {
+		v := r.shaped(table(i), s, nesting)
+		if !found && validate(v) == nil {
 			ok, found = v, true
 		}
 	}

@@ -4,8 +4,9 @@
 // Package kanontest checks the codecs that the kanon generator writes
 // against the kanon wire format. The test file that kanon generates beside
 // a code file declares one [Spec] per struct type and calls [Run], [Bench]
-// and [Fuzz] with it. [Checks] returns the checks of [Run], so that a test
-// runs them against a codec of its own.
+// and [Fuzz] with it, and calls [RunValue] on each named type that is not a
+// struct. [Checks] and [ValueChecks] return the checks of [Run] and
+// [RunValue], so that a test runs them against a codec of its own.
 //
 // # Reference
 //
@@ -90,6 +91,19 @@
 // address with reflect.NewAt: a field that a kanon tag opts into the
 // encoding, and a field that the encoding leaves out, a field of a struct of
 // another package included.
+//
+// # Validators
+//
+// The reference encoder and decoder call the ValidateKanon method of a
+// kanon.Validator on each value of the type that they encode or decode, as
+// the generated code calls it. A sample counts such a value as one that can
+// fail to encode: the sample that fails at it takes a value that the method
+// rejects, and every other sample a value that the method accepts.
+// [RunValue] checks the method itself: it allocates nothing for a value that
+// it accepts, it accepts a value exactly when the encode method of the
+// binary, gob or text family of the type accepts it, and the golden file of
+// the type pins the encoding or the error of each value of the value
+// tables.
 //
 // # Allocations
 //

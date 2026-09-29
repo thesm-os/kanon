@@ -11,6 +11,7 @@ import (
 	"go.thesmos.sh/kanon"
 	"go.thesmos.sh/kanon/internal/fixture/iface"
 	"go.thesmos.sh/kanon/internal/fixture/union"
+	"go.thesmos.sh/kanon/internal/fixture/validate"
 )
 
 // defaultDepth pins the nesting limit of the zero Options.
@@ -24,6 +25,19 @@ var (
 	// interfaceTwice is field 8 of iface.Variants, the interface Nested,
 	// twice with the concrete type []int32 of number 1: [1] and then [2].
 	interfaceTwice = []byte{0x42, 0x03, 0x01, 0x01, 0x02, 0x42, 0x03, 0x01, 0x01, 0x04}
+)
+
+// levelAbove is field 1 of validate.Values, the Level 4, which its
+// ValidateKanon rejects: the tag of field 1 and the varint 4.
+var levelAbove = []byte{0x08, 0x04}
+
+// Names of the field of levelAbove, which the errors of ValidateKanon name.
+const (
+	valuesType  = "Values"
+	levelField  = "Level"
+	levelNumber = 1
+	// levelOffset is the offset of the value of levelAbove, after its tag.
+	levelOffset = 1
 )
 
 func TestMessage(t *testing.T) {
@@ -57,6 +71,44 @@ func TestMessage(t *testing.T) {
 			assert.NoError(t, whole.DecodeKanon(interfaceTwice, kanon.Options{}), "DecodeKanon decodes both")
 			assert.Equal(t, merged.Nested, whole.Nested, "the merge equals the decode of the concatenation")
 		})
+	})
+}
+
+func TestValidator(t *testing.T) {
+	t.Parallel()
+	t.Run("MarshalBinary", func(t *testing.T) {
+		t.Parallel()
+		t.Run("returns an EncodeError with the error of ValidateKanon for a value that it rejects", func(t *testing.T) {
+			t.Parallel()
+			_, err := (&validate.Values{Level: validate.LevelMax + 1}).MarshalBinary()
+			e := assert.ErrorAs[*kanon.EncodeError](t, err, "MarshalBinary returns an EncodeError")
+			want := kanon.EncodeError{
+				Type:   valuesType,
+				Field:  levelField,
+				Number: levelNumber,
+				Err:    validate.ErrLevel,
+			}
+			assert.Equal(t, *e, want, "the EncodeError names the field and wraps the error of ValidateKanon")
+		})
+	})
+	t.Run("DecodeKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("returns a DecodeError with the error of ValidateKanon at the offset of a value that it rejects",
+			func(t *testing.T) {
+				t.Parallel()
+				var v validate.Values
+				err := v.DecodeKanon(levelAbove, kanon.Options{})
+				e := assert.ErrorAs[*kanon.DecodeError](t, err, "DecodeKanon returns a DecodeError")
+				want := kanon.DecodeError{
+					Type:   valuesType,
+					Field:  levelField,
+					Number: levelNumber,
+					Offset: levelOffset,
+					Err:    validate.ErrLevel,
+				}
+				assert.Equal(t, *e, want,
+					"the DecodeError names the field and the offset of the value, and wraps the error of ValidateKanon")
+			})
 	})
 }
 

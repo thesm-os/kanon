@@ -12,10 +12,13 @@ import (
 
 // Flags of the kanon command.
 const (
-	// flagType names the struct types to generate codecs for.
+	// flagType names the types to generate code for.
 	flagType = "type"
 	// flagViews requests a view type per struct type.
 	flagViews = "views"
+	// flagValidate names the method that the ValidateKanon method of each
+	// named type that is not a struct calls.
+	flagValidate = "validate"
 	// flagVersion requests the version of the command.
 	flagVersion = "version"
 	// typeSeparator separates the names in the value of -type.
@@ -23,15 +26,20 @@ const (
 )
 
 // usageLine is the synopsis of the kanon command.
-const usageLine = "usage: kanon -type=T[,T...] [-views] [file]"
+const usageLine = "usage: kanon -type=T[,T...] [-views] [-validate=method] [file]"
 
 // Options are the command-line options of kanon. A go:generate directive
 // passes them in the same form.
 type Options struct {
-	// Types lists the struct types that -type names, in flag order.
+	// Types lists the types that -type names, in flag order: struct types,
+	// and named types that are not structs.
 	Types []string
 	// Args lists the arguments after the flags.
 	Args []string
+	// Validate names the method, of signature func() error, that the
+	// ValidateKanon method of each named type of Types that is not a struct
+	// calls. It is empty when ValidateKanon accepts every value.
+	Validate string
 	// Views reports that -views requests a view type per struct type.
 	Views bool
 	// Version reports that -version requests the version of the command.
@@ -48,8 +56,10 @@ func ParseOptions(args []string, output io.Writer) (Options, error) {
 	var types string
 	flags := flag.NewFlagSet(commandName, flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&types, flagType, "", "comma-separated `names` of the struct types to generate codecs for")
+	flags.StringVar(&types, flagType, "", "comma-separated `names` of the types to generate code for")
 	flags.BoolVar(&opts.Views, flagViews, false, "generate a view type per struct type")
+	flags.StringVar(&opts.Validate, flagValidate, "",
+		"the `method` that ValidateKanon of each named type that is not a struct calls")
 	flags.BoolVar(&opts.Version, flagVersion, false, "print the version and exit")
 	flags.Usage = func() {
 		fmt.Fprintln(output, usageLine)

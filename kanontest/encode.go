@@ -249,8 +249,22 @@ func (e *encoder) present(s *shape, x reflect.Value, loc string, num int) bool {
 
 // appendValue appends the encoding of x, a value of s, as it occurs inside
 // a container, to b. loc and num locate the field of the value in the
-// error of a value that fails to encode.
+// error of a value that fails to encode. A kanon.Validator records the error
+// of its ValidateKanon after the errors of the values that it contains, as
+// the generated code, which writes backward, meets it before theirs.
 func (e *encoder) appendValue(b []byte, s *shape, x reflect.Value, loc string, num int) []byte {
+	b = e.appendKind(b, s, x, loc, num)
+	if s.validate {
+		if err := validate(x); err != nil {
+			e.fail(wire.MarshalError(err, loc, num))
+		}
+	}
+	return b
+}
+
+// appendKind appends the encoding of x, a value of the kind of s, to b, as
+// [encoder.appendValue] states.
+func (e *encoder) appendKind(b []byte, s *shape, x reflect.Value, loc string, num int) []byte {
 	switch s.kind {
 	case kindBool:
 		if x.Bool() {

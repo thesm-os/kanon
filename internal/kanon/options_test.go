@@ -23,9 +23,14 @@ func TestOptions(t *testing.T) {
 			want kanon.Options
 		}{
 			{
-				name: "returns the struct types of -type in flag order",
+				name: "returns the types of -type in flag order",
 				args: []string{"-type=B,A"},
 				want: kanon.Options{Types: []string{"B", "A"}, Args: []string{}},
+			},
+			{
+				name: "returns the method that -validate names",
+				args: []string{"-type=N", "-validate=valid"},
+				want: kanon.Options{Types: []string{"N"}, Args: []string{}, Validate: "valid"},
 			},
 			{
 				name: "returns the arguments after the flags",
@@ -88,9 +93,9 @@ func TestOptions(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
 			_, _ = kanon.ParseOptions([]string{"-h"}, &out)
-			assert.HasPrefix(t, out.String(), "usage: kanon -type=T[,T...] [-views] [file]\n",
+			assert.HasPrefix(t, out.String(), "usage: kanon -type=T[,T...] [-views] [-validate=method] [file]\n",
 				"ParseOptions writes the synopsis first")
-			assert.Contains(t, out.String(), "-views", "ParseOptions writes the flags")
+			assert.Contains(t, out.String(), "-validate", "ParseOptions writes the flags")
 		})
 	})
 }

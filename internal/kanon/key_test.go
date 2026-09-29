@@ -4,6 +4,8 @@
 package kanon_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -35,17 +37,25 @@ func TestKey(t *testing.T) {
 				"{Name: \"Next\", Number: 1},\n\t\t\t\t{Name: \"X\", Number: 2},",
 				"the Spec numbers the fields of the key type in declaration order")
 		})
+		t.Run("returns an error for a key type with a kanon codec that is not a struct", func(t *testing.T) {
+			t.Parallel()
+			dir := module(t, map[string]string{
+				"options.go": "// Options takes the place of the options of the runtime.\ntype Options struct{}\n",
+				"sub/a.go": "import kanon \"go.thesmos.sh/kanon\"\n\ntype K int32\n" + kanonMethods("K") +
+					structA("M map[K]string"),
+			})
+			assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte(runtimeMod), fileMode),
+				"the go.mod of the runtime path writes")
+			_, err := generate(t, filepath.Join(dir, "sub"), source, "A")
+			assert.HasError(t, err, "Generate fails for the key type")
+			assert.Equal(t, err.Error(), "kanon: a.go:20:2: A.M: map key type go.thesmos.sh/kanon/sub.K has kanon "+
+				"methods and is not a struct: kanon cannot order it", "Generate states why the key fails")
+		})
 		failures := []struct {
 			name  string
 			files map[string]string
 			want  string
 		}{
-			{
-				name:  "returns an error for a key type with a kanon codec that is not a struct",
-				files: map[string]string{source: keysDirective + "type K int32\n\n" + structA("M map[K]string")},
-				want: "kanon: a.go:8:2: A.M: map key type example.com/m.K has kanon methods and is not a struct: " +
-					"kanon cannot order it",
-			},
 			{
 				name: "returns an error for a key type with a field that can contain an interface",
 				files: map[string]string{source: keysDirective +

@@ -400,6 +400,9 @@ These changes are incompatible in both directions:
 - Moving a field into or out of a union.
 - Changing a type number.
 - Narrowing an integer type.
+- Changing a type between an opaque encoding and the encoding of its underlying type, such as
+  adding or removing the ValidateKanon method of a Go type with binary, gob or text methods.
+  The recorded field numbers do not change, so a check of the numbers does not detect it.
 
 ### Test vectors
 

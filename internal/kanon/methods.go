@@ -4,6 +4,7 @@
 package kanon
 
 import (
+	"fmt"
 	"go/token"
 	"go/types"
 )
@@ -26,6 +27,9 @@ const (
 	appendTextName      = "AppendText"
 	marshalTextName     = "MarshalText"
 	unmarshalTextName   = "UnmarshalText"
+	// validateKanonName names the method of kanon.Validator, through which
+	// a named type that is not a struct encodes as its underlying type.
+	validateKanonName = "ValidateKanon"
 )
 
 // Import path of the runtime package, and the names of its declarations
@@ -141,6 +145,39 @@ func hasKanonMethods(t *types.Named) bool {
 		s.decodes(decodeKanonName) && s.decodes(mergeKanonName) &&
 		s.has(resetName, nil, nil) &&
 		s.has(cloneKanonName, nil, []types.Type{types.NewPointer(t)})
+}
+
+// validatorOf reports whether the named type t is a kanon.Validator, which
+// kanon encodes as its underlying type ahead of its binary, gob and text
+// methods: t is neither a struct nor an interface, and has ValidateKanon of
+// signature func() error on a value receiver. An interface type is no
+// Validator whatever its methods, since kanon encodes an interface value by
+// its concrete type. validatorOf fails for a struct type with ValidateKanon,
+// which applies to types that are not structs, and for a ValidateKanon with
+// another signature or with a pointer receiver, which the encode cannot call
+// on a map key.
+func validatorOf(t *types.Named) (bool, error) {
+	if types.IsInterface(t) {
+		return false, nil
+	}
+	sig := methodsOf(t).signatureOf(validateKanonName)
+	if sig == nil {
+		return false, nil
+	}
+	name := types.TypeString(t, nil)
+	if isStruct(t) {
+		return false, fmt.Errorf("kanon: struct type %s declares %s, which applies to types that are not structs",
+			name, validateKanonName)
+	}
+	if !types.Identical(sig, signature(nil, []types.Type{errorType()})) {
+		return false, fmt.Errorf("kanon: %s.%s has the signature %s: declare it as func() error",
+			name, validateKanonName, types.TypeString(sig, nil))
+	}
+	if types.NewMethodSet(t).Lookup(t.Obj().Pkg(), validateKanonName) == nil {
+		return false, fmt.Errorf("kanon: %s.%s has a pointer receiver: declare it on a value receiver",
+			name, validateKanonName)
+	}
+	return true, nil
 }
 
 // signature returns the signature of a function without a receiver, with

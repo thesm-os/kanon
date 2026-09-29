@@ -20,7 +20,8 @@ const DefaultDepth = 100
 //   - a value of a type that encodes itself and has no append method;
 //   - a value of a type that encodes itself into more than 128 bytes;
 //   - a map of more than 16 keys other than bools, whose keys sort in a
-//     slice.
+//     slice;
+//   - a value of a [Validator] whose ValidateKanon allocates for it.
 //
 // DecodeKanon and MergeKanon with a slab in their [Options], into a receiver
 // that decoded the same input before, do not allocate, except for these
@@ -31,7 +32,8 @@ const DefaultDepth = 100
 //     nor a whole number of hours from UTC-12 to UTC+14;
 //   - a map of more than 16 entries whose values refer to memory, and a map
 //     key that refers to memory;
-//   - a value that an interface stores by value.
+//   - a value that an interface stores by value;
+//   - a value of a [Validator] whose ValidateKanon allocates for it.
 //
 // Without a slab, a decode allocates one copy of its input when T contains
 // a string.
@@ -63,11 +65,12 @@ type Message interface {
 	// EncodeKanon writes the encoding into the last SizeKanon bytes of buf
 	// and returns their count. It returns io.ErrShortBuffer without writing
 	// when buf is shorter than SizeKanon bytes. It returns an [*EncodeError]
-	// when a value fails to encode itself, an interface stores a type that
-	// its list does not name, or a map has a key with a NaN component
-	// ([ErrInvalidKey]) or two keys of one projection ([ErrAmbiguousKey]).
-	// After an error, buf does not contain a valid encoding, and
-	// AppendBinary returns its buffer unchanged.
+	// when a value fails to encode itself, the ValidateKanon of a [Validator]
+	// rejects a value, an interface stores a type that its list does not
+	// name, or a map has a key with a NaN component ([ErrInvalidKey]) or two
+	// keys of one projection ([ErrAmbiguousKey]). After an error, buf does
+	// not contain a valid encoding, and AppendBinary returns its buffer
+	// unchanged.
 	EncodeKanon(buf []byte) (int, error)
 
 	// DecodeKanon sets the receiver to the value encoded in data and reuses
@@ -75,7 +78,8 @@ type Message interface {
 	// its maps, the values its pointers point at and its nested structs. It
 	// first clears the fields that the encoding leaves out, as Reset does.
 	// Every decoded string is a substring of the slab of opts. It returns a
-	// [*DecodeError] for malformed input. After an error the receiver
+	// [*DecodeError] for malformed input, and for a value that the
+	// ValidateKanon of a [Validator] rejects. After an error the receiver
 	// contains the fields decoded before it, and the failed field has an
 	// unspecified value.
 	DecodeKanon(data []byte, opts Options) error
@@ -121,6 +125,44 @@ type Cloner[T any] interface {
 	// encode, can have one entry for them in the copy. A nil receiver returns
 	// nil.
 	CloneKanon() *T
+}
+
+// Validator is the method set of a named type T that is not a struct: a
+// bool, a number, a string, a slice, an array or a map. A //go:generate go
+// tool kanon -type=T directive generates the method, and a method written
+// by hand with this signature on a value receiver works alike.
+//
+// # Encoding
+//
+// The generated code encodes a value of a Validator as a value of its
+// underlying type, ahead of the binary, gob and text methods of the type.
+// Adding ValidateKanon to a type with such methods, or removing it, changes
+// the encoding of every field of the type, which the wire format lists as
+// incompatible in both directions. kanon treats a named
+// interface type whose method set has ValidateKanon as any other interface,
+// and encodes the value of the interface by its concrete type. kanon
+// rejects a Validator whose only value is its zero value, such as an array
+// of no elements, whose encoding is a constant.
+//
+// # Validation
+//
+// The generated code calls ValidateKanon on every value of the type that it
+// encodes or decodes, except a zero value that the encoding leaves out. An
+// error fails the encode with an [*EncodeError], and the decode with a
+// [*DecodeError] at the offset of the value, whose cause is that error. A
+// view method calls it on the value that it returns. SizeKanon, Reset and
+// CloneKanon do not call it.
+//
+// # Allocation contract
+//
+// A ValidateKanon that allocates for a value makes the encode and the
+// decode of the value allocate, which the allocation contract of [Message]
+// lists as an exception. The conformance test of a type that a -type flag
+// names fails when its ValidateKanon allocates for a value that it accepts.
+type Validator interface {
+	// ValidateKanon returns nil for a value that kanon encodes and decodes,
+	// and the reason that it rejects any other value.
+	ValidateKanon() error
 }
 
 // Options set the slab and the nesting limit of a decode, and with the zero

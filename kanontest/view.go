@@ -60,9 +60,11 @@ func (s *suite[T, P]) views(tb assert.TB) {
 // l for data, the reference of the generated view methods: the value of the
 // last occurrence of f, or of the value that f points at, decoded alone, or
 // the zero value when data has no occurrence of f. The value of a string, a
-// byte slice and a struct is the bytes after its length. A struct has one
-// occurrence at most, since a decode merges its occurrences, and view
-// returns the error of wire.FindOne for it, which wraps
+// byte slice and a struct is the bytes after its length, and the value of a
+// string or a byte slice of a kanon.Validator is those bytes converted to
+// its type, which passes its ValidateKanon at the offset of the value. A
+// struct has one occurrence at most, since a decode merges its occurrences,
+// and view returns the error of wire.FindOne for it, which wraps
 // kanon.ErrRepeatedView for a second one. view returns the error of
 // wire.Find for any other value, and the error of the decode of the value.
 func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error) {
@@ -79,7 +81,19 @@ func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error)
 			start, end, err = length(data, i, 0, l.loc(f), f.Number)
 			b = data[start:end]
 		}
-		return reflect.ValueOf(b), err
+		if !s.validate {
+			return reflect.ValueOf(b), err
+		}
+		x := reflect.New(s.typ).Elem()
+		if err != nil || i == -1 {
+			return x, err
+		}
+		if s.kind == kindString {
+			x.SetString(string(b))
+		} else {
+			x.SetBytes(b)
+		}
+		return x, validated(s, x, l.loc(f), f.Number, i)
 	}
 	x := reflect.New(s.typ).Elem()
 	if err == nil && i != -1 {

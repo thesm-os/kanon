@@ -100,6 +100,10 @@ type shape struct {
 	// absent exactly when it is the zero value of its type, since == compares
 	// every bit of the type, as [bitwiseType] reports.
 	zeroAbsent bool
+	// validate reports that the type is a kanon.Validator, as [validates]
+	// reports: it encodes as its underlying type, and every value that the
+	// codec writes or reads passes its ValidateKanon.
+	validate bool
 }
 
 // variant is a concrete type that an interface stores, and its number.
@@ -361,11 +365,12 @@ func (r *resolver) describe(l *layout, fields []Field, unknown string) error {
 }
 
 // shapeOf returns the shape of the Go type t under o. A type resolves in the
-// order of the generator: time.Time, a struct with a kanon codec, a type
-// that encodes itself, and last its kind, so that a time.Duration encodes
-// as the int64 that it is and any other struct is an inline struct. It
-// fails for a type that kanon does not encode, and as [resolver.inline] and
-// [resolver.iface] fail.
+// order of the generator: time.Time, a struct with a kanon codec, a
+// kanon.Validator, which takes the shape of its kind, a type that encodes
+// itself, and last its kind, so that a time.Duration encodes as the int64
+// that it is and any other struct is an inline struct. It fails for a type
+// that kanon does not encode, and as [resolver.inline] and [resolver.iface]
+// fail.
 func (r *resolver) shapeOf(t reflect.Type, o opts) (*shape, error) {
 	k := seenKey{typ: t, fixed: o.fixed, key: o.key}
 	if s := o.seen[k]; s != nil {
@@ -381,7 +386,8 @@ func (r *resolver) shapeOf(t reflect.Type, o opts) (*shape, error) {
 		s.kind = kindStruct
 		return s, nil
 	}
-	if familyOf(t) != 0 {
+	s.validate = validates(t)
+	if !s.validate && familyOf(t) != 0 {
 		s.kind, s.zeroAbsent = kindBinary, bitwiseType(t)
 		return s, nil
 	}

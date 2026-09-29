@@ -421,23 +421,27 @@ func (e *emitter) readField(m *target, f *field) {
 		}
 		e.readFramed(v, x, p, merge)
 	case kindSlice:
+		e.validFrom(v, p)
 		e.readLength(p)
 		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s); err != nil {",
 			e.fn(opRead, v), addr(x), p.depth(), p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
+		e.validRead(v, x, p)
 	case kindMap:
 		collect := trueName
 		if f.member == nil {
 			collect, _ = e.seen(f)
 		}
+		e.validFrom(v, p)
 		e.readLength(p)
 		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s, %s); err != nil {",
 			e.fn(opRead, v), addr(x), p.depth(), collect, p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
+		e.validRead(v, x, p)
 	default:
 		e.read(v, x, p, "")
 	}
@@ -564,9 +568,11 @@ func (e *emitter) readExact(p place, size int64) {
 // [value.merges] reports: with the flag set, dst merges the decoded value as
 // a repeated field merges it. dst is addressable, or the value that a pointer
 // points at, as (*p). The statements declare variables, and every group of
-// them reads dst.
+// them reads dst. A kanon.Validator then calls its ValidateKanon on dst, and
+// its error names the offset of the value.
 func (e *emitter) read(v *value, dst string, p place, merge string) {
 	w := e.wire()
+	e.validFrom(v, p)
 	switch v.kind {
 	case kindBool, kindInt, kindUint:
 		e.line("u, n := %sUvarint(data[i:])", w)
@@ -647,7 +653,7 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		if v.size == 0 {
 			e.readExact(p, 0)
 			e.line("%s = %s", dst, e.zero(v.typ))
-			return
+			break
 		}
 		e.readLength(p)
 		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s); err != nil {", e.fn(opRead, v),
@@ -686,6 +692,7 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		e.check()
 		e.line("i += used")
 	}
+	e.validRead(v, dst, p)
 }
 
 // varint returns the expression of the value of v, a bool or an integer,

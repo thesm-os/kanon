@@ -25,9 +25,10 @@ const (
 const viewSuffix = "View"
 
 // codeFile returns the code file of u: the numbers lines, the version check,
-// the interface assertions, the methods of each target, a view type per
-// target when u.views is set, and the helpers that the code calls, in the
-// order in which it first calls them.
+// the interface assertions of the targets, the methods of each target, a
+// view type per target when u.views is set, the ValidateKanon method of
+// each value type, and the helpers that the code calls, in the order in
+// which it first calls them.
 func codeFile(u *unit) ([]byte, error) {
 	e := &emitter{
 		p:      u.printer(),
@@ -38,6 +39,7 @@ func codeFile(u *unit) ([]byte, error) {
 		cls: classifier{
 			nested:    u.pkg.nested,
 			generated: u.pkg.generated,
+			validated: u.pkg.validated,
 			pkg:       u.pkg.types,
 			fset:      u.pkg.fset,
 			inlines:   u.inlines,
@@ -65,14 +67,16 @@ func codeFile(u *unit) ([]byte, error) {
 	e.line("_ = %sEnforceVersion(%sMaxVersion - %d)", rt, rt, generatorVersion)
 	e.line(")")
 	e.line("")
-	e.line("// The generated types implement kanon.Cloner.")
-	e.line("var (")
-	for _, m := range u.targets {
-		typ := e.p.typ(m.typ)
-		e.line("_ %sCloner[%s] = (*%s)(nil)", rt, typ, typ)
+	if len(u.targets) > 0 {
+		e.line("// The generated types implement kanon.Cloner.")
+		e.line("var (")
+		for _, m := range u.targets {
+			typ := e.p.typ(m.typ)
+			e.line("_ %sCloner[%s] = (*%s)(nil)", rt, typ, typ)
+		}
+		e.line(")")
+		e.line("")
 	}
-	e.line(")")
-	e.line("")
 	for _, m := range u.targets {
 		e.sizeMethod(m)
 		e.encodeMethods(m)
@@ -82,6 +86,9 @@ func codeFile(u *unit) ([]byte, error) {
 		if u.views {
 			e.viewType(m)
 		}
+	}
+	for _, vt := range u.values {
+		e.validateMethod(vt)
 	}
 	e.helpers()
 	if err := u.check(e); err != nil {
@@ -173,7 +180,8 @@ func localNames() []string {
 	return []string{
 		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "data", "depth", "dst", "ea", "eb",
 		"enc",
-		"end", "err", "free", "freeKeys", "held", "i", "im", "k", "keys", "l", "last", locParam, "m", "mk", "mv",
+		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "k", "keys", "l", "last", locParam, "m", "mk",
+		"mv",
 		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "pair", "pairs", "present", "re", "s",
 		"sa", "sb",
 		"scratch", "seen", "size", "slab", "src", "t", "tag", "u", "used", "w", "x", "zero",

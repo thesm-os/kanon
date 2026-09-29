@@ -44,17 +44,17 @@ func (c classifier) holdsInterface(t types.Type) bool {
 
 // mayFail reports whether encoding a value of type t can fail: t is or
 // contains a type that encodes itself, whose encode method returns an
-// error, an interface, which can store a type that its list does not name,
-// or a map whose keys can have a NaN component or share a projection, as
-// [classifier.floats] and [classifier.ambiguous] report. seen marks the
-// named types visited.
+// error, a kanon.Validator, whose ValidateKanon returns one, an interface,
+// which can store a type that its list does not name, or a map whose keys
+// can have a NaN component or share a projection, as [classifier.floats]
+// and [classifier.ambiguous] report. seen marks the named types visited.
 func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 	return c.reaches(t, seen, func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Interface:
 			return true, false
 		case *types.Named:
-			return c.binaryType(t), true
+			return c.binaryType(t) || c.validates(t), true
 		case *types.Map:
 			return c.floats(t.Key()) || c.ambiguous(t.Key()), true
 		default:
@@ -206,10 +206,11 @@ func (c classifier) hollow(t types.Type) bool {
 }
 
 // binaryType reports whether t encodes itself through a family of methods:
-// its pointer has them, and t is neither a nested struct nor time.Time,
-// which kanon encodes as seconds, nanoseconds and a zone offset.
+// its pointer has them, and t is neither a nested struct, nor time.Time,
+// which kanon encodes as seconds, nanoseconds and a zone offset, nor a
+// kanon.Validator, which kanon encodes as its underlying type.
 func (c classifier) binaryType(t *types.Named) bool {
-	if isTime(t) || c.nested(t) {
+	if isTime(t) || c.nested(t) || c.validates(t) {
 		return false
 	}
 	_, ok := selfCodecOf(t)

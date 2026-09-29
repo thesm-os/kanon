@@ -6,6 +6,7 @@ package kanontest
 import (
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 
 	"go.thesmos.sh/kanon"
@@ -89,9 +90,14 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 			return 0, err
 		}
 		if s.kind == kindSlice {
-			return end, d.readSlice(s, x, data[start:end], off+start, lv-1, loc, num)
+			err = d.readSlice(s, x, data[start:end], off+start, lv-1, loc, num)
+		} else {
+			err = d.readMap(s, x, data[start:end], off+start, lv-1, loc, num)
 		}
-		return end, d.readMap(s, x, data[start:end], off+start, lv-1, loc, num)
+		if err == nil {
+			err = validated(s, x, loc, num, off+i)
+		}
+		return end, err
 	case kindInterface:
 		return d.mergeInterface(s, x, data, i, off, lv-1, loc, num)
 	case kindPointer:
@@ -158,7 +164,11 @@ func (d *decoder) framed(s *shape, x reflect.Value, data []byte, i, off, lv int,
 // occurrence of the concrete type that x stores then merges into the value
 // when the type merges, as [shape.merges] reports, and any other occurrence
 // replaces the value. The decode of an occurrence fails for its bytes and
-// its levels alone, whatever x stores, so that the merge fails for none.
+// its levels alone, whatever x stores, so that the merge fails for none,
+// except the ValidateKanon of a kanon.Validator: as the generated code
+// validates the merged value alone, the decode of an occurrence that merges
+// skips the ValidateKanon of its concrete value, and the merged value
+// passes it at the offset of the occurrence's value.
 func (d *decoder) mergeInterface(
 	s *shape,
 	x reflect.Value,
@@ -167,24 +177,50 @@ func (d *decoder) mergeInterface(
 	loc string,
 	num int,
 ) (int, error) {
-	fresh := reflect.New(s.typ).Elem()
-	end, err := d.framed(s, fresh, data, i, off, lv, loc, num)
+	start, _, err := length(data, i, off, loc, num)
 	if err != nil {
 		return 0, err
 	}
-	if !x.IsNil() && !fresh.IsNil() && x.Elem().Type() == fresh.Elem().Type() {
-		if w := s.variant(fresh.Elem().Type()); w.shape.merges() {
-			start, _, _ := length(data, i, off, loc, num)
-			_, n := wire.Uvarint(data[start:])
-			c := reflect.New(w.shape.typ).Elem()
-			c.Set(x.Elem())
-			d.merge(w.shape, c, data, start+n, off, loc, num)
-			x.Set(c)
-			return end, nil
+	t, n := wire.Uvarint(data[start:])
+	w := s.numbered(t)
+	merges := !x.IsNil() && w != nil && x.Elem().Type() == w.shape.typ && w.shape.merges()
+	decoded := s
+	if merges && w.shape.validate {
+		decoded = unvalidated(s, w)
+	}
+	fresh := reflect.New(s.typ).Elem()
+	end, err := d.framed(decoded, fresh, data, i, off, lv, loc, num)
+	if err != nil {
+		return 0, err
+	}
+	if !merges {
+		x.Set(fresh)
+		return end, nil
+	}
+	c := reflect.New(w.shape.typ).Elem()
+	c.Set(x.Elem())
+	d.merge(w.shape, c, data, start+n, off, loc, num)
+	if err := validated(w.shape, c, loc, num, off+start+n); err != nil {
+		return 0, err
+	}
+	x.Set(c)
+	return end, nil
+}
+
+// unvalidated returns a copy of the interface shape s in which the variant w
+// skips the ValidateKanon of its values, which the values that they contain
+// still pass.
+func unvalidated(s *shape, w *variant) *shape {
+	c := *s
+	c.variants = slices.Clone(s.variants)
+	for k := range c.variants {
+		if c.variants[k].num == w.num {
+			plain := *w.shape
+			plain.validate = false
+			c.variants[k].shape = &plain
 		}
 	}
-	x.Set(fresh)
-	return end, nil
+	return &c
 }
 
 // merge decodes the value of s at data[i] into x as a repeated field of its
@@ -219,8 +255,22 @@ func (d *decoder) merge(s *shape, x reflect.Value, data []byte, i, off int, loc 
 
 // read decodes the value of s at data[i], at level lv, into x, which takes
 // the decoded value whole, and returns the offset after the value. loc and
-// num locate the value in errors.
+// num locate the value in errors. A kanon.Validator then passes its
+// ValidateKanon, whose error names the offset of the value.
 func (d *decoder) read(s *shape, x reflect.Value, data []byte, i, off, lv int, loc string, num int) (int, error) {
+	end, err := d.readKind(s, x, data, i, off, lv, loc, num)
+	if err == nil {
+		err = validated(s, x, loc, num, off+i)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return end, nil
+}
+
+// readKind decodes the value of s at data[i] by the kind of s, as
+// [decoder.read] states.
+func (d *decoder) readKind(s *shape, x reflect.Value, data []byte, i, off, lv int, loc string, num int) (int, error) {
 	switch s.kind {
 	case kindBool, kindInt, kindUint:
 		u, n := wire.Uvarint(data[i:])

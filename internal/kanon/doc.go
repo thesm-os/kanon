@@ -3,10 +3,12 @@
 
 // Package kanon generates the codecs of Go struct types for the kanon
 // command. [Generate] loads the package of a source file with a kanon
-// directive and returns two files for the struct types that [Options.Types]
-// names: <base>.kanon.go declares the methods of kanon.Cloner on each type,
-// and <base>.kanon_test.go runs the conformance suite of package kanontest
-// on them. [Check] checks the field numbers of the same types against the
+// directive and returns two files for the types that [Options.Types] names:
+// <base>.kanon.go declares the methods of kanon.Cloner on each struct type
+// and the ValidateKanon method of kanon.Validator on each named type that is
+// not a struct, and <base>.kanon_test.go runs the conformance suites of
+// package kanontest on them. [Check] checks the field numbers of the same
+// types against the
 // numbers that the code files of a base revision record. [ParseOptions]
 // parses the flags of the kanon command, which a go:generate directive
 // passes in the same form.
@@ -27,6 +29,15 @@
 // code file declares functions that write the encoding its own codec would
 // write. A type with the binary, gob or text methods of packages encoding
 // and encoding/gob encodes itself through them, as gob encodes it.
+//
+// A named type that is not a struct is a kanon.Validator when a -type flag
+// of its package names it, or when it has ValidateKanon on a value receiver.
+// It encodes as its underlying type, ahead of its binary, gob and text
+// methods, and the generated code calls ValidateKanon on each value of the
+// type that it encodes or decodes. The analysis rejects ValidateKanon on a
+// struct type, on a pointer receiver or with another signature, and on a
+// type whose only value is its zero value. A named interface type whose
+// method set has ValidateKanon encodes as any other interface.
 //
 // # Field numbers
 //

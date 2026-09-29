@@ -58,9 +58,9 @@ func (m *Codecs) SizeKanon() int {
 // returns their count. A nil m writes nothing. When buf is shorter than
 // SizeKanon bytes, EncodeKanon writes nothing and returns io.ErrShortBuffer. It
 // fails when the value of a field fails to encode: a type that encodes itself
-// returns an error, an interface stores a type that the tag option types of its
-// field does not list, or a map has a key with a NaN component or two keys of
-// one projection.
+// returns an error, ValidateKanon of a type rejects a value, an interface
+// stores a type that the tag option types of its field does not list, or a map
+// has a key with a NaN component or two keys of one projection.
 func (m *Codecs) EncodeKanon(buf []byte) (int, error) {
 	if m == nil {
 		return 0, nil
@@ -74,9 +74,10 @@ func (m *Codecs) EncodeKanon(buf []byte) (int, error) {
 // encodeKanon writes the encoding of m into the end of buf, which has room for
 // it, and returns its length. The encoding methods of m and of the structs of
 // the package that contain one call it. It fails when the value of a field
-// fails to encode: a type that encodes itself returns an error, an interface
-// stores a type that the tag option types of its field does not list, or a map
-// has a key with a NaN component or two keys of one projection.
+// fails to encode: a type that encodes itself returns an error, ValidateKanon
+// of a type rejects a value, an interface stores a type that the tag option
+// types of its field does not list, or a map has a key with a NaN component or
+// two keys of one projection.
 func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
 	if m.Code != ([2]external.Code{}) {
@@ -133,9 +134,9 @@ func (m *Codecs) encodeKanon(buf []byte) (int, error) {
 // AppendBinary appends the encoding of m to b and returns the extended slice.
 // It does not allocate when b has SizeKanon bytes of spare capacity. It fails
 // when the value of a field fails to encode: a type that encodes itself returns
-// an error, an interface stores a type that the tag option types of its field
-// does not list, or a map has a key with a NaN component or two keys of one
-// projection.
+// an error, ValidateKanon of a type rejects a value, an interface stores a type
+// that the tag option types of its field does not list, or a map has a key with
+// a NaN component or two keys of one projection.
 func (m *Codecs) AppendBinary(b []byte) ([]byte, error) {
 	if m == nil {
 		return b, nil
@@ -150,9 +151,9 @@ func (m *Codecs) AppendBinary(b []byte) ([]byte, error) {
 
 // MarshalBinary returns the encoding of m in a new slice, and nil for an empty
 // encoding. It fails when the value of a field fails to encode: a type that
-// encodes itself returns an error, an interface stores a type that the tag
-// option types of its field does not list, or a map has a key with a NaN
-// component or two keys of one projection.
+// encodes itself returns an error, ValidateKanon of a type rejects a value, an
+// interface stores a type that the tag option types of its field does not list,
+// or a map has a key with a NaN component or two keys of one projection.
 func (m *Codecs) MarshalBinary() ([]byte, error) {
 	return m.AppendBinary(nil)
 }

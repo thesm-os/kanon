@@ -1,0 +1,8 @@
+value 0: 0a020002
+value 1: fails: validate: span low bound above its high bound
+value 2: 0a03018002
+value 3: 0a058002808002
+value 4: fails: validate: span low bound above its high bound
+value 5: 0a078102feffffff0f
+value 6: fails: validate: span low bound above its high bound
+value 7: 0a06ffffffff0f00

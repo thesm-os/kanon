@@ -78,7 +78,8 @@ type DecodeError struct {
 	Detail string
 	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
 	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
-	// [ErrRepeatedView], or the error of a type that decodes itself.
+	// [ErrRepeatedView], the error of a type that decodes itself, or the
+	// error of the ValidateKanon of a [Validator].
 	Err error
 }
 
@@ -118,7 +119,8 @@ type EncodeError struct {
 	// Number is the field number of Field.
 	Number int
 	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
-	// [ErrAmbiguousKey], or the error of a type that encodes itself.
+	// [ErrAmbiguousKey], the error of a type that encodes itself, or the
+	// error of the ValidateKanon of a [Validator].
 	Err error
 }
 

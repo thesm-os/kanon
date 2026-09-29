@@ -38,7 +38,7 @@ const (
 // than the code file of file record different numbers for a struct or a
 // list.
 func Check(dir, file string, opts Options, base map[string][]byte) error {
-	u, err := newUnit(dir, file, opts.Types)
+	u, err := newUnit(dir, file, opts)
 	if err != nil {
 		return err
 	}

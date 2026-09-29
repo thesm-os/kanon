@@ -6,20 +6,24 @@
 //
 //	//go:generate go tool kanon -type=Order,Line
 //
-// -type names one or more struct types of the package, separated by
-// commas. kanon writes <base>.kanon.go, the codec methods of those types,
-// and <base>.kanon_test.go, their conformance tests, where <base> is the
-// name of the file with the directive. go generate names that file in
-// $GOFILE and runs kanon in its directory. Outside go generate, name the
-// file as the only argument. -views also declares a view type per struct
-// type, whose methods read one field of an encoding without decoding it.
+// -type names one or more types of the package, separated by commas: struct
+// types, and named bools, numbers, strings, slices, arrays and maps. kanon
+// writes <base>.kanon.go, the codec methods of the struct types and the
+// ValidateKanon method of the other types, and <base>.kanon_test.go, their
+// conformance tests, where <base> is the name of the file with the
+// directive. go generate names that file in $GOFILE and runs kanon in its
+// directory. Outside go generate, name the file as the only argument.
+// -views also declares a view type per struct type, whose methods read one
+// field of an encoding without decoding it. -validate names a method of
+// signature func() error on a value receiver, whose error the ValidateKanon
+// method of each type that is not a struct returns.
 //
 // kanon writes a file only when its content changes, so that an unchanged
 // codec keeps its modification time.
 //
 // Usage:
 //
-//	kanon -type=T[,T...] [-views] [file]
+//	kanon -type=T[,T...] [-views] [-validate=method] [file]
 //	kanon inspect [-frames | -batch] [-hex] [-json] [file]
 //	kanon -version
 //

@@ -26,3 +26,4 @@ under `../rfc`.
 | [0019](0019-map-keys-ordered-by-projection.md) | Order map keys by their projection, and fail the encode of NaN and tied keys | Accepted |
 | [0020](0020-zero-opaque-values-are-absent.md) | Leave out the zero value of an opaque type whose equality compares every bit | Accepted |
 | [0021](0021-views-read-opaque-fields.md) | Generate view types that read one field from an encoding, opaque fields included | Accepted |
+| [0022](0022-validated-types-encode-as-underlying.md) | Encode a named type other than a struct with ValidateKanon as its underlying type | Accepted |

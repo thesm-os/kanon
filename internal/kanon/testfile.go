@@ -38,7 +38,8 @@ const (
 // what its Go type does not: its name, its number, the fixed option, the
 // union it belongs to and the constant that selects it, and the concrete
 // types of its interfaces with their numbers. A struct states the field
-// that keeps its unknown fields.
+// that keeps its unknown fields. Each value type gets a test function that
+// runs kanontest.RunValue on it.
 func testFile(u *unit) ([]byte, error) {
 	p := newPrinter(u.pkg.types.Path(), u.pkg.types.Scope().Names())
 	kt := p.use(kanontestPath, kanontestName)
@@ -81,6 +82,14 @@ func testFile(u *unit) ([]byte, error) {
 		p.line("// %s%s fuzzes the decode of %s.", fuzzPrefix, m.name, name)
 		p.line("func %s%s(f *%s.F) {", fuzzPrefix, m.name, tst)
 		p.line("%s.Fuzz(f, %s)", kt, spec)
+		p.line("}")
+	}
+	for _, vt := range u.values {
+		name := p.typ(vt.typ)
+		p.line("")
+		p.line("// %s%s runs the conformance suite on %s.", testPrefix, vt.typ.Obj().Name(), name)
+		p.line("func %s%s(t *%s.T) {", testPrefix, vt.typ.Obj().Name(), tst)
+		p.line("%s.RunValue[%s](t)", kt, name)
 		p.line("}")
 	}
 	return p.source(u.header(), u.pkg.types.Name())

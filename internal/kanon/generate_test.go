@@ -199,15 +199,16 @@ func TestGenerate(t *testing.T) {
 			assert.Contains(t, files["a-b.kanon.go"], "func _a_b_sizeSliceInt32(", "the helper has the prefix _a_b_")
 		})
 		failures := []struct {
-			name  string
-			files map[string]string
-			file  string
-			types string
-			want  string
+			name     string
+			files    map[string]string
+			file     string
+			types    string
+			validate string
+			want     string
 		}{
 			{
-				name: "returns an error for no struct type", files: map[string]string{source: structXY}, file: source,
-				want: "kanon: -type is required: name the struct types to generate codecs for",
+				name: "returns an error for no type", files: map[string]string{source: structXY}, file: source,
+				want: "kanon: -type is required: name the types to generate code for",
 			},
 			{
 				name:  "returns an error for a type that the package does not declare",
@@ -222,16 +223,50 @@ func TestGenerate(t *testing.T) {
 				want:  "kanon: a.go:8:6: B: an alias cannot take methods: name the type it denotes",
 			},
 			{
-				name:  "returns an error for a type that is not a struct",
-				files: map[string]string{source: "type N int32\n"},
+				name:  "returns an error for a function type",
+				files: map[string]string{source: "type N func()\n"},
 				file:  source,
 				types: "N",
-				want:  "kanon: a.go:3:6: N: not a struct type",
+				want:  "kanon: a.go:3:6: N: not a struct, a bool, a number, a string, a slice, an array or a map",
+			},
+			{
+				name:  "returns an error for an interface type",
+				files: map[string]string{source: "type N interface {\n\tM()\n}\n"},
+				file:  source,
+				types: "N",
+				want:  "kanon: a.go:3:6: N: not a struct, a bool, a number, a string, a slice, an array or a map",
+			},
+			{
+				name:  "returns an error for a pointer type",
+				files: map[string]string{source: "type N *int32\n"},
+				file:  source,
+				types: "N",
+				want:  "kanon: a.go:3:6: N: not a struct, a bool, a number, a string, a slice, an array or a map",
+			},
+			{
+				name:  "returns an error for an unsafe pointer type",
+				files: map[string]string{source: "import \"unsafe\"\n\ntype N unsafe.Pointer\n"},
+				file:  source,
+				types: "N",
+				want:  "kanon: a.go:5:6: N: not a struct, a bool, a number, a string, a slice, an array or a map",
 			},
 			{
 				name:  "returns an error for a generic struct type",
 				files: map[string]string{source: "type G[T any] struct {\n\tX T\n}\n"}, file: source, types: "G",
-				want: "kanon: a.go:3:6: G: generic struct types are not supported",
+				want: "kanon: a.go:3:6: G: generic types are not supported",
+			},
+			{
+				name:  "returns an error for a generic slice type",
+				files: map[string]string{source: "type G[T any] []T\n"}, file: source, types: "G",
+				want: "kanon: a.go:3:6: G: generic types are not supported",
+			},
+			{
+				name:  "returns an error for a struct type with ValidateKanon",
+				files: map[string]string{source: structXY + "\nfunc (A) ValidateKanon() error { return nil }\n"},
+				file:  source,
+				types: "A",
+				want: "kanon: a.go:3:6: A: struct type example.com/m.A declares ValidateKanon, which applies to " +
+					"types that are not structs",
 			},
 			{
 				name:  "returns an error for two files that map to one helper prefix",
@@ -246,9 +281,54 @@ func TestGenerate(t *testing.T) {
 				if tt.types != "" {
 					types = []string{tt.types}
 				}
-				_, err := kanon.Generate(module(t, tt.files), tt.file, kanon.Options{Types: types})
+				opts := kanon.Options{Types: types, Validate: tt.validate}
+				_, err := kanon.Generate(module(t, tt.files), tt.file, opts)
 				assert.HasError(t, err, "Generate fails")
 				assert.Equal(t, err.Error(), tt.want, "Generate states why it fails")
+			})
+		}
+		directed := []struct {
+			name  string
+			files map[string]string
+			field string
+			want  bool
+		}{
+			{
+				name: "writes a ValidateKanon call for a field of a type that a directive of the package names " +
+					"before its code file exists",
+				files: map[string]string{
+					"b.go": "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n",
+					source: structA("F N"),
+				},
+				field: "F",
+				want:  true,
+			},
+			{
+				name: "writes a ValidateKanon call for a field of a type that a directive of another package names " +
+					"before its code file exists",
+				files: map[string]string{
+					"dep/dep.go": "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n",
+					source:       "import \"example.com/m/dep\"\n\n" + structA("F dep.N"),
+				},
+				field: "F",
+				want:  true,
+			},
+			{
+				name: "writes no ValidateKanon call for a field of an interface type that a directive of the package names",
+				files: map[string]string{
+					"b.go": "//go:generate go tool kanon -type=V\n\n// V is an interface.\ntype V interface {\n\tM()\n}\n",
+					source: "type N int32\n\nfunc (N) M() {}\n\n" + structA("F V `kanon:\",types=N\"`"),
+				},
+				field: "F",
+			},
+		}
+		for _, tt := range directed {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				files, err := generate(t, module(t, tt.files), source, "A")
+				assert.NoError(t, err, "Generate encodes the field")
+				assert.Equal(t, strings.Contains(files[codeName], "m."+tt.field+".ValidateKanon()"), tt.want,
+					"the encode calls ValidateKanon on the value of the field")
 			})
 		}
 		t.Run("returns an error for a file that the package does not contain", func(t *testing.T) {

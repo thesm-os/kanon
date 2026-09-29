@@ -16,10 +16,12 @@ import (
 	"go.thesmos.sh/kanon"
 )
 
-// Check is one check of the codec of a struct type.
+// Check is one check of the codec of a struct type, or of the ValidateKanon
+// method of a kanon.Validator.
 type Check struct {
-	// Name names the check as the subtest that [Run] runs it in: the method
-	// whose contract the check states, a slash, and the behaviour.
+	// Name names the check as the subtest that [Run] or [RunValue] runs it
+	// in: the method whose contract the check states, a slash, and the
+	// behaviour.
 	Name string
 	// Serial reports that the check counts allocations, which the testing
 	// package counts while no parallel test runs.
@@ -104,7 +106,14 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 // t.Parallel.
 func Run[T any, P Codec[T]](t *testing.T, spec Spec[T]) {
 	t.Helper()
-	for _, c := range Checks[T, P](spec) {
+	run(t, Checks[T, P](spec))
+}
+
+// run runs checks, each as a subtest of t: the checks that count
+// allocations serially, and the others in parallel.
+func run(t *testing.T, checks []Check) {
+	t.Helper()
+	for _, c := range checks {
 		t.Run(c.Name, func(t *testing.T) {
 			if !c.Serial {
 				t.Parallel()

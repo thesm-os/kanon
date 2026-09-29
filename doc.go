@@ -6,7 +6,8 @@
 // for Go struct types. A struct type T that a //go:generate go tool kanon
 // -type=T directive names gets the methods of [Message] and [Cloner] on *T,
 // and code written against those interfaces encodes, decodes and copies any
-// generated type.
+// generated type. A named type that is not a struct, which such a directive
+// names, gets the method of [Validator], and encodes as its underlying type.
 //
 // # Encoding
 //
@@ -31,10 +32,11 @@
 // the field number and the offset of the malformed input, and that wraps
 // one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth],
 // [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey] and
-// [ErrRepeatedView], or the error of a type that decodes itself. An encode
-// returns a [*EncodeError] that wraps [ErrUnlistedType], [ErrInvalidKey] or
-// [ErrAmbiguousKey], or the error of a type that encodes itself. errors.Is
-// and errors.As classify both.
+// [ErrRepeatedView], the error of a type that decodes itself, or the error
+// of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
+// that wraps [ErrUnlistedType], [ErrInvalidKey] or [ErrAmbiguousKey], the
+// error of a type that encodes itself, or the error of ValidateKanon.
+// errors.Is and errors.As classify both.
 //
 // # Versions
 //

@@ -98,13 +98,16 @@ func DepthError(loc string, num, off int) error {
 }
 
 // UnmarshalError returns the error for the value at offset off of a type
-// that decodes itself, whose decode method failed with err. It wraps err.
+// that decodes itself, whose decode method failed with err, or of a
+// kanon.Validator, whose ValidateKanon rejected the decoded value with err.
+// It wraps err.
 func UnmarshalError(err error, loc string, num, off int) error {
 	return decodeError(err, loc, num, off, "")
 }
 
 // MarshalError returns the error for the value of a type that encodes
-// itself, whose encode method failed with err. It wraps err.
+// itself, whose encode method failed with err, or of a kanon.Validator,
+// whose ValidateKanon rejected the value with err. It wraps err.
 func MarshalError(err error, loc string, num int) error {
 	e := &kanon.EncodeError{Number: num, Err: err}
 	e.Type, e.Field = split(loc)

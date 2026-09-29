@@ -44,6 +44,10 @@ type classifier struct {
 	// generated reports whether kanon generates the codec of a nested
 	// struct: a -type flag of its package names it.
 	generated func(*types.Named) bool
+	// validated reports whether kanon generates the ValidateKanon method of
+	// a named type that is not a struct: a -type flag of its package names
+	// it. Such a type is a kanon.Validator before its code file exists.
+	validated func(*types.Named) bool
 	// pkg is the package of the code file, which names every type the file
 	// encodes.
 	pkg *types.Package
@@ -70,7 +74,9 @@ type classifier struct {
 // of inline structs, which take their own tags. The interfaces in the tree
 // store the concrete types of list, as [classifier.iface] states.
 //
-// A named type resolves in this order: a nested struct; time.Time; a type
+// A named type resolves in this order: a nested struct; time.Time; a
+// kanon.Validator, as [classifier.validator] finds it, which resolves to its
+// underlying type ahead of its methods and validates its values; a type
 // that encodes itself through a family of methods, as [selfCodecOf] finds
 // it; and last, its underlying type, so that a time.Duration encodes as the
 // int64 it is. A struct type that resolves to its underlying type is an
@@ -80,10 +86,14 @@ type classifier struct {
 //
 // classify fails for a type that kanon does not encode: a function, a
 // channel and an unsafe pointer; for a type that the generated code cannot
-// name, as [nameable] states; for an interface without a list; and for an
-// inline struct whose fields fail the analysis. It also fails when fixed
-// applies to no integer of the tree, when the tree has no interface for
-// list, and when a type of list fits no interface of the tree.
+// name, as [nameable] states; for a ValidateKanon that [validatorOf]
+// rejects; for a kanon.Validator whose only value is its zero value, as
+// [value.zeroOnly] reports, since its encoding is a constant that the
+// generated code writes and reads without the value; for an interface
+// without a list; and for an inline struct whose
+// fields fail the analysis. It also fails when fixed applies to no integer
+// of the tree, when the tree has no interface for list, and when a type of
+// list fits no interface of the tree.
 func (c classifier) classify(t types.Type, fixed bool, list *typeList, at site) (*value, error) {
 	o := treeOpts{fixed: fixed, used: new(bool), list: list, placed: make(map[*concrete]bool)}
 	v, err := c.tree(t, o, at)
@@ -126,6 +136,10 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 	}
 	v := &value{typ: t, id: c.id(t, o)}
 	if named, ok := t.(*types.Named); ok {
+		validates, err := c.validator(named)
+		if err != nil {
+			return nil, err
+		}
 		if c.nested(named) {
 			v.kind = kindStruct
 			v.fails = c.mayFail(named, make(map[*types.Named]bool))
@@ -138,7 +152,9 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			v.kind = kindTime
 			return v, nil
 		}
-		if self, ok := selfCodecOf(named); ok {
+		if validates {
+			v.validate, v.fails = true, true
+		} else if self, ok := selfCodecOf(named); ok {
 			v.kind, v.self, v.fails = kindBinary, self, true
 			return v, nil
 		}
@@ -170,13 +186,13 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 		v.size = u.Len()
 		if isByte(u.Elem()) {
 			v.kind = kindByteArray
-			return v, nil
+			break
 		}
 		v.kind = kindArray
 		v.elem, err = c.tree(u.Elem(), o, at.step(elemStep))
 	case *types.Map:
 		v.kind = kindMap
-		v.fails = c.floats(u.Key()) || c.ambiguous(u.Key())
+		v.fails = v.fails || c.floats(u.Key()) || c.ambiguous(u.Key())
 		keyOpts := o
 		keyOpts.fixed, keyOpts.used, keyOpts.key = false, new(bool), true
 		if v.key, err = c.tree(u.Key(), keyOpts, at.step(keyStep)); err == nil {
@@ -200,10 +216,33 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 	if err != nil {
 		return nil, err
 	}
-	if v.kind != kindStruct {
+	if v.elem != nil {
 		v.fails = v.fails || v.elem.fails || v.key != nil && v.key.fails
 	}
+	if v.validate && v.zeroOnly() {
+		return nil, fmt.Errorf("kanon: ValidateKanon of type %s has nothing to check: the zero value is the only "+
+			"value of the type", t)
+	}
 	return v, nil
+}
+
+// validator reports whether the named type t is a kanon.Validator: a
+// directive names t, a type that is not a struct, as c.validated reports, or
+// t has the method, as [validatorOf] reports. It fails as validatorOf
+// fails.
+func (c classifier) validator(t *types.Named) (bool, error) {
+	if c.validated(t) {
+		return true, nil
+	}
+	return validatorOf(t)
+}
+
+// validates reports whether the named type t is a kanon.Validator, as
+// [classifier.validator] reports it, without its error, which the
+// classification of a value of t returns.
+func (c classifier) validates(t *types.Named) bool {
+	ok, _ := c.validator(t)
+	return ok
 }
 
 // id returns the id of a value of type t in a tree with the options o: the
