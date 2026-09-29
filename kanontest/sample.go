@@ -100,7 +100,7 @@ type source interface {
 	// failEntry reports whether the map of the shape s, which the builder has
 	// filled with its entries, takes an entry that fails to encode: at its
 	// key with key set, and at its value otherwise. The builder calls it once
-	// per side of the entries of a map that has entries.
+	// per side of the entries of a map that is not nil.
 	failEntry(s *shape, key bool) bool
 }
 
@@ -474,13 +474,12 @@ func (r *resolver) buildInterface(src source, s *shape, v reflect.Value, depth i
 // sample instead: the key that [keyTable] builds from entry 1 and the keys
 // that [resolver.keyAlts] derives from it.
 //
-// After its entries, a map with entries takes the entry that fails at a
-// side of them when src fails that side, as [resolver.addFailingEntry] adds
-// it. The map then counts as one value that can fail for each way to fail
-// its encode that [resolver.badKeys] finds: a key with a NaN component, and
-// two keys of one projection. A source that fails such a value adds its
-// key, or its two keys, to the map with the zero value, on which no check
-// depends.
+// After its entries, a map takes the entry that fails at a side of them
+// when src fails that side, as [resolver.addFailingEntry] adds it. The map
+// then counts as one value that can fail for each way to fail its encode
+// that [resolver.badKeys] finds: a key with a NaN component, and two keys
+// of one projection. A source that fails such a value adds its key, or its
+// two keys, to the map with the zero value, on which no check depends.
 func (r *resolver) buildMap(src source, s *shape, v reflect.Value, depth int) {
 	if src.keyed() {
 		base := r.build(keyTable{table(fieldEntry)}, s.key, nesting)
@@ -501,10 +500,8 @@ func (r *resolver) buildMap(src source, s *shape, v reflect.Value, depth int) {
 		r.leftOutIn(s.key, k, r.taintField)
 		r.insert(s, v, k, r.build(src.part(j+1), s.elem, depth))
 	}
-	if n > 0 {
-		r.addFailingEntry(src, s, v, true, depth)
-		r.addFailingEntry(src, s, v, false, depth)
-	}
+	r.addFailingEntry(src, s, v, true, depth)
+	r.addFailingEntry(src, s, v, false, depth)
 	for _, b := range r.badKeys(s.key) {
 		if src.fail() {
 			for _, k := range b.keys() {
