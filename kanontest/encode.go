@@ -416,16 +416,18 @@ func (e *encoder) appendInterface(b []byte, s *shape, x reflect.Value, loc strin
 }
 
 // pairs returns the keys and the values of the map x of s in the order of
-// the encoding, ascending as [resolver.compareKeys] orders the keys. A
-// fingerprint orders two keys of one projection by the encodings of their
-// entries.
+// the encoding, ascending as [resolver.compareKeys] orders the keys. Two
+// keys of one projection order by the encodings of their entries, so that
+// a fingerprint of a map with such keys does not depend on the order of
+// the map. The encoding of such a map fails, and the generated code checks
+// the keys before it writes an entry.
 func (e *encoder) pairs(s *shape, x reflect.Value) [][2]reflect.Value {
 	out := make([][2]reflect.Value, 0, x.Len())
 	for it := x.MapRange(); it.Next(); {
 		out = append(out, [2]reflect.Value{it.Key(), it.Value()})
 	}
 	slices.SortFunc(out, func(a, b [2]reflect.Value) int {
-		if c := e.r.compareKeys(s.key, a[0], b[0]); c != 0 || e.mode != modeFingerprint {
+		if c := e.r.compareKeys(s.key, a[0], b[0]); c != 0 {
 			return c
 		}
 		return bytes.Compare(e.entry(s, a), e.entry(s, b))
