@@ -328,13 +328,30 @@ func (e *emitter) putScoped(v *value, x string) {
 // and return the error of a value whose encoding fails.
 func (e *emitter) putCall(v *value, arg, loc, num string) {
 	name := e.fn(e.keyOp(opPut, v), v)
-	if !v.fails {
+	if !e.putFails(v) {
 		e.line("i -= %s(buf[:i], %s)", name, arg)
 		return
 	}
 	e.line("w, err := %s(buf[:i], %s, %s, %s)", name, arg, loc, num)
 	e.check()
 	e.line("i -= w")
+}
+
+// putFails reports whether the put function of v, a slice, an array, a map,
+// a pointer or an interface, can fail: a value that v contains can fail to
+// encode, v is an interface, whose concrete type can be missing from its
+// list, or the keys of v need the checks of [emitter.keyChecks]. The
+// ValidateKanon of v itself does not count, since [emitter.put] calls it
+// before the put function.
+func (e *emitter) putFails(v *value) bool {
+	switch v.kind {
+	case kindSlice, kindArray, kindPointer:
+		return v.elem.fails
+	case kindMap:
+		return v.elem.fails || v.key.fails || e.floats(v.key) || e.ambiguous(v.key)
+	default:
+		return v.fails
+	}
 }
 
 // contentCall returns the call that writes the encoding of x, a struct or a
@@ -413,7 +430,9 @@ func (e *emitter) putSized(v *value) {
 // writes the encoding of an inline struct or of a value of a type that
 // encodes itself without its length, and of a slice, an array, a map, a
 // pointer or an interface with it, into the end of buf, and returns the
-// length that it wrote.
+// length that it wrote. The put function of a slice, an array, a map, a
+// pointer or an interface also returns an error when [emitter.putFails]
+// reports that it can fail.
 func (e *emitter) putHelper(name string, v *value) {
 	typ := e.p.typ(v.typ)
 	text := name + " writes the encoding of "
@@ -458,7 +477,8 @@ func (e *emitter) putHelper(name string, v *value) {
 	if keyed == "" {
 		keyed = ","
 	}
-	if v.fails {
+	fails := e.putFails(v)
+	if fails {
 		failure := " It fails for a value that fails to encode"
 		if v.kind == kindMap && (e.floats(v.key) || e.ambiguous(v.key)) {
 			failure += ", a key with a NaN component and two keys of one projection"
@@ -491,7 +511,7 @@ func (e *emitter) putHelper(name string, v *value) {
 	default:
 		e.putInterface(v)
 	}
-	if v.fails {
+	if fails {
 		e.line("return len(buf) - i, %s", result)
 	} else {
 		e.line("return len(buf) - i")

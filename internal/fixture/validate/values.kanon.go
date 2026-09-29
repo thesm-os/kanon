@@ -261,11 +261,7 @@ func (m *Values) encodeKanon(buf []byte) (int, error) {
 		if err := m.Span.ValidateKanon(); err != nil {
 			return 0, wire.MarshalError(err, "Values.Span", 10)
 		}
-		w, err := _values_putSpan(buf[:i], &m.Span, "Values.Span", 10)
-		if err != nil {
-			return 0, err
-		}
-		i -= w
+		i -= _values_putSpan(buf[:i], &m.Span)
 		i = wire.PutTag(buf, i, 10<<3|wire.Bytes)
 	}
 	if len(m.Blob) > 0 {
@@ -288,22 +284,14 @@ func (m *Values) encodeKanon(buf []byte) (int, error) {
 		if err := m.Scores.ValidateKanon(); err != nil {
 			return 0, wire.MarshalError(err, "Values.Scores", 7)
 		}
-		w, err := _values_putScores(buf[:i], m.Scores, "Values.Scores", 7)
-		if err != nil {
-			return 0, err
-		}
-		i -= w
+		i -= _values_putScores(buf[:i], m.Scores)
 		i = wire.PutTag(buf, i, 7<<3|wire.Bytes)
 	}
 	if len(m.Tags) > 0 {
 		if err := m.Tags.ValidateKanon(); err != nil {
 			return 0, wire.MarshalError(err, "Values.Tags", 6)
 		}
-		w, err := _values_putTags(buf[:i], m.Tags, "Values.Tags", 6)
-		if err != nil {
-			return 0, err
-		}
-		i -= w
+		i -= _values_putTags(buf[:i], m.Tags)
 		i = wire.PutTag(buf, i, 6<<3|wire.Bytes)
 	}
 	if math.Float64bits(float64(m.Ratio)) != 0 {
@@ -1714,11 +1702,7 @@ func _values_putAny(buf []byte, x any, loc string, num int) (int, error) {
 		if err := x.ValidateKanon(); err != nil {
 			return 0, wire.MarshalError(err, loc, num)
 		}
-		w, err := _values_putTags(buf[:i], x, loc, num)
-		if err != nil {
-			return 0, err
-		}
-		i -= w
+		i -= _values_putTags(buf[:i], x)
 		i = wire.PutUvarint(buf, i, 2)
 	default:
 		return 0, wire.UnlistedError(x, loc, num)
@@ -1814,21 +1798,19 @@ func _values_putSliceCode(buf []byte, x []Code, loc string, num int) (int, error
 }
 
 // _values_putSpan writes the encoding of x, a Span, into the end of buf, which
-// has room for it, and returns its length. It fails for a value that fails to
-// encode, which loc and num locate.
-func _values_putSpan(buf []byte, x *Span, loc string, num int) (int, error) {
+// has room for it, and returns its length.
+func _values_putSpan(buf []byte, x *Span) int {
 	i := len(buf)
 	for k := len(x) - 1; k >= 0; k-- {
 		i = wire.PutUvarint(buf, i, wire.Zigzag(int64(x[k])))
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
-	return len(buf) - i, nil
+	return len(buf) - i
 }
 
 // _values_putScores writes the encoding of x, a Scores, into the end of buf,
-// which has room for it, and returns its length. It fails for a value that
-// fails to encode, which loc and num locate.
-func _values_putScores(buf []byte, x Scores, loc string, num int) (int, error) {
+// which has room for it, and returns its length.
+func _values_putScores(buf []byte, x Scores) int {
 	i := len(buf)
 	if len(x) <= 16 {
 		type pair = wire.Pair[string, int32]
@@ -1858,20 +1840,19 @@ func _values_putScores(buf []byte, x Scores, loc string, num int) (int, error) {
 		}
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
-	return len(buf) - i, nil
+	return len(buf) - i
 }
 
 // _values_putTags writes the encoding of x, a Tags, into the end of buf, which
-// has room for it, and returns its length. It fails for a value that fails to
-// encode, which loc and num locate.
-func _values_putTags(buf []byte, x Tags, loc string, num int) (int, error) {
+// has room for it, and returns its length.
+func _values_putTags(buf []byte, x Tags) int {
 	i := len(buf)
 	for k := len(x) - 1; k >= 0; k-- {
 		i = wire.PutRaw(buf, i, x[k])
 		i = wire.PutUvarint(buf, i, uint64(len(x[k])))
 	}
 	i = wire.PutUvarint(buf, i, uint64(len(buf)-i))
-	return len(buf) - i, nil
+	return len(buf) - i
 }
 
 // _values_readTags appends the elements that data encodes, a Tags without its
