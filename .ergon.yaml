@@ -2,8 +2,9 @@
 #
 # Every field is optional; values not set here fall back to the
 # subsystem's `Defaults()` function. Every section shows its default
-# value, except the license and error-prefix excludes, and the excludes
-# and the per-layer thresholds under `checks`, which kanon sets.
+# value, except the license and error-prefix excludes, the race count,
+# and the excludes and the per-layer thresholds under `checks`, which
+# kanon sets.
 
 # Project identity — used in help banners and as the directory
 # name for cached artifacts (.kanon/, .coverage/, ...). Defaults to
@@ -120,8 +121,11 @@ test:
   count: 3
   # Per-package deadline applied to every test mode.
   timeout: 10m
-  # Iteration count for `ergon test race`.
-  race_count: 3
+  # Iteration count for `ergon test race`. kanon runs one: three runs of
+  # the fixture suites under the race detector take longer than the
+  # per-package deadline on the CI runners, and the default `go test` run
+  # repeats each suite three times without the detector.
+  race_count: 1
   # Sample count for `ergon bench baseline` / `regression`.
   bench_count: 6
   # Per-target wall-clock budget for `ergon test fuzz`.
