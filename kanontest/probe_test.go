@@ -6,22 +6,96 @@ package kanontest_test
 import (
 	"errors"
 	"io"
+	"reflect"
 	"testing"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
+	"go.thesmos.sh/kanon/wire"
 )
 
 // Names of the checks of the families of probes that the cases run.
 const (
 	faultCheck  = "DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode"
+	rejectCheck = "DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as " +
+		"the reference decode"
 	changeCheck = "DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode"
+	formatCheck = "DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the " +
+		"reference decode"
+	repeatCheck = "DecodeKanon/decodes a field between unknown fields written twice as the reference decode"
 	depthCheck  = "DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode"
 	// errorCheck is the message of a check whose decode returns another
 	// error than the reference decode.
 	errorCheck = "DecodeKanon returns the error of the reference decode"
 )
+
+// nameTag is the tag of the field Name of view.Item, number 1, whose wire
+// format is a length.
+const nameTag = 1<<3 | wire.Bytes
+
+// valuesSpec describes validate.Values, which has a field of a
+// kanon.Validator in every place that a value can be.
+var valuesSpec = kanontest.Spec[validate.Values]{
+	Fields: []kanontest.Field{
+		{Name: "Level", Number: 1},
+		{Name: "Amount", Number: 2},
+		{Name: "Tick", Number: 3},
+		{Name: "Code", Number: 4},
+		{Name: "Ratio", Number: 5},
+		{Name: "Tags", Number: 6},
+		{Name: "Scores", Number: 7},
+		{Name: "Hash", Number: 8},
+		{Name: "Blob", Number: 9},
+		{Name: "Span", Number: 10},
+		{Name: "Port", Number: 25},
+		{Name: "Flag", Number: 11},
+		{Name: "Weight", Number: 12},
+		{Name: "Wave", Number: 13},
+		{Name: "Phase", Number: 14},
+		{Name: "Grade", Number: 15},
+		{Name: "Next", Number: 16},
+		{Name: "Codes", Number: 17},
+		{Name: "Pair", Number: 18},
+		{Name: "Index", Number: 19},
+		{Name: "Text", Number: 20, Union: "Kind", Case: validate.KindText},
+		{Name: "Count", Number: 21, Union: "Kind", Case: validate.KindCount},
+		{Name: "Any", Number: 22, Types: []kanontest.ConcreteType{
+			{Type: reflect.TypeFor[validate.Level](), Number: 1},
+			{Type: reflect.TypeFor[validate.Tags](), Number: 2},
+		}},
+		{Name: "Checked", Number: 23, Types: []kanontest.ConcreteType{
+			{Type: reflect.TypeFor[validate.Grade](), Number: 1},
+		}},
+		{Name: "Fixed", Number: 24, Fixed: true},
+	},
+}
+
+// rejectOff is a validate.Values whose DecodeKanon decodes a Level that its
+// ValidateKanon rejects without an error.
+type rejectOff struct{ validate.Values }
+
+// DecodeKanon decodes data, and drops an error that wraps validate.ErrLevel.
+func (m *rejectOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	if err := renamed(m.Values.DecodeKanon(data, opts), "Values", "rejectOff"); !errors.Is(err, validate.ErrLevel) {
+		return err
+	}
+	return nil
+}
+
+// onceOff is a view.Item whose DecodeKanon fails for a field Name that the
+// encoding repeats, as the view of a struct fails for a repeated struct.
+type onceOff struct{ view.Item }
+
+// DecodeKanon returns the error of wire.FindOne for a second field Name, and
+// decodes data otherwise.
+func (m *onceOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	if _, err := wire.FindOne(data, nameTag, "onceOff.Name"); errors.Is(err, kanon.ErrRepeatedView) {
+		return err
+	}
+	return renamed(m.Item.DecodeKanon(data, opts), "Item", "onceOff")
+}
 
 // eofOff is a view.Item whose DecodeKanon decodes truncated input without
 // an error.
@@ -113,6 +187,18 @@ func TestProbe(t *testing.T) {
 		t.Run("fails for a codec that decodes a tag of another wire format", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[malformedOff]{Fields: itemSpec.Fields}, changeCheck, errorCheck)
+		})
+		t.Run("fails for a codec that decodes a field whose tag names another wire format", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[malformedOff]{Fields: itemSpec.Fields}, formatCheck, errorCheck)
+		})
+		t.Run("fails for a codec that decodes a value that its ValidateKanon rejects", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[rejectOff]{Fields: valuesSpec.Fields}, rejectCheck, errorCheck)
+		})
+		t.Run("fails for a codec that returns an error for a field written twice", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[onceOff]{Fields: itemSpec.Fields}, repeatCheck, errorCheck)
 		})
 		t.Run("fails for a codec that returns an error with the same message and another cause", func(t *testing.T) {
 			t.Parallel()

@@ -16,7 +16,10 @@ wide sample 1: 0a840303773130000030410000404103773131000040410000504103773132000
 the key sample: 0a17000000807f000080ff056b616e6f6e0000c07f0000807f12290010000000000000f0ffffffffffffffef7f056b616e6f6e10000000000000f07f000000000000f0ff1a1700ffff7f7f01000000056b616e6f6e000080ffffff7f7f2229001001000000000000000000000000000000056b616e6f6e10ffffffffffffef7f0100000000000000
 DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 3947 probes, digest 685fc91a782784b5
 DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 5171 probes, digest 3edac924809ce585
+DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
 DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 8622 probes, digest a6b4fd6f0295bf86
+DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 87 probes, digest 22dd81d9a156cdd7
+DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 29 probes, digest 7a52066ff92eef6d
 DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 1745 probes, digest 65a815dbd7951249
 DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 16 probes, digest 4b1536d95788452a
 DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 1e9baf21d5903679

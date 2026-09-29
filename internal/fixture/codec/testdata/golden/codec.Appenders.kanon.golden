@@ -20,62 +20,73 @@ table sample 0 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): c
 table sample 0 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 0 that fails at value 4: 0a04000000011a023fff22800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262623201003a02fffe
 table sample 0 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 0 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 0 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 0 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 1 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 1 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 1 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 1 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 1 that fails at value 4: 0a040000007f1a024000220100320100
 table sample 1 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 1 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 1 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 1 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 2 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 2 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 2 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 2 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 2 that fails at value 4: 0a04000000801a02000122ac02636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363320100
 table sample 2 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 2 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 2 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 2 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 3 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 3 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 3 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 3 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 3 that fails at value 4: 0a04000040001201421a02012c320100
 table sample 3 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 3 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 3 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 3 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 4 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 4 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 4 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 4 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 4 that fails at value 4: 0a0400200000320100
 table sample 4 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 4 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 4 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 4 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 5 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 5 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 5 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 5 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 5 that fails at value 4: 0a04100000001a02000122056b616e6f6e320100
 table sample 5 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 5 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 5 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 5 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 6 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 6 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 6 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 6 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 6 that fails at value 4: 1a02007f2207c3a9e29c93cf893201003a0100
 table sample 6 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 6 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 6 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 6 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 table sample 7 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 7 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 7 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
 table sample 7 that fails at value 3: fails: kanon: Appenders.Note (field 4): codec: note text is not valid UTF-8
 table sample 7 that fails at value 4: 1201411a020080227f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161320100
 table sample 7 that fails at value 5: fails: kanon: Appenders.Hash (field 6): encoding length differs from SizeKanon
-table sample 7 that fails at value 6: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
+table sample 7 that fails at value 6: fails: kanon: Appenders.Hash (field 6): codec: hash size outside 1 to 8 bytes
+table sample 7 that fails at value 7: fails: kanon: Appenders.Clip (field 7): encoding length differs from SizeKanon
 wide sample 0: 0a04000000011201421a020004220277342a0477350000320877370000000000003a027737
 wide sample 1: 0a04000000021201431a020005220277352a04773600003201003a027738
 the key sample: 0a040000007f1a0240002201002a04deadbeef320100
 DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 1839 probes, digest a34513d157a35f7c
 DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 659 probes, digest db768ca7b133e064
+DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
 DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 2076 probes, digest f4626314372b2cf6
+DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 93 probes, digest 1a160f0f1371e79a
+DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 31 probes, digest b9090b470fb90b83
 DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 210 probes, digest ea4f3866fa941873
 DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 27 probes, digest 76bbb1cba0011486
 DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest ef3cca7c18e5c760

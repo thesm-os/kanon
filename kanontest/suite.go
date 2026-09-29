@@ -248,10 +248,13 @@ type probe struct {
 //   - per field, the sample of entry 1 that sets that field alone, and per
 //     union member its zero value and a sample per table entry;
 //   - per table sample and per value in it that can fail to encode, the
-//     sample in which that value alone fails;
+//     sample in which that value alone fails, once per way to fail it;
 //   - the wide samples, whose maps have more entries than a decode reuses,
 //     one per choice of the widest pick and two at least;
-//   - the key sample, whose maps order keys that differ in one part each.
+//   - the key sample, whose maps order keys that differ in one part each;
+//   - per side of the entries of a map that can fail to encode, as
+//     [resolver.failingSides] finds them, the first wide sample that has
+//     such a map, with one entry of the first such map failing at that side.
 //
 // It fails as [Checks] states.
 func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
@@ -295,12 +298,34 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 			s.samples = append(s.samples, s.sample(failingName(i, j), s.failed(i, j)))
 		}
 	}
-	for n := range max(wideSamples, choices(l)) {
+	wide := max(wideSamples, choices(l))
+	for n := range wide {
 		s.bulk = append(s.bulk, s.sample("wide sample "+strconv.Itoa(n), s.fill(counting(n), wideNesting)))
 	}
 	s.bulk = append(s.bulk, s.sample("the key sample", s.fill(keyed{table(fieldEntry)}, nesting)))
+	for _, side := range r.failingSides(l) {
+		if x, ok := s.entryFailed(side, wide); ok {
+			s.samples = append(s.samples, x)
+		}
+	}
 	s.pieces = s.piecesOf(s.samples)
 	return s, nil
+}
+
+// entryFailed returns the first of the wide samples, which number wide,
+// that has a map of the shape of side, with one entry of the first such map
+// failing at the side of side, as [entryFailing] fails it. It reports false
+// when none of them fails that way, such as for a map that no wide sample
+// nests deep enough to fill.
+func (s *suite[T, P]) entryFailed(side mapSide, wide int) (x sample[T], ok bool) {
+	for n := range wide {
+		done := false
+		x = s.sample(entryFailingName(n, side), s.fill(entryFailing{counting(n), side, &done}, wideNesting))
+		if ok = done && x.err != nil; ok {
+			break
+		}
+	}
+	return x, ok
 }
 
 // failed returns table sample i with its value j that can fail to encode
@@ -362,4 +387,14 @@ func (s *suite[T, P]) fuzz(t *testing.T, data []byte) {
 // fail to encode failing.
 func failingName(i, j int) string {
 	return "table sample " + strconv.Itoa(i) + " that fails at value " + strconv.Itoa(j)
+}
+
+// entryFailingName returns the name of wide sample n with one entry of a
+// map failing at side.
+func entryFailingName(n int, side mapSide) string {
+	at := "a value"
+	if side.key {
+		at = "a key"
+	}
+	return "wide sample " + strconv.Itoa(n) + " that fails at " + at + " of " + side.s.typ.String()
 }

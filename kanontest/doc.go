@@ -32,14 +32,18 @@
 //   - a table sample per entry of the value tables, which cover the
 //     boundaries of every type;
 //   - a sample per field, which sets that field alone;
-//   - per value that can fail to encode, a sample in which it alone fails:
-//     a value of a type that encodes itself that its method rejects, or
-//     that encodes to another length than the SizeKanon of a kanon.Sizer, an
-//     interface that stores a type that its field does not list, or a map
-//     with a key with a NaN component or with two keys of one projection;
+//   - per value that can fail to encode, and per way to fail it, a sample in
+//     which it alone fails that way: a value of a type that encodes itself
+//     whose SizeKanon as a kanon.Sizer is below 0, whose method rejects it,
+//     or that encodes to another length than its SizeKanon, an interface
+//     that stores a type that its field does not list, or a map with a key
+//     with a NaN component or with two keys of one projection;
 //   - the key sample, whose map keys differ in one part each and have no
 //     NaN component;
-//   - wide samples, whose maps have more entries than a decode reuses.
+//   - wide samples, whose maps have more entries than a decode reuses, and
+//     per side of the entries of a map whose keys or values can fail to
+//     encode, a wide sample in which one entry of such a map fails at that
+//     side.
 //
 // An int, a uint and a uintptr take values of 32 bits in every sample, so
 // the samples and their encodings are the same on every platform. The map
@@ -60,8 +64,10 @@
 //   - each field of a sample alone, between unknown fields of every wire
 //     format, cut at every byte, with one nested value cut short,
 //     lengthened by a byte or, for an integer, widened out of range, with
-//     every byte changed by one or with its continuation bit flipped, and
-//     under every depth limit;
+//     one value of a kanon.Validator that its ValidateKanon rejects, with
+//     every byte changed by one or with its continuation bit flipped, with
+//     its tag in every other wire format, written twice, and under every
+//     depth limit;
 //   - each sample with every field of every inline struct written twice;
 //   - every two table samples, one after the other;
 //   - each sample in a slab, at an offset.
@@ -104,7 +110,10 @@
 // kanon.Validator on each value of the type that they encode or decode, as
 // the generated code calls it. A sample counts such a value as one that can
 // fail to encode: the sample that fails at it takes a value that the method
-// rejects, and every other sample a value that the method accepts.
+// rejects, and every other sample a value that the method accepts. A probe
+// writes each such value of a field, one at a time, as a value that the
+// method rejects, which a decode, a view and an index return the error of
+// the method for.
 // [RunValue] checks the method itself: it allocates nothing for a value that
 // it accepts, it accepts a value exactly when the encode method of the
 // binary, gob or text family of the type accepts it, and the golden file of

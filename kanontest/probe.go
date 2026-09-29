@@ -5,6 +5,7 @@ package kanontest
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/wire"
 )
 
 // edit is a change that a probe makes to one byte of an encoding.
@@ -49,6 +51,13 @@ var unknownFields = []byte{
 // slabGuard surrounds the encoding in the slab of a slab probe.
 const slabGuard = "\xaa"
 
+// wireFormats lists the wire formats that a tag can name: a varint, eight
+// bytes, a length and bytes, and four bytes.
+var wireFormats = [...]uint64{wire.Varint, wire.Fixed64, wire.Bytes, wire.Fixed32}
+
+// formatBits masks the bits of a tag that are its wire format.
+const formatBits = 7
+
 // piece is a field of a sample alone, which the probes cut and change.
 type piece struct {
 	// name names the sample and the field.
@@ -56,9 +65,10 @@ type piece struct {
 	f    *field
 	// x is the value of the field in the sample.
 	x reflect.Value
-	// enc is the field as the redundant encoding writes it, between two
-	// copies of unknownFields.
-	enc []byte
+	// field is the field as the redundant encoding writes it, and enc is
+	// field between two copies of unknownFields.
+	field []byte
+	enc   []byte
 }
 
 // probeFamily is a family of probes and the check that decodes them.
@@ -77,7 +87,18 @@ func (s *suite[T, P]) families() []probeFamily {
 			"DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode",
 			s.faults,
 		},
+		{
+			"DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the " +
+				"reference decode",
+			s.rejections,
+		},
 		{"DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode", s.changes},
+		{
+			"DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference " +
+				"decode",
+			s.formats,
+		},
+		{"DecodeKanon/decodes a field between unknown fields written twice as the reference decode", s.repeats},
 		{"DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode", s.limits},
 		{"DecodeKanon/decodes an encoding that writes every field twice as the reference decode", s.redundancies},
 		{"DecodeKanon/decodes two concatenated encodings as the reference decode", s.concatenations},
@@ -102,10 +123,11 @@ func (s *suite[T, P]) piecesOf(samples []sample[T]) []piece {
 			}
 			seen[string(enc)] = true
 			out = append(out, piece{
-				name: x.name + ", field " + f.Name,
-				f:    f,
-				x:    fx,
-				enc:  slices.Concat(unknownFields, enc, unknownFields),
+				name:  x.name + ", field " + f.Name,
+				f:     f,
+				x:     fx,
+				field: enc,
+				enc:   slices.Concat(unknownFields, enc, unknownFields),
 			})
 		}
 	}
@@ -191,6 +213,42 @@ func (s *suite[T, P]) faulty(p piece, t, at int, change string) probe {
 	}
 }
 
+// rejections returns the probes of every piece with one value of a
+// kanon.Validator written as a value that its ValidateKanon rejects, as
+// [suite.pieceRejections] returns them, so that a decode, a view and an
+// index meet a value that the encode never writes.
+func (s *suite[T, P]) rejections() []probe {
+	each := make([][]probe, len(s.pieces))
+	for k, p := range s.pieces {
+		each[k] = s.pieceRejections(p)
+	}
+	return slices.Concat(each...)
+}
+
+// pieceRejections returns the probes of the piece p with one value of a
+// kanon.Validator written as a value that its ValidateKanon rejects, as a
+// rejection writes it: one probe per such value of the piece.
+func (s *suite[T, P]) pieceRejections(p piece) []probe {
+	all := &rejection{}
+	s.rejectedField(p, all)
+	out := make([]probe, all.met)
+	for t := range out {
+		out[t] = probe{
+			name: p.name + " with value " + strconv.Itoa(t) + " rejected",
+			data: slices.Concat(unknownFields, s.rejectedField(p, &rejection{target: t + 1}), unknownFields),
+		}
+	}
+	return out
+}
+
+// rejectedField returns the field of the piece p as the redundant encoding
+// writes it, with the value that rj targets rejected, as a rejection writes
+// it.
+func (s *suite[T, P]) rejectedField(p piece, rj *rejection) []byte {
+	e := &encoder{r: s.r, mode: modeRedundant, reject: rj}
+	return e.appendField(nil, s.l.loc(p.f), p.f, p.x, true)
+}
+
 // changes returns the probes of every piece with one byte of its field
 // changed by one of edits, for every byte of the field and every edit. The
 // probes leave the unknown fields around the field unchanged, since a change
@@ -205,6 +263,38 @@ func (s *suite[T, P]) changes() []probe {
 				out = append(out, probe{name: x.name + " with byte " + strconv.Itoa(k) + " " + ed.name, data: data})
 			}
 		}
+	}
+	return out
+}
+
+// formats returns the probes of every piece with the tag of its field in
+// each wire format of wireFormats other than its own, and the bytes of its
+// value after the tag unchanged, so that a decode, a view and an index meet
+// the field in a wire format that its value does not have.
+func (s *suite[T, P]) formats() []probe {
+	var out []probe
+	for _, p := range s.pieces {
+		tag, n := binary.Uvarint(p.field)
+		for _, format := range wireFormats {
+			if format == tag&formatBits {
+				continue
+			}
+			data := slices.Concat(unknownFields, binary.AppendUvarint(nil, tag&^formatBits|format), p.field[n:],
+				unknownFields)
+			out = append(out, probe{name: p.name + " in wire format " + strconv.FormatUint(format, 10), data: data})
+		}
+	}
+	return out
+}
+
+// repeats returns the probes of every piece with its field written twice,
+// so that a decode meets a second occurrence of the field, and a view and
+// an index meet the second occurrence of a struct field before any other
+// field that repeats.
+func (s *suite[T, P]) repeats() []probe {
+	out := make([]probe, len(s.pieces))
+	for k, p := range s.pieces {
+		out[k] = probe{name: p.name + " twice", data: slices.Concat(unknownFields, p.field, p.field, unknownFields)}
 	}
 	return out
 }

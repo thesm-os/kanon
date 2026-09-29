@@ -134,13 +134,16 @@ func rejects[T any, P kanontest.Codec[T]](t *testing.T, spec kanontest.Spec[T], 
 }
 
 // renamed returns err, and names the struct type wrapper in a
-// *kanon.DecodeError that names the struct type embedded, as the reference
-// decode of wrapper names it. A wrapper of a generated codec decodes through
-// the code of the type that it embeds, which names that type, so that its
-// errors differ from the reference in nothing else than the change that it
-// makes.
+// *kanon.DecodeError or a *kanon.EncodeError that names the struct type
+// embedded, as the reference decoder and encoder of wrapper name it. A
+// wrapper of a generated codec decodes and encodes through the code of the
+// type that it embeds, which names that type, so that its errors differ
+// from the reference in nothing else than the change that it makes.
 func renamed(err error, embedded, wrapper string) error {
 	if e, ok := errors.AsType[*kanon.DecodeError](err); ok && e.Type == embedded {
+		e.Type = wrapper
+	}
+	if e, ok := errors.AsType[*kanon.EncodeError](err); ok && e.Type == embedded {
 		e.Type = wrapper
 	}
 	return err

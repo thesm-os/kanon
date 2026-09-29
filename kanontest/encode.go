@@ -62,6 +62,9 @@ type encoder struct {
 	mode mode
 	// fault writes one value of the encoding wrong when it is not nil.
 	fault *fault
+	// reject writes one value of a kanon.Validator as a value that its
+	// ValidateKanon rejects when it is not nil.
+	reject *rejection
 	// from leaves out the first from fields of every inline struct, and the
 	// first from elements of every slice and entries of every map, so that
 	// the next one comes first in the order of the decode.
@@ -88,6 +91,17 @@ type fault struct {
 	// lengths records the length of every value that the fault counts, and
 	// -1 for a varint.
 	lengths []int
+}
+
+// rejection makes an encoder write one value of a kanon.Validator as the
+// value that [resolver.rejected] returns for its shape: the value that the
+// encoder meets as its target-th, counted from 1 in the order in which it
+// meets the values of the Validators that reject a value, outer values
+// first.
+type rejection struct {
+	target int
+	// met counts the values that the rejection counts.
+	met int
 }
 
 // encode returns the reference encoding of v, a struct of l, and the error
@@ -249,11 +263,13 @@ func (e *encoder) present(s *shape, x reflect.Value, loc string, num int) bool {
 }
 
 // appendValue appends the encoding of x, a value of s, as it occurs inside
-// a container, to b. loc and num locate the field of the value in the
-// error of a value that fails to encode. A kanon.Validator records the error
-// of its ValidateKanon after the errors of the values that it contains, as
-// the generated code, which writes backward, meets it before theirs.
+// a container, to b, or the value that the rejection of e writes in its
+// place. loc and num locate the field of the value in the error of a value
+// that fails to encode. A kanon.Validator records the error of its
+// ValidateKanon after the errors of the values that it contains, as the
+// generated code, which writes backward, meets it before theirs.
 func (e *encoder) appendValue(b []byte, s *shape, x reflect.Value, loc string, num int) []byte {
+	x = e.rejects(s, x)
 	b = e.appendKind(b, s, x, loc, num)
 	if s.validate {
 		if err := validate(x); err != nil {
@@ -261,6 +277,25 @@ func (e *encoder) appendValue(b []byte, s *shape, x reflect.Value, loc string, n
 		}
 	}
 	return b
+}
+
+// rejects returns the value that e writes for x, a value of s: the value
+// that [resolver.rejected] returns for s when s is a kanon.Validator that
+// rejects a value and x is the target of the rejection of e, and x
+// otherwise. It counts the values of such Validators.
+func (e *encoder) rejects(s *shape, x reflect.Value) reflect.Value {
+	if e.reject == nil || !s.validate {
+		return x
+	}
+	bad, ok := e.r.rejected(s)
+	if !ok {
+		return x
+	}
+	e.reject.met++
+	if e.reject.met == e.reject.target {
+		return bad
+	}
+	return x
 }
 
 // appendKind appends the encoding of x, a value of the kind of s, to b, as

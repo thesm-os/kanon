@@ -53,6 +53,35 @@ func (m *emptyBool) MarshalBinary() ([]byte, error) {
 	return b, err
 }
 
+// pairEntries is the number of entries of a map that its put function
+// sorts in a stack array. The put function sorts the keys of a map with
+// more entries in a slice, in a loop of its own.
+const pairEntries = 16
+
+// wideOff is a mapvalue.Nested whose MarshalBinary drops the error of a
+// value whose map Label has more than pairEntries entries.
+type wideOff struct{ mapvalue.Nested }
+
+// MarshalBinary returns the encoding, and no error when Label has more than
+// pairEntries entries.
+func (m *wideOff) MarshalBinary() ([]byte, error) {
+	b, err := m.Nested.MarshalBinary()
+	if len(m.Label) > pairEntries {
+		return b, nil
+	}
+	return b, renamed(err, "Nested", "wideOff")
+}
+
+// nestedSpec describes mapvalue.Nested, whose maps have maps, slices,
+// arrays, pointers and structs as values, and one of which contains
+// itself.
+var nestedSpec = kanontest.Spec[mapvalue.Nested]{
+	Fields: fields("Slice", "Map", "Sets", "Array", "Lists", "Int32", "Inner", "Label", "Holders", "Graph"),
+	Structs: []kanontest.Struct{
+		{Type: reflect.TypeFor[mapvalue.Holder](), Name: "Holder", Fields: fields("Names", "Inner")},
+	},
+}
+
 // member returns the field of a union member named name, with the number
 // num, of the union whose discriminator is disc and whose value c selects
 // the member.
@@ -146,12 +175,7 @@ func TestSample(t *testing.T) {
 		})
 		t.Run("passes maps of maps and a map that contains itself", func(t *testing.T) {
 			t.Parallel()
-			passes(t, kanontest.Spec[mapvalue.Nested]{
-				Fields: fields("Slice", "Map", "Sets", "Array", "Lists", "Int32", "Inner", "Label", "Holders", "Graph"),
-				Structs: []kanontest.Struct{
-					{Type: reflect.TypeFor[mapvalue.Holder](), Name: "Holder", Fields: fields("Names", "Inner")},
-				},
-			})
+			passes(t, nestedSpec)
 		})
 		t.Run("passes chains of pointers and a pointer that points at itself", func(t *testing.T) {
 			t.Parallel()
@@ -176,5 +200,11 @@ func TestSample(t *testing.T) {
 			rejects(t, kanontest.Spec[emptyBool]{Fields: fields("Bool", "Flag")},
 				"MarshalBinary/returns the reference encoding", "MarshalBinary returns the reference encoding")
 		})
+		t.Run("fails for a codec that drops the error of a map with more entries than a stack array sorts",
+			func(t *testing.T) {
+				t.Parallel()
+				rejects(t, kanontest.Spec[wideOff]{Fields: nestedSpec.Fields, Structs: nestedSpec.Structs},
+					marshalErrorCheck, "MarshalBinary returns the error of the value that fails to encode")
+			})
 	})
 }

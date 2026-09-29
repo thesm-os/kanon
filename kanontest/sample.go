@@ -91,9 +91,17 @@ type source interface {
 	// [resolver.buildMap] builds them.
 	keyed() bool
 	// fail reports whether the value that can fail to encode, which the
-	// builder is about to build, fails: a value of a type that encodes
-	// itself, or an interface. The builder calls it once per such value.
+	// builder is about to build, fails. The builder calls it once per way to
+	// fail such a value: a value of a type that encodes itself once per way
+	// that [resolver.failures] finds, a value of a kanon.Validator and an
+	// interface once each, and a map once per way to fail its keys that
+	// [resolver.badKeys] finds.
 	fail() bool
+	// failEntry reports whether the map of the shape s, which the builder has
+	// filled with its entries, takes an entry that fails to encode: at its
+	// key with key set, and at its value otherwise. The builder calls it once
+	// per side of the entries of a map that has entries.
+	failEntry(s *shape, key bool) bool
 }
 
 // table is the source of table sample i: every value takes entry i of its
@@ -153,6 +161,9 @@ func (table) keyed() bool { return false }
 // fail returns false.
 func (table) fail() bool { return false }
 
+// failEntry returns false.
+func (table) failEntry(*shape, bool) bool { return false }
+
 // counting is the source of a wide sample: every map has wideEntries
 // entries, every slice one element, every pointer a value and every bool
 // is true, and every other value derives from n. Part k of counting n is
@@ -205,6 +216,9 @@ func (counting) keyed() bool { return false }
 // fail returns false.
 func (counting) fail() bool { return false }
 
+// failEntry returns false.
+func (counting) failEntry(*shape, bool) bool { return false }
+
 // keyed is the source of the key sample: the values of src, with the keys
 // of the key sample in every map, as [resolver.buildMap] builds them.
 type keyed struct {
@@ -254,6 +268,46 @@ func (f failing) part(k int) source { return failing{f.source.part(k), f.left} }
 func (f failing) fail() bool {
 	*f.left--
 	return *f.left == -1
+}
+
+// mapSide is the keys, with key set, or the values of the maps of the shape
+// s.
+type mapSide struct {
+	s   *shape
+	key bool
+}
+
+// shape returns the shape of the keys or the values of side.
+func (side mapSide) shape() *shape {
+	if side.key {
+		return side.s.key
+	}
+	return side.s.elem
+}
+
+// entryFailing is the source of a wide sample that fails at one entry of a
+// map: the values of src, and in the first map of the shape of side that
+// the builder fills, an entry that fails to encode at the side of side, as
+// [resolver.addFailingEntry] adds it.
+type entryFailing struct {
+	source
+	side mapSide
+	// done records that a map took the entry that fails. The parts of a
+	// source share it.
+	done *bool
+}
+
+// part returns part k of src, which fails at the same side.
+func (f entryFailing) part(k int) source { return entryFailing{f.source.part(k), f.side, f.done} }
+
+// failEntry reports whether s and key are the shape and the side of f, for
+// the first map that meets them.
+func (f entryFailing) failEntry(s *shape, key bool) bool {
+	if *f.done || s != f.side.s || key != f.side.key {
+		return false
+	}
+	*f.done = true
+	return true
 }
 
 // intTable returns the table of signed integers of bits bits: zero, a
@@ -388,7 +442,7 @@ func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 		r.buildInterface(src, s, v, depth)
 	case kindBinary:
 		r.scalar(src, v, depth)
-		if x, ok := r.failure(s.typ); ok && src.fail() {
+		if x, ok := failure(src, r.failures(s.typ)); ok {
 			v.Set(x)
 		} else if _, err := encodeSelf(v); err != nil {
 			v.Set(r.success(s.typ))
@@ -420,11 +474,13 @@ func (r *resolver) buildInterface(src source, s *shape, v reflect.Value, depth i
 // sample instead: the key that [keyTable] builds from entry 1 and the keys
 // that [resolver.keyAlts] derives from it.
 //
-// After its entries, a map counts as one value that can fail for each way
-// to fail its encode that [resolver.badKeys] finds: a key with a NaN
-// component, and two keys of one projection. A source that fails such a
-// value adds its key, or its two keys, to the map with the zero value, on
-// which no check depends.
+// After its entries, a map with entries takes the entry that fails at a
+// side of them when src fails that side, as [resolver.addFailingEntry] adds
+// it. The map then counts as one value that can fail for each way to fail
+// its encode that [resolver.badKeys] finds: a key with a NaN component, and
+// two keys of one projection. A source that fails such a value adds its
+// key, or its two keys, to the map with the zero value, on which no check
+// depends.
 func (r *resolver) buildMap(src source, s *shape, v reflect.Value, depth int) {
 	if src.keyed() {
 		base := r.build(keyTable{table(fieldEntry)}, s.key, nesting)
@@ -444,6 +500,10 @@ func (r *resolver) buildMap(src source, s *shape, v reflect.Value, depth int) {
 		k := r.build(src.part(j), s.key, depth)
 		r.leftOutIn(s.key, k, r.taintField)
 		r.insert(s, v, k, r.build(src.part(j+1), s.elem, depth))
+	}
+	if n > 0 {
+		r.addFailingEntry(src, s, v, true, depth)
+		r.addFailingEntry(src, s, v, false, depth)
 	}
 	for _, b := range r.badKeys(s.key) {
 		if src.fail() {
@@ -467,6 +527,80 @@ func (r *resolver) insert(s *shape, m, k, x reflect.Value) {
 		}
 	}
 	m.SetMapIndex(k, x)
+}
+
+// addFailingEntry sets an entry of the map v of the shape s, whose entries
+// nest depth levels deep, that fails to encode when src fails the side of
+// the entries of s that key selects, as [source.failEntry] reports it: with
+// key set, a key that fails, with the value of entry 0, and otherwise the
+// key of entry 0 with a value that fails. A key or a value that fails is
+// the one that table entry fieldEntry builds, nesting levels deep, with its
+// first value that can fail failing, as [resolver.fails] builds it, since a
+// value at depth 0 is the zero value, which cannot fail.
+func (r *resolver) addFailingEntry(src source, s *shape, v reflect.Value, key bool, depth int) {
+	if !src.failEntry(s, key) {
+		return
+	}
+	left := 0
+	bad := failing{table(fieldEntry), &left}
+	k, x := r.build(src.part(0), s.key, depth), r.build(src.part(1), s.elem, depth)
+	if key {
+		k = r.build(bad, s.key, nesting)
+	} else {
+		x = r.build(bad, s.elem, nesting)
+	}
+	r.leftOutIn(s.key, k, r.taintField)
+	v.SetMapIndex(k, x)
+}
+
+// fails reports whether a value of s can fail to encode: the value that
+// table entry fieldEntry builds has a value that a failing source fails.
+func (r *resolver) fails(s *shape) bool {
+	unfailed := math.MaxInt
+	r.build(failing{table(fieldEntry), &unfailed}, s, nesting)
+	return unfailed < math.MaxInt
+}
+
+// failingSides returns the sides of the entries of the maps that a value of
+// l contains outside the structs with a kanon codec, whose own checks cover
+// their maps, that can fail to encode, as [resolver.fails] reports them: per
+// map shape in the order of a walk of the fields of l, its keys, then its
+// values.
+func (r *resolver) failingSides(l *layout) []mapSide {
+	var out []mapSide
+	seen := make(map[*shape]bool)
+	var walk func(s *shape)
+	walk = func(s *shape) {
+		if s == nil || seen[s] {
+			return
+		}
+		seen[s] = true
+		switch s.kind {
+		case kindMap:
+			for _, side := range []mapSide{{s, true}, {s, false}} {
+				if r.fails(side.shape()) {
+					out = append(out, side)
+				}
+			}
+		case kindInline:
+			for _, f := range s.layout.fields {
+				walk(f.shape)
+			}
+		case kindInterface:
+			for _, w := range s.variants {
+				walk(w.shape)
+			}
+		default:
+			// A slice, an array and a pointer contain maps in their elements,
+			// which the walk enters next. A struct with a kanon codec has none.
+		}
+		walk(s.key)
+		walk(s.elem)
+	}
+	for _, f := range l.fields {
+		walk(f.shape)
+	}
+	return out
 }
 
 // keySearch is the number of table entries among which [resolver.badKeys]
@@ -641,20 +775,31 @@ func other(f float64) float64 {
 	return table[0]
 }
 
-// failure returns a value of t, a type that encodes itself, that fails to
-// encode, as [encodeSelf] reports it: the first value of the value tables
-// that does. It reports false when none does.
-func (r *resolver) failure(t reflect.Type) (reflect.Value, bool) {
-	var fail reflect.Value
-	found := false
+// failures returns values of t, a type that encodes itself, that fail to
+// encode: per way to fail, as [failModeOf] tells them apart, the first value
+// of the value tables that fails that way, in the order of the ways.
+func (r *resolver) failures(t reflect.Type) []reflect.Value {
+	var first [failsLength + 1]reflect.Value
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
 		r.scalar(table(i), v, 0)
-		if _, err := encodeSelf(v); !found && err != nil {
-			fail, found = v, true
+		if m := failModeOf(v); m != 0 && !first[m].IsValid() {
+			first[m] = v
 		}
 	}
-	return fail, found
+	return slices.DeleteFunc(first[:], func(v reflect.Value) bool { return !v.IsValid() })
+}
+
+// failure calls fail of src once per value of fails, and returns the value
+// whose call reports that it fails, and false when no call does.
+func failure(src source, fails []reflect.Value) (reflect.Value, bool) {
+	var out reflect.Value
+	for _, x := range fails {
+		if src.fail() {
+			out = x
+		}
+	}
+	return out, out.IsValid()
 }
 
 // success returns a value of t, a type that encodes itself, that encodes,

@@ -7,16 +7,22 @@ import (
 	"encoding"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"reflect"
 
 	"go.thesmos.sh/kanon"
 )
 
-// errSize marks the encoding of a value of a kanon.Sizer that the generated
-// code rejects with the error of wire.SizeError: a SizeKanon below 0, which
-// the generated code meets before it calls the encode method, and an
-// encoding of another length than SizeKanon.
-var errSize = errors.New("kanontest: the encoding differs from SizeKanon")
+// Errors that mark the encoding of a value of a kanon.Sizer that the
+// generated code rejects with the error of wire.SizeError.
+var (
+	// errSize marks an encoding of another length than SizeKanon.
+	errSize = errors.New("kanontest: the encoding differs from SizeKanon")
+	// errNegative marks a SizeKanon below 0, which the generated code meets
+	// before it calls the encode method. It wraps errSize, since the
+	// generated code returns the error of wire.SizeError for both.
+	errNegative = fmt.Errorf("%w: SizeKanon is below 0", errSize)
+)
 
 // family is a family of methods through which a type encodes itself. The
 // zero family is none.
@@ -53,6 +59,41 @@ func familyOf(t reflect.Type) family {
 	return 0
 }
 
+// failMode is a way in which a value of a type that encodes itself fails to
+// encode, as the generated code meets the failure. The zero failMode is
+// none.
+type failMode uint8
+
+// Ways in which a value of a type that encodes itself fails to encode, in
+// the order in which [resolver.failures] lists their values.
+const (
+	// failsSize is a SizeKanon below 0 of a kanon.Sizer, which the generated
+	// code meets before it calls the encode method.
+	failsSize failMode = 1
+	// failsEncode is an error of the encode method.
+	failsEncode failMode = 2
+	// failsLength is an encoding of a kanon.Sizer whose length differs from
+	// its SizeKanon.
+	failsLength failMode = 3
+)
+
+// failModeOf returns the way in which x, a value of a type that encodes
+// itself, fails to encode, as the error of [encodeSelf] tells it, and 0 when
+// x encodes.
+func failModeOf(x reflect.Value) failMode {
+	_, err := encodeSelf(x)
+	if err == nil {
+		return 0
+	}
+	if errors.Is(err, errNegative) {
+		return failsSize
+	}
+	if errors.Is(err, errSize) {
+		return failsLength
+	}
+	return failsEncode
+}
+
 // appends reports whether the pointer to t, a type that encodes itself, has
 // the append method of its family, which the generated code calls with a
 // stack array: AppendBinary or AppendText. GobEncode has no append method.
@@ -74,21 +115,30 @@ func sizes(t reflect.Type) bool {
 	return reflect.PointerTo(t).Implements(reflect.TypeFor[kanon.Sizer]())
 }
 
+// sizeKanon returns the SizeKanon of x, a value of a kanon.Sizer.
+func sizeKanon(x reflect.Value) int {
+	p := reflect.New(x.Type())
+	p.Elem().Set(x)
+	s, _ := reflect.TypeAssert[kanon.Sizer](p)
+	return s.SizeKanon()
+}
+
 // encodeSelf returns the encoding of x, a value of a type that encodes
 // itself, as the generated code writes it, and its error: the encoding that
-// [marshal] returns and the error of the encode method, and errSize for a
-// kanon.Sizer whose SizeKanon is below 0, before any error of the method,
-// or differs from the length of the encoding.
+// [marshal] returns and the error of the encode method, errNegative for a
+// kanon.Sizer whose SizeKanon is below 0, before the encode method runs,
+// and errSize for a kanon.Sizer whose SizeKanon differs from the length of
+// the encoding.
 func encodeSelf(x reflect.Value) ([]byte, error) {
 	if !sizes(x.Type()) {
 		return marshal(x)
 	}
-	p := reflect.New(x.Type())
-	p.Elem().Set(x)
-	s, _ := reflect.TypeAssert[kanon.Sizer](p)
-	n := s.SizeKanon()
+	n := sizeKanon(x)
+	if n < 0 {
+		return nil, errNegative
+	}
 	enc, err := marshal(x)
-	if n < 0 || err == nil && len(enc) != n {
+	if err == nil && len(enc) != n {
 		return nil, errSize
 	}
 	return enc, err

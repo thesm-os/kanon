@@ -13,6 +13,10 @@ import (
 	"go.thesmos.sh/kanon/kanontest"
 )
 
+// marshalErrorCheck names the check of the errors of the samples that fail
+// to encode.
+const marshalErrorCheck = "MarshalBinary/returns the error of a value that fails to encode"
+
 // codecsSpec describes codec.Codecs, a struct with a field of each type of
 // the codec package that encodes itself, each of which fails to encode for
 // one value.
@@ -151,8 +155,7 @@ func TestCheck(t *testing.T) {
 		})
 		t.Run("fails for a codec that drops the error of a value", func(t *testing.T) {
 			t.Parallel()
-			rejects(t, kanontest.Spec[swallow]{Fields: codecsSpec.Fields},
-				"MarshalBinary/returns the error of a value that fails to encode",
+			rejects(t, kanontest.Spec[swallow]{Fields: codecsSpec.Fields}, marshalErrorCheck,
 				"MarshalBinary returns the error of the value that fails to encode")
 		})
 		t.Run("fails for a codec without a golden file", func(t *testing.T) {
