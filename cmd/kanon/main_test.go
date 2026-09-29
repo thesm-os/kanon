@@ -194,10 +194,14 @@ func commit(t *testing.T, dir string) {
 	}
 }
 
-func TestKanon(t *testing.T) {
-	t.Parallel()
+// TestKanonProcess runs kanon as a process of the test binary, one process
+// at a time. Every process writes the coverage meta-data file of the binary
+// into the one GOCOVERDIR under a temporary name that Go 1.27 makes from the
+// time in nanoseconds alone. Two processes that exit in the same nanosecond
+// write one temporary file, the rename of one of them fails, and that
+// process writes the failure to its standard error.
+func TestKanonProcess(t *testing.T) {
 	t.Run("main", func(t *testing.T) {
-		t.Parallel()
 		self, err := os.Executable()
 		assert.NoError(t, err, "the test binary has a path")
 		tests := []struct {
@@ -230,7 +234,6 @@ func TestKanon(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
 				cmd := command(t, self, tt.args...)
 				cmd.Env = append(os.Environ(), mainEnv+"="+runMain, fileEnv+"=")
 				var stdout, stderr bytes.Buffer
@@ -245,6 +248,10 @@ func TestKanon(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestKanon(t *testing.T) {
+	t.Parallel()
 	t.Run("run", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

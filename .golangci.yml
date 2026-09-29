@@ -227,6 +227,17 @@ linters:
         linters: [paralleltest, tparallel]
         text: 'Test\w*Env\b'
 
+      # A test that runs the test binary again as a command runs its
+      # processes serially, and its name ends in Process. Each process
+      # writes the coverage meta-data file of the binary into the one
+      # GOCOVERDIR under a temporary name that Go 1.27 makes from the time
+      # in nanoseconds alone, so two processes that exit in the same
+      # nanosecond collide, and one of them writes the failure to its
+      # standard error.
+      - path: '_test\.go'
+        linters: [paralleltest, tparallel]
+        text: 'Test\w*Process\b'
+
 formatters:
   enable:
     - gci
