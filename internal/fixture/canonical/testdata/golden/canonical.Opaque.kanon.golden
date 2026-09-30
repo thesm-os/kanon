@@ -1,0 +1,50 @@
+the zero value: 
+table sample 0: 0a02dead12040000007f
+table sample 1: 0a02dead120400000080
+table sample 2: 0a026161120400004000
+table sample 3: 0a026262120400200000
+table sample 4: 0a02dead120410000000
+table sample 5: 0a02dead
+table sample 6: 0a02dead
+table sample 7: 0a02dead120400000001
+the sample of field Digest: 0a02dead
+the sample of field Stamp: 120400000001
+table sample 0 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 0 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 1 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 1 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 2 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 2 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 3 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 3 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 4 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 4 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 5 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 5 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 6 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 6 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+table sample 7 that fails at value 0: fails: kanon: Opaque.Digest (field 1): canonical: the void digest has no encoding
+table sample 7 that fails at value 1: fails: kanon: Opaque.Stamp (field 2): canonical: the void stamp has no encoding
+wide sample 0: 0a027731120400000002
+wide sample 1: 0a027732120400000003
+the key sample: 0a02dead120400000080
+DecodeKanon/decodes each prefix of a field as the reference decode: 64 probes, digest 5d914bb8d566a30a
+DecodeKanon/decodes a field with one value written wrong as the reference decode: 44 probes, digest 2c7783b9d7e8c1b5
+DecodeKanon/decodes a field with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes a field with one changed byte as the reference decode: 162 probes, digest ecb4d8eacdfd2d19
+DecodeKanon/decodes a field with its tag in another wire format as the reference decode: 30 probes, digest f2951d4eb16d65f4
+DecodeKanon/decodes a field written twice as the reference decode: 10 probes, digest 92e9522da78b84b4
+DecodeKanon/decodes a field under each depth limit as the reference decode: 70 probes, digest 642d197f091a931e
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 14 probes, digest b6cac53221184cc3
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 4996f236e33484bd
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 14 probes, digest ff5692ab7e3a9cad
+DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode: 20 probes, digest c20860274eb1d043
+DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode: 6 probes, digest a05f1958f2f8b289
+DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode: 27 probes, digest 47c76bcf448e4734
+DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode: 22 probes, digest 4d0d2c374ca69914
+DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode: 81 probes, digest 5d8ac85c9ed3e54a
+DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 16 probes, digest 755284b727ae56c9
+the samples that the encode allocation checks measure: 0 samples, digest cbf29ce484222325
+the samples that the decode allocation check measures: 0 samples, digest cbf29ce484222325

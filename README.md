@@ -272,6 +272,35 @@ Each method of the index returns what the method of the view with the same name 
 view of a struct without a field that a view reads has no such method, and its `IndexKanon`
 returns the index without a scan and without an error.
 
+## Canonical decoding
+
+Add `-canonical` to the directive to make the decode of its struct types accept only the canonical encoding of a value, the bytes that `EncodeKanon` writes for it:
+
+```go
+//go:generate go tool kanon -type=Header,State -canonical
+```
+
+A canonical decode rejects every other input that a default decode accepts.
+The error is a `*kanon.DecodeError` that wraps `kanon.ErrNotCanonical` and names the field and the offset of the first byte that breaks a rule:
+
+- a varint that is not in its shortest form
+- a field below the field before it, or a field written twice
+- a field number that the struct does not declare
+- a second member of a union
+- a bool above 1
+- a field at a value that the encoding leaves out, such as an integer of 0 or an empty string
+- a map key that is not above the key before it, or a key with a float component of -0.0
+- a time that the encoder writes in other bytes
+- bytes of a type with methods of its own that its encode method does not write for the value that its decode method returns
+
+Use the flag for data whose bytes are evidence, such as a hashed record.
+Each value then has one encoding, so the hash of a record changes only when its value changes.
+The flag changes the decode of the named types alone, and their encode and their views do not change.
+
+A canonical reader rejects a field that its struct does not declare.
+Upgrade every canonical reader before a writer sets a new field.
+The generation fails for a canonical type that contains a struct with a kanon codec whose directive does not set `-canonical`, a struct whose codec is written by hand, or a field tagged `unknown`.
+
 ## Frames and batches
 
 Package `frame` writes messages to a byte stream, one frame per message.
@@ -459,6 +488,7 @@ The design is in RFCs under [docs/rfc](docs/rfc/README.md), and the decisions ar
 - [Frames](docs/rfc/0003-frames.md) specifies messages on a stream.
 - [Batches](docs/rfc/0004-batches.md) specifies messages in storage blocks.
 - [Inspection](docs/rfc/0005-inspection.md), a draft, specifies `kanon inspect`.
+- [Canonical decoding](docs/rfc/0006-canonical-decoding.md), a draft, specifies the `-canonical` flag.
 
 ## Development
 

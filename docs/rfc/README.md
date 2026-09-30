@@ -9,3 +9,4 @@ An RFC argues for a design. An ADR under `../adr` records the decision it produc
 | [0003](0003-frames.md) | Frames for messages on a stream | Accepted |
 | [0004](0004-batches.md) | Batches of messages for storage blocks | Accepted |
 | [0005](0005-inspection.md) | Inspecting encodings, frames and batches without their types | Draft |
+| [0006](0006-canonical-decoding.md) | Decoding that accepts only the canonical encoding | Draft |

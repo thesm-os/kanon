@@ -247,6 +247,9 @@ type resolver struct {
 	// [resolver.taintField] sets it to, and to the invalid value for a type of
 	// which [resolver.taintOf] returns none. [resolver.prepare] fills it.
 	taints map[reflect.Type]reflect.Value
+	// canonical reports that the Spec is canonical, so that the reference
+	// decode applies the rules of a canonical decode.
+	canonical bool
 }
 
 // opts are the options of a field that apply to the shapes of its type.
@@ -285,11 +288,12 @@ type seenKey struct {
 func newResolver[T any](spec Spec[T]) (*resolver, *layout, error) {
 	typ := reflect.TypeFor[T]()
 	r := &resolver{
-		pkg:     typ.PkgPath(),
-		layouts: make(map[reflect.Type]*layout),
-		loose:   make(map[reflect.Type]*layout),
-		bad:     make(map[*shape][]badKey),
-		taints:  make(map[reflect.Type]reflect.Value),
+		pkg:       typ.PkgPath(),
+		layouts:   make(map[reflect.Type]*layout),
+		loose:     make(map[reflect.Type]*layout),
+		bad:       make(map[*shape][]badKey),
+		taints:    make(map[reflect.Type]reflect.Value),
+		canonical: spec.Canonical,
 	}
 	root := &layout{typ: typ, name: typ.Name()}
 	r.layouts[typ] = root

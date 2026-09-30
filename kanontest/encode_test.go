@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 
+	"go.thesmos.sh/kanon/internal/fixture/array"
+	"go.thesmos.sh/kanon/internal/fixture/canonical"
 	"go.thesmos.sh/kanon/internal/fixture/external"
 	"go.thesmos.sh/kanon/internal/fixture/inline"
 	"go.thesmos.sh/kanon/internal/fixture/mapkey"
@@ -15,6 +17,43 @@ import (
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
 )
+
+// lookupsSpec describes canonical.Lookups, a canonical struct with maps whose
+// keys have a float component in every place that one can be: a float, a
+// complex number, an array element, the target of a pointer, a field of a
+// struct and the value of an interface.
+var lookupsSpec = kanontest.Spec[canonical.Lookups]{
+	Fields: []kanontest.Field{
+		{Name: "Bools", Number: 1},
+		{Name: "Int8s", Number: 2},
+		{Name: "Uints", Number: 3},
+		{Name: "Ints", Number: 4},
+		{Name: "Floats", Number: 5},
+		{Name: "Ratios", Number: 6},
+		{Name: "Complex64", Number: 7},
+		{Name: "Complex128", Number: 8},
+		{Name: "Pairs", Number: 9},
+		{Name: "Pointers", Number: 10},
+		{Name: "Coords", Number: 11},
+		{Name: "Anys", Number: 12, Types: []kanontest.ConcreteType{
+			{Type: reflect.TypeFor[float64](), Number: 1},
+			{Type: reflect.TypeFor[string](), Number: 2},
+		}},
+		{Name: "Units", Number: 13},
+		{Name: "Voids", Number: 14},
+		{Name: "Times", Number: 15},
+		{Name: "Stamps", Number: 16},
+		{Name: "Counts", Number: 17},
+		{Name: "Texts", Number: 18},
+		{Name: "Keys", Number: 19},
+		{Name: "Nested", Number: 20},
+	},
+	Structs: []kanontest.Struct{
+		{Type: reflect.TypeFor[canonical.Coord](), Name: "Coord", Fields: fields("Lat", "Lon")},
+		{Type: reflect.TypeFor[struct{}](), Name: "Lookups.Units[key]", Fields: []kanontest.Field{}},
+	},
+	Canonical: true,
+}
 
 // pointKey describes mapkey.Point as a map key, whose tags number Y before
 // X, so that its keys order by Y first.
@@ -232,6 +271,39 @@ func TestEncode(t *testing.T) {
 					labelKey,
 					{Type: reflect.TypeFor[mapkey.Chain](), Fields: fields("Next", "Ends")},
 					pointKey,
+				},
+			})
+		})
+		t.Run("passes canonical map keys of every kind", func(t *testing.T) {
+			t.Parallel()
+			passes(t, lookupsSpec)
+		})
+		t.Run("passes arrays of structs with kanon codecs and of inline structs", func(t *testing.T) {
+			t.Parallel()
+			passes(t, kanontest.Spec[array.Structs]{
+				Fields: fields("Inner", "Label", "Loose", "Remote", "Pair", "Anonym", "Nothing"),
+				Structs: []kanontest.Struct{
+					{Type: reflect.TypeFor[array.Loose](), Name: "Loose", Fields: fields("Note", "Size")},
+					{
+						Type:   reflect.TypeFor[external.Remote](),
+						Name:   "external.Remote",
+						Fields: fields("Name", "Count", "Meta"),
+					},
+					{
+						Type: reflect.TypeFor[struct {
+							Tag  string
+							Rank external.Rank
+						}](),
+						Name:   "external.Remote.Meta",
+						Fields: fields("Tag", "Rank"),
+					},
+					{
+						Type:   reflect.TypeFor[external.Pair[string, int32]](),
+						Name:   "external.Pair[string, int32]",
+						Fields: fields("Key", "Val"),
+					},
+					{Type: reflect.TypeFor[struct{ A, B int32 }](), Name: "Structs.Anonym[]", Fields: fields("A", "B")},
+					{Type: reflect.TypeFor[struct{}](), Name: "Structs.Nothing[]", Fields: []kanontest.Field{}},
 				},
 			})
 		})

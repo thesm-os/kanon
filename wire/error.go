@@ -142,6 +142,74 @@ func RepeatedError(loc string, num, off int) error {
 	return decodeError(kanon.ErrRepeatedView, loc, num, off, "")
 }
 
+// LongFormError returns the error of a canonical decode for the varint of n
+// bytes at offset off, which has a shorter form: its last byte is 0. It
+// wraps kanon.ErrNotCanonical.
+func LongFormError(n int, loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "varint of "+strconv.Itoa(n)+" bytes has a shorter form")
+}
+
+// OrderError returns the error of a canonical decode for the tag at offset
+// off of field number field, which is not above prev, the number of the
+// field before it: the field repeats or is out of order. loc and num name
+// the struct, or the field of a time. It wraps kanon.ErrNotCanonical.
+func OrderError(field, prev uint64, loc string, num, off int) error {
+	detail := "field " + strconv.FormatUint(field, 10) + " after field " + strconv.FormatUint(prev, 10)
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, detail)
+}
+
+// UnknownFieldError returns the error of a canonical decode for the tag at
+// offset off of field number field, which the schema does not list. loc and
+// num name the struct, or the field of a time. It wraps
+// kanon.ErrNotCanonical.
+func UnknownFieldError(field uint64, loc string, num, off int) error {
+	detail := "field " + strconv.FormatUint(field, 10) + " not in the schema"
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, detail)
+}
+
+// MemberError returns the error of a canonical decode for the tag at offset
+// off of a member of the union of the discriminator disc, which follows
+// another member of that union. It wraps kanon.ErrNotCanonical.
+func MemberError(disc, loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "second member of the union of "+disc)
+}
+
+// BoolError returns the error of a canonical decode for the bool v at offset
+// off, which is above 1. It wraps kanon.ErrNotCanonical.
+func BoolError(v uint64, loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "bool "+strconv.FormatUint(v, 10)+", want 0 or 1")
+}
+
+// AbsentError returns the error of a canonical decode for the field whose
+// tag is at offset off and whose value is one that the encoding leaves out,
+// such as a zero integer or an empty string. It wraps kanon.ErrNotCanonical.
+func AbsentError(loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "field at a value that the encoding leaves out")
+}
+
+// KeyOrderError returns the error of a canonical decode for the map key at
+// offset off, which is not above the key before it in the order of map keys:
+// the keys repeat a projection or are out of order. It wraps
+// kanon.ErrNotCanonical.
+func KeyOrderError(loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "key not above the key before it")
+}
+
+// NegativeZeroError returns the error of a canonical decode for the map key
+// at offset off, which has a float component of -0.0, which the projection
+// of a key writes as +0.0. It wraps kanon.ErrNotCanonical.
+func NegativeZeroError(loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "key with a float component of -0.0")
+}
+
+// EncodingError returns the error of a canonical decode for the value at
+// offset off of a type that encodes itself, whose bytes differ from the
+// bytes that the encode method of its type writes for the decoded value. It
+// wraps kanon.ErrNotCanonical.
+func EncodingError(loc string, num, off int) error {
+	return decodeError(kanon.ErrNotCanonical, loc, num, off, "bytes differ from the encoding of the decoded value")
+}
+
 // SizeError returns the error for the encode of a value of a kanon.Sizer,
 // whose encode method returned another length than its SizeKanon, which
 // loc and num locate at the field of the value. It wraps kanon.ErrSize.

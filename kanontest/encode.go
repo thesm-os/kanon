@@ -52,6 +52,64 @@ const (
 // less.
 const wideVarint = 1 << 40
 
+// breach is a rule of the canonical encoding that a fault breaks at one site,
+// the target of the fault, for the probes of a canonical Spec. Each breach
+// counts its own sites. The zero breach breaks no rule: its fault writes a
+// value wrong.
+type breach uint8
+
+// Breaches of the rules of the canonical encoding.
+const (
+	// breachLong writes a varint one byte longer than its shortest form. Its
+	// sites are the varints of a struct encoding: tags, lengths, integers,
+	// bools, type numbers and the length of a complex128.
+	breachLong breach = 1
+	// breachFields swaps two adjacent fields. Its sites are the pairs of
+	// adjacent fields that a struct encoding writes.
+	breachFields breach = 2
+	// breachKeys swaps two adjacent entries of a map. Its sites are the pairs
+	// of adjacent entries that a map writes.
+	breachKeys breach = 3
+	// breachUnknown writes unknownFields at a boundary of the fields of a
+	// struct encoding. Its sites are the boundaries: before each field that
+	// the encoding writes, and after the last.
+	breachUnknown breach = 4
+	// breachZero writes a field at the zero value of its type, as a selected
+	// union member is written: in place of the value that the encoding
+	// writes, or where the encoding leaves the field out, and with a pointer
+	// to the zero value of its target for a pointer. Its sites are the fields
+	// of a struct encoding.
+	breachZero breach = 5
+	// breachTag writes a malformed tag at a boundary of the fields of a struct
+	// encoding: a tag cut short, as cutTag, which ends the encoding, the tag of
+	// field number 0, as zeroTag, and that tag one byte longer than its
+	// shortest form, as longZeroTag. Its sites are the three tags at each
+	// boundary.
+	breachTag breach = 6
+	// breachNegZero writes a float component of a map key that is zero as
+	// -0.0: a float, a part of a complex number, an element of an array, and
+	// a field of a struct, which the projection leaves out at +0.0. Its sites
+	// are those components.
+	breachNegZero breach = 7
+	// breachZeroBytes writes the bytes of a value with a length as zero bytes,
+	// and keeps its length, so that a field of a type that encodes itself
+	// decodes to its zero value, whose encoding it leaves out. Its sites are
+	// the values with a length.
+	breachZeroBytes breach = 8
+)
+
+// Malformed tags that a fault of breachTag writes.
+var (
+	// cutTag is the first byte of a tag of two bytes, which ends an encoding.
+	cutTag = []byte{0x80}
+	// zeroTag is the tag of field number 0 with the wire format varint, and a
+	// value of 0.
+	zeroTag = []byte{0x00, 0x00}
+	// longZeroTag is the tag of zeroTag one byte longer than its shortest
+	// form, which a canonical decode rejects before it checks the number.
+	longZeroTag = []byte{0x80, 0x00}
+)
+
 // encoder writes the reference encoding of values: the encoding that the
 // wire format gives them, derived by reflection, or a variant of it that
 // its mode selects. A struct with a kanon codec encodes through its own
@@ -78,6 +136,10 @@ type encoder struct {
 	// is absent, and a struct with a kanon codec that contains a float
 	// writes its fields in place of its methods.
 	key bool
+	// negate makes the encoder write the next float component as -0.0: the
+	// zero field of a struct key that a fault of breachNegZero targets,
+	// which [encoder.present] reports present.
+	negate bool
 }
 
 // fault makes an encoder write one value wrong: the value that the encoder
@@ -86,10 +148,16 @@ type encoder struct {
 // values first. A value with a length keeps its first at bytes when at is
 // below its length, and takes zero bytes after it up to at otherwise, and
 // the lengths around it follow it. A varint takes the value wideVarint.
+//
+// A fault whose breach is not zero breaks the rule of its breach at its
+// target-th site instead, counted from 1 in the order in which the encoder
+// meets the sites of the breach, and leaves the bytes of every other site as
+// the encoding writes them.
 type fault struct {
 	target, at int
+	breach     breach
 	// lengths records the length of every value that the fault counts, and
-	// -1 for a varint.
+	// -1 for a varint and for a site of a breach.
 	lengths []int
 }
 
@@ -127,22 +195,26 @@ func (r *resolver) redundant(l *layout, v reflect.Value) []byte {
 	return e.encodeStruct(l, v)
 }
 
+// breached returns the reference encoding of v, a struct of l, with the rule
+// of the breach of ft broken at the target of ft, as [fault] states.
+func (r *resolver) breached(l *layout, v reflect.Value, ft *fault) []byte {
+	e := &encoder{r: r, fault: ft}
+	return e.encodeStruct(l, v)
+}
+
 // encodeStruct returns the encoding of v, a struct of l, in the mode of e:
 // its present fields in ascending field number, the member that each
 // discriminator selects whatever its value, and the unknown fields that v
-// keeps.
+// keeps. A fault of a breach of the fields changes them at its target, as
+// [encoder.encodeField] and [encoder.breakFields] state.
 func (e *encoder) encodeStruct(l *layout, v reflect.Value) []byte {
-	var b []byte
+	var parts [][]byte
 	for _, f := range l.fields[min(e.from, len(l.fields)):] {
-		x := f.of(v)
-		if e.mode == modeRedundant {
-			b = e.appendField(e.appendField(b, l.loc(f), f, x, true), l.loc(f), f, x, true)
-		} else if f.Union == "" || e.mode == modeFingerprint {
-			b = e.appendField(b, l.loc(f), f, x, false)
-		} else if l.selected(v, f) {
-			b = e.appendSelected(b, l, f, x)
+		if part := e.encodeField(l, v, f); len(part) > 0 {
+			parts = append(parts, part)
 		}
 	}
+	b := slices.Concat(e.breakFields(parts)...)
 	if l.unknown != nil {
 		b = append(b, v.FieldByIndex(l.unknown).Bytes()...)
 	}
@@ -161,6 +233,68 @@ func (e *encoder) encodeStruct(l *layout, v reflect.Value) []byte {
 		}
 	}
 	return b
+}
+
+// encodeField returns the encoding of the field f of v, a struct of l, in the
+// mode of e: twice whatever its presence in the redundant encoding, every
+// union member by the rules of presence in a fingerprint, and otherwise the
+// field when it is present or the member that its discriminator selects.
+// Every field is a site of breachZero, whose fault writes the field at the
+// zero value of its type, as [encoder.appendSelected] writes a member, at its
+// target.
+func (e *encoder) encodeField(l *layout, v reflect.Value, f *field) []byte {
+	if e.site(breachZero) {
+		return e.appendSelected(nil, l, f, reflect.Zero(f.shape.typ))
+	}
+	x := f.of(v)
+	if e.mode == modeRedundant {
+		return e.appendField(e.appendField(nil, l.loc(f), f, x, true), l.loc(f), f, x, true)
+	}
+	if f.Union == "" || e.mode == modeFingerprint {
+		return e.appendField(nil, l.loc(f), f, x, false)
+	}
+	if l.selected(v, f) {
+		return e.appendSelected(nil, l, f, x)
+	}
+	return nil
+}
+
+// breakFields returns parts, the encodings of the fields of a struct encoding
+// in their order, with the rule of a fault of breachFields, breachUnknown or
+// breachTag broken at its target: two adjacent fields swapped, unknownFields
+// at a boundary, or a malformed tag at a boundary. cutTag ends the encoding,
+// so that it takes the place of the fields after the boundary.
+func (e *encoder) breakFields(parts [][]byte) [][]byte {
+	swap(e, breachFields, parts)
+	for k := range len(parts) + 1 {
+		if e.site(breachUnknown) {
+			return slices.Insert(parts, k, unknownFields)
+		}
+	}
+	for k := range len(parts) + 1 {
+		if e.site(breachTag) {
+			return append(parts[:k], cutTag)
+		}
+		if e.site(breachTag) {
+			return slices.Insert(parts, k, zeroTag)
+		}
+		if e.site(breachTag) {
+			return slices.Insert(parts, k, longZeroTag)
+		}
+	}
+	return parts
+}
+
+// swap swaps parts[k-1] and parts[k] for the site of the breach b that is
+// the target of the fault of e, counting one site for each k from 1: the
+// pairs of adjacent fields of a struct encoding, or of adjacent entries of a
+// map.
+func swap[E any](e *encoder, b breach, parts []E) {
+	for k := 1; k < len(parts); k++ {
+		if e.site(b) {
+			parts[k-1], parts[k] = parts[k], parts[k-1]
+		}
+	}
 }
 
 // appendSelected appends the field f of l, whose value is x, as a union
@@ -206,7 +340,7 @@ func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, m
 	} else {
 		return b
 	}
-	b = binary.AppendUvarint(b, uint64(f.Number)<<3|uint64(s.wire()))
+	b = e.appendUvarint(b, uint64(f.Number)<<3|uint64(s.wire()))
 	if s.unframed() {
 		return e.appendBytes(b, value)
 	}
@@ -221,20 +355,21 @@ func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, m
 // compares every bit when it is not its zero value, and any other value
 // whose encoding has bytes after its length. In a map key, a float and a
 // complex number are present when they are not zero, since the projection
-// writes -0.0 as +0.0. A value that fails to encode itself has no bytes, and
-// its failure is not recorded: the generated code sizes it without an error.
-// loc and num locate the field of x.
+// writes -0.0 as +0.0, and a zero one when a fault of breachNegZero targets
+// it, as [encoder.negates] states. A value that fails to encode itself has no
+// bytes, and its failure is not recorded: the generated code sizes it
+// without an error. loc and num locate the field of x.
 func (e *encoder) present(s *shape, x reflect.Value, loc string, num int) bool {
 	switch s.kind {
 	case kindFloat:
 		if e.key {
-			return x.Float() != 0
+			return x.Float() != 0 || e.negates()
 		}
 		return math.Float64bits(x.Float()) != 0
 	case kindComplex64, kindComplex128:
 		c := x.Complex()
 		if e.key {
-			return c != 0
+			return c != 0 || e.negates()
 		}
 		return math.Float64bits(real(c))|math.Float64bits(imag(c)) != 0
 	case kindString, kindBytes, kindSlice, kindMap:
@@ -287,13 +422,11 @@ func (e *encoder) rejects(s *shape, x reflect.Value) reflect.Value {
 	if e.reject == nil || !s.validate {
 		return x
 	}
-	bad, ok := e.r.rejected(s)
-	if !ok {
-		return x
-	}
-	e.reject.met++
-	if e.reject.met == e.reject.target {
-		return bad
+	if bad, ok := e.r.rejected(s); ok {
+		e.reject.met++
+		if e.reject.met == e.reject.target {
+			return bad
+		}
 	}
 	return x
 }
@@ -304,39 +437,32 @@ func (e *encoder) appendKind(b []byte, s *shape, x reflect.Value, loc string, nu
 	switch s.kind {
 	case kindBool:
 		if x.Bool() {
-			return append(b, 1)
+			return e.appendUvarint(b, 1)
 		}
-		return append(b, 0)
+		return e.appendUvarint(b, 0)
 	case kindInt:
-		if e.hit(-1) {
-			return binary.AppendUvarint(b, wideVarint)
-		}
-		return binary.AppendUvarint(b, wire.Zigzag(x.Int()))
+		return e.appendVarint(b, wire.Zigzag(x.Int()))
 	case kindUint:
-		if e.hit(-1) {
-			return binary.AppendUvarint(b, wideVarint)
-		}
-		return binary.AppendUvarint(b, x.Uint())
+		return e.appendVarint(b, x.Uint())
 	case kindFixed:
 		if x.CanUint() {
 			return appendFixed(b, s, x.Uint())
 		}
 		return appendFixed(b, s, uint64(x.Int()))
 	case kindFloat:
-		f := e.float(x.Float())
 		if s.typ.Size() == fixed32Width {
-			return appendFixed(b, s, uint64(math.Float32bits(float32(f))))
+			return appendFixed(b, s, uint64(math.Float32bits(written(e, float32Of(x)))))
 		}
-		return appendFixed(b, s, math.Float64bits(f))
+		return appendFixed(b, s, math.Float64bits(written(e, x.Float())))
 	case kindComplex64:
-		c := x.Complex()
-		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(float32(e.float(real(c)))))
-		return binary.LittleEndian.AppendUint32(b, math.Float32bits(float32(e.float(imag(c)))))
+		c := complex64Of(x)
+		b = binary.LittleEndian.AppendUint32(b, math.Float32bits(written(e, real(c))))
+		return binary.LittleEndian.AppendUint32(b, math.Float32bits(written(e, imag(c))))
 	case kindComplex128:
-		c := complex(e.float(real(x.Complex())), e.float(imag(x.Complex())))
-		b = binary.AppendUvarint(b, complex128Width)
-		b = binary.LittleEndian.AppendUint64(b, math.Float64bits(real(c)))
-		return binary.LittleEndian.AppendUint64(b, math.Float64bits(imag(c)))
+		c := x.Complex()
+		b = e.appendUvarint(b, complex128Width)
+		b = binary.LittleEndian.AppendUint64(b, math.Float64bits(written(e, real(c))))
+		return binary.LittleEndian.AppendUint64(b, math.Float64bits(written(e, imag(c))))
 	case kindString:
 		return e.appendBytes(b, []byte(x.String()))
 	case kindBytes:
@@ -382,8 +508,10 @@ func (e *encoder) appendKind(b []byte, s *shape, x reflect.Value, loc string, nu
 		return e.appendBytes(b, body)
 	case kindMap:
 		pairs := e.pairs(s, x)
+		entries := slices.Clone(pairs[min(e.from, len(pairs)):])
+		swap(e, breachKeys, entries)
 		var body []byte
-		for _, p := range pairs[min(e.from, len(pairs)):] {
+		for _, p := range entries {
 			body = e.appendKey(body, s.key, p[0], loc, num)
 			body = e.appendValue(body, s.elem, p[1], loc, num)
 		}
@@ -404,14 +532,14 @@ func (e *encoder) appendKind(b []byte, s *shape, x reflect.Value, loc string, nu
 // type that the Types of the field do not list fails to encode.
 func (e *encoder) appendInterface(b []byte, s *shape, x reflect.Value, loc string, num int) []byte {
 	if x.IsNil() {
-		return append(b, 0)
+		return e.appendUvarint(b, 0)
 	}
 	w := s.variant(x.Elem().Type())
 	if w == nil {
 		e.fail(wire.UnlistedError(x.Elem().Interface(), loc, num))
 		return b
 	}
-	b = binary.AppendUvarint(b, uint64(w.num))
+	b = e.appendUvarint(b, uint64(w.num))
 	return e.appendValue(b, w.shape, x.Elem(), loc, num)
 }
 
@@ -472,28 +600,96 @@ func (e *encoder) checkKeys(s *shape, pairs [][2]reflect.Value, loc string, num 
 	}
 }
 
-// hit counts a value that the fault of e counts, of length n, or -1 for a
-// varint, and reports whether it is the target of the fault. It reports
-// false for an encoder without a fault.
+// hit counts a value of length n, or -1 for a varint of an integer, which a
+// fault that writes a value wrong counts, and a fault of breachLong among its
+// sites, and reports whether it is the target of the fault. It reports false
+// for an encoder without such a fault.
 func (e *encoder) hit(n int) bool {
 	f := e.fault
-	if f == nil {
+	if f == nil || f.breach != 0 && f.breach != breachLong {
 		return false
 	}
+	return f.count(n)
+}
+
+// site counts a site of the breach b, and reports whether it is the target of
+// the fault of e. It reports false for an encoder without a fault of b.
+func (e *encoder) site(b breach) bool {
+	f := e.fault
+	if f == nil || f.breach != b {
+		return false
+	}
+	return f.count(-1)
+}
+
+// count records a value or a site of length n, and reports whether it is the
+// target of f.
+func (f *fault) count(n int) bool {
 	f.lengths = append(f.lengths, n)
 	return len(f.lengths) == f.target
 }
 
-// float returns f, the NaN of math.NaN for any NaN in a fingerprint, and
-// +0.0 for -0.0 in a map key.
-func (e *encoder) float(f float64) float64 {
-	if e.mode == modeFingerprint && math.IsNaN(f) {
-		return math.NaN()
+// appendVarint appends v, the varint of an integer, to b: wideVarint when
+// a fault that writes a value wrong targets it, v one byte longer than its
+// shortest form when a fault of breachLong does, and v in its shortest form
+// otherwise.
+func (e *encoder) appendVarint(b []byte, v uint64) []byte {
+	if !e.hit(-1) {
+		return binary.AppendUvarint(b, v)
+	}
+	if e.fault.breach == breachLong {
+		return appendLong(b, v)
+	}
+	return binary.AppendUvarint(b, wideVarint)
+}
+
+// appendUvarint appends v to b, a varint that only a fault of breachLong
+// counts: a tag, a bool, a type number or the length of a complex128. It
+// writes v one byte longer than its shortest form when the fault targets it.
+func (e *encoder) appendUvarint(b []byte, v uint64) []byte {
+	if e.site(breachLong) {
+		return appendLong(b, v)
+	}
+	return binary.AppendUvarint(b, v)
+}
+
+// written returns f, a float or a part of a complex number, as e writes it:
+// the NaN of math.NaN for any NaN in a fingerprint, +0.0 for -0.0 in a map
+// key, and f bit for bit otherwise. A zero component of a map key is a site
+// of breachNegZero, which its fault writes as -0.0 at its target, as it
+// writes the component after [encoder.negates] reports true. It takes a
+// float32 as a float32, since a conversion to float64 sets the quiet bit of
+// a signaling NaN.
+func written[F float32 | float64](e *encoder, f F) F {
+	if e.mode == modeFingerprint && math.IsNaN(float64(f)) {
+		return F(math.NaN())
+	}
+	if e.key && f == 0 && (e.negate || e.site(breachNegZero)) {
+		e.negate = false
+		return F(math.Copysign(0, -1))
 	}
 	if e.key && f == 0 {
 		return 0
 	}
 	return f
+}
+
+// negates counts the zero float component of a map key that the encoding
+// leaves out, a field of a struct key, as a site of breachNegZero, and
+// reports whether it is the target of the fault of e. The encoder then writes
+// the component, whose next float [written] writes as -0.0.
+func (e *encoder) negates() bool {
+	e.negate = e.site(breachNegZero)
+	return e.negate
+}
+
+// appendLong appends v as a varint one byte longer than its shortest form:
+// its shortest form with the continuation bit set on its last byte, and a
+// byte of 0.
+func appendLong(b []byte, v uint64) []byte {
+	b = binary.AppendUvarint(b, v)
+	b[len(b)-1] |= 0x80
+	return append(b, 0)
 }
 
 // fail records err, when it is not nil, as the error of the encoding.
@@ -622,6 +818,47 @@ func (r *resolver) hasNaN(s *shape, x reflect.Value) bool {
 	}
 }
 
+// hasNegativeZero reports whether x, a map key of s, has a float component
+// of -0.0 in the parts of it that its projection contains, which the
+// projection writes as +0.0: a float that is zero with its sign bit set, and
+// a complex number with such a part.
+func (r *resolver) hasNegativeZero(s *shape, x reflect.Value) bool {
+	switch s.kind {
+	case kindFloat:
+		return negativeZero(x.Float())
+	case kindComplex64, kindComplex128:
+		c := x.Complex()
+		return negativeZero(real(c)) || negativeZero(imag(c))
+	case kindArray:
+		for i := range x.Len() {
+			if r.hasNegativeZero(s.elem, x.Index(i)) {
+				return true
+			}
+		}
+		return false
+	case kindPointer:
+		return !x.IsNil() && r.hasNegativeZero(s.elem, x.Elem())
+	case kindInterface:
+		if x.IsNil() {
+			return false
+		}
+		w := s.variant(x.Elem().Type())
+		return w != nil && r.hasNegativeZero(w.shape, x.Elem())
+	case kindStruct, kindInline:
+		return slices.ContainsFunc(r.keyLayout(s.typ).fields, func(f *field) bool {
+			return r.hasNegativeZero(f.shape, f.of(x))
+		})
+	default:
+		return false
+	}
+}
+
+// negativeZero reports whether f is zero with its sign bit set. A NaN with
+// its sign bit set is not zero.
+func negativeZero(f float64) bool {
+	return f == 0 && math.Signbit(f)
+}
+
 // number returns the type number of the interface value x of s: 0 for nil
 // and for a concrete type that the Types of its field do not list.
 func (s *shape) number(x reflect.Value) int {
@@ -675,9 +912,17 @@ func appendFixed(b []byte, s *shape, u uint64) []byte {
 }
 
 // appendBytes appends body to b after its length, or the length and the
-// bytes that the fault of e gives body when it targets it.
+// bytes that the fault of e gives body when it targets it: body after a
+// length one byte longer than its shortest form for a fault of breachLong,
+// and zero bytes of the length of body for a fault of breachZeroBytes.
 func (e *encoder) appendBytes(b, body []byte) []byte {
+	if e.site(breachZeroBytes) {
+		body = make([]byte, len(body))
+	}
 	if e.hit(len(body)) {
+		if e.fault.breach == breachLong {
+			return append(appendLong(b, uint64(len(body))), body...)
+		}
 		faulty := make([]byte, e.fault.at)
 		copy(faulty, body)
 		body = faulty
@@ -690,4 +935,30 @@ func byteArray(x reflect.Value) []byte {
 	out := make([]byte, x.Len())
 	reflect.Copy(reflect.ValueOf(out), x)
 	return out
+}
+
+// float32Of returns x, a value of a float32 type, bit for bit. x.Float
+// converts x to a float64, which sets the quiet bit of a signaling NaN, and a
+// conversion between two float32 types keeps every bit.
+func float32Of(x reflect.Value) float32 {
+	f, _ := reflect.TypeAssert[float32](x.Convert(reflect.TypeFor[float32]()))
+	return f
+}
+
+// complex64Of returns x, a value of a complex64 type, bit for bit, read
+// through a complex64 view of a copy of x. x.Complex and a conversion to
+// complex64 both convert the parts to float64, which sets the quiet bit of a
+// signaling NaN.
+func complex64Of(x reflect.Value) complex64 {
+	p := reflect.New(x.Type())
+	p.Elem().Set(x)
+	c, _ := reflect.TypeAssert[complex64](complex64View(p))
+	return c
+}
+
+// complex64View returns the value that p, a pointer to a value of a
+// complex64 type, points at, as a complex64, which shares the memory of the
+// value.
+func complex64View(p reflect.Value) reflect.Value {
+	return reflect.NewAt(reflect.TypeFor[complex64](), p.UnsafePointer()).Elem()
 }

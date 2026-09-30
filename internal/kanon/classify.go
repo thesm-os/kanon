@@ -48,6 +48,14 @@ type classifier struct {
 	// a named type that is not a struct: a -type flag of its package names
 	// it. Such a type is a kanon.Validator before its code file exists.
 	validated func(*types.Named) bool
+	// canonicalOf reports whether the kanon directive that names a nested
+	// struct has the -canonical flag, so that its decode accepts only its
+	// canonical encoding.
+	canonicalOf func(*types.Named) bool
+	// canonical reports that the code file decodes its structs canonically,
+	// so that every nested struct of the classified types must decode
+	// canonically too, as canonicalOf reports.
+	canonical bool
 	// pkg is the package of the code file, which names every type the file
 	// encodes.
 	pkg *types.Package
@@ -146,6 +154,9 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			return nil, err
 		}
 		if c.nested(named) {
+			if c.canonical && !c.canonicalOf(named) {
+				return nil, c.uncanonical(named)
+			}
 			if named.Obj().Pkg() != c.pkg {
 				c.codecs[c.recordKey(named)] = named
 			}
@@ -232,6 +243,19 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			"value of the type", t)
 	}
 	return v, nil
+}
+
+// uncanonical returns the error for the nested struct t of a canonical code
+// file, whose decode does not accept only its canonical encoding: a struct
+// whose directive does not set -canonical, and a struct whose kanon codec is
+// written by hand, which no directive names.
+func (c classifier) uncanonical(t *types.Named) error {
+	name := types.TypeString(t, nil)
+	if c.generated(t) {
+		return fmt.Errorf("kanon: %s decodes without the -canonical flag, which a canonical type cannot contain: "+
+			"add the flag to the directive that names %s", name, t.Obj().Name())
+	}
+	return fmt.Errorf("kanon: %s has a kanon codec written by hand, which a canonical type cannot contain", name)
 }
 
 // validator reports whether the named type t is a kanon.Validator: a

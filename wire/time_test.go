@@ -4,6 +4,7 @@
 package wire_test
 
 import (
+	"bytes"
 	"io"
 	"math"
 	"testing"
@@ -90,6 +91,12 @@ func BenchmarkTime(b *testing.B) {
 				sinkTime, sinkErr = wire.Time(enc, timeLoc, timeNumber, timeOff)
 			}
 		})
+		b.Run("CanonicalTime/"+c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				sinkTime, sinkErr = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff)
+			}
+		})
 	}
 }
 
@@ -119,6 +126,10 @@ func TestTimeAllocs(t *testing.T) {
 		t.Run("Time/allocates nothing for a time "+c.name, func(t *testing.T) {
 			assert.MaxAllocs(t, func() { sinkTime, sinkErr = wire.Time(enc, timeLoc, timeNumber, timeOff) }, 0,
 				"Time allocates nothing for a zone it does not create")
+		})
+		t.Run("CanonicalTime/allocates nothing for a time "+c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, func() { sinkTime, sinkErr = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff) }, 0,
+				"CanonicalTime allocates nothing for a zone it does not create")
 		})
 	}
 }
@@ -284,6 +295,108 @@ func TestTime(t *testing.T) {
 			})
 		}
 	})
+	t.Run("CanonicalTime", func(t *testing.T) {
+		t.Parallel()
+		for _, v := range timeVectors() {
+			t.Run("reads "+v.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := wire.CanonicalTime(v.enc, timeLoc, timeNumber, timeOff)
+				assert.NoError(t, err, "CanonicalTime decodes the encoding that PutTime writes")
+				want, _ := wire.Time(v.enc, timeLoc, timeNumber, timeOff)
+				assert.Equal(t, got, want, "CanonicalTime decodes the time that Time decodes")
+			})
+		}
+		located := func(cause error, off int, detail string) *kanon.DecodeError {
+			return &kanon.DecodeError{
+				Type: timeType, Field: timeField, Number: timeNumber, Offset: off, Detail: detail, Err: cause,
+			}
+		}
+		failures := []struct {
+			name string
+			data []byte
+			want *kanon.DecodeError
+		}{
+			{
+				name: "returns ErrNotCanonical for a tag that is not in its shortest form",
+				data: []byte{0x88, 0x00, 0x02},
+				want: located(kanon.ErrNotCanonical, timeOff, "varint of 2 bytes has a shorter form"),
+			},
+			{
+				name: "returns ErrNotCanonical for a value that is not in its shortest form",
+				data: []byte{0x08, 0x82, 0x00},
+				want: located(kanon.ErrNotCanonical, timeOff+1, "varint of 2 bytes has a shorter form"),
+			},
+			{
+				name: "returns ErrNotCanonical at the tag of a field out of order",
+				data: []byte{0x10, 0xf4, 0x03, 0x08, 0x02},
+				want: located(kanon.ErrNotCanonical, timeOff+3, "field 1 after field 2"),
+			},
+			{
+				name: "returns ErrNotCanonical at the tag of a repeated field",
+				data: []byte{0x08, 0x02, 0x08, 0x04},
+				want: located(kanon.ErrNotCanonical, timeOff+2, "field 1 after field 1"),
+			},
+			{
+				name: "returns ErrNotCanonical at the tag of field 4",
+				data: []byte{0x08, 0x02, 0x20, 0x01},
+				want: located(kanon.ErrNotCanonical, timeOff+2, "field 4 not in the schema"),
+			},
+			{
+				name: "returns ErrNotCanonical for field 4 in an invalid wire format",
+				data: []byte{0x08, 0x02, 0x27},
+				want: located(kanon.ErrNotCanonical, timeOff+2, "field 4 not in the schema"),
+			},
+			{
+				name: "returns ErrNotCanonical at the tag of seconds of 0",
+				data: []byte{0x08, 0x00},
+				want: located(kanon.ErrNotCanonical, timeOff, "time field 1 of 0"),
+			},
+			{
+				name: "returns ErrNotCanonical at the tag of nanoseconds of 0",
+				data: []byte{0x08, 0x02, 0x10, 0x00},
+				want: located(kanon.ErrNotCanonical, timeOff+2, "time field 2 of 0"),
+			},
+			{
+				name: "returns ErrMalformed for field number 0",
+				data: []byte{0x00, 0x00},
+				want: located(kanon.ErrMalformed, timeOff, "field number 0"),
+			},
+			{
+				name: "returns ErrMalformed at the tag of a known field with another wire format",
+				data: []byte{0x08, 0x02, 0x11, 1, 2, 3, 4, 5, 6, 7, 8},
+				want: located(kanon.ErrMalformed, timeOff+2, "time field 2 has fixed64, want varint"),
+			},
+			{
+				name: "returns ErrRange at the value of 1000000000 nanoseconds",
+				data: []byte{0x10, 0x80, 0x94, 0xeb, 0xdc, 0x03},
+				want: located(kanon.ErrRange, timeOff+1, "time nanoseconds 1000000000 outside 0 to 999999999"),
+			},
+			{
+				name: "returns ErrRange at the value of an offset above the range of an int32",
+				data: timeWithZone(math.MaxInt32 + 1),
+				want: located(kanon.ErrRange, timeOff+3, "time zone offset 2147483648 outside the range of an int32"),
+			},
+			{
+				name: "returns io.ErrUnexpectedEOF for a value that ends early",
+				data: []byte{0x08, 0x82},
+				want: located(io.ErrUnexpectedEOF, timeOff+1, ""),
+			},
+			{
+				name: "returns io.ErrUnexpectedEOF for a tag that ends early",
+				data: []byte{0x08, 0x02, 0x80},
+				want: located(io.ErrUnexpectedEOF, timeOff+2, ""),
+			},
+		}
+		for _, c := range failures {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := wire.CanonicalTime(c.data, timeLoc, timeNumber, timeOff)
+				assert.Equal(t, got, time.Time{}, "CanonicalTime returns the zero time with an error")
+				e := assert.ErrorAs[*kanon.DecodeError](t, err, "CanonicalTime returns a *kanon.DecodeError")
+				assert.Equal(t, e, c.want, "CanonicalTime locates the error at the field of the time")
+			})
+		}
+	})
 }
 
 // timeWithZone returns the encoding of the Unix epoch plus one second in
@@ -311,5 +424,28 @@ func FuzzTime(f *testing.F) {
 		again, err := wire.Time(buf, timeLoc, timeNumber, timeOff)
 		assert.NoError(t, err, "the encoding of a decoded time decodes")
 		assert.True(t, again.Equal(got), "the instant survives a second round trip")
+	})
+}
+
+func FuzzCanonicalTime(f *testing.F) {
+	for _, v := range timeVectors() {
+		f.Add(v.enc)
+	}
+	f.Add([]byte{0x08, 0x02, 0x08, 0x04})
+	f.Add([]byte{0x88, 0x00, 0x02})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		got, err := wire.CanonicalTime(data, timeLoc, timeNumber, timeOff)
+		lenient, lenientErr := wire.Time(data, timeLoc, timeNumber, timeOff)
+		written := []byte(nil)
+		if lenientErr == nil {
+			buf := make([]byte, wire.SizeTime(lenient))
+			written = buf[wire.PutTime(buf, len(buf), lenient):]
+		}
+		canonical := lenientErr == nil && bytes.Equal(written, data)
+		assert.Equal(t, err == nil, canonical,
+			"CanonicalTime accepts exactly the input that PutTime writes for the time that Time decodes")
+		if err == nil {
+			assert.Equal(t, got, lenient, "CanonicalTime decodes the time that Time decodes")
+		}
 	})
 }

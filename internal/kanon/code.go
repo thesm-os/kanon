@@ -55,6 +55,7 @@ func codeFile(u *unit) ([]byte, error) {
 		keyStructs: u.keyStructs,
 		views:      make(map[types.Object]bool),
 		keyTargets: make(map[string]*target),
+		canonical:  u.canonical,
 	}
 	if u.views {
 		for _, m := range u.targets {
@@ -186,9 +187,10 @@ func localNames() []string {
 		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "data", "depth", "dst", "ea", "eb",
 		"enc",
 		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "ix", "k", "keys", "l", "last", locParam, "m",
-		"mk",
+		membersName, "mk",
 		"mv",
-		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "pair", "pairs", "present", "re", "s",
+		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "pair", "pairs", prevKeyName, "present",
+		priorName, "re", "s",
 		"sa", "sb",
 		"scratch", "seen", "size", "skipped", "slab", "src", "t", "tag", "u", "used", "v", "w", "x", "zero",
 	}

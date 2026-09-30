@@ -216,3 +216,7 @@ func FuzzSuite(f *testing.F) {
 func FuzzSuiteSpec(f *testing.F) {
 	kanontest.Fuzz(f, kanontest.Spec[view.Item]{Fields: []kanontest.Field{{Name: "Missing", Number: 1}}})
 }
+
+func FuzzSuiteCanonical(f *testing.F) {
+	kanontest.Fuzz(f, mapsSpec)
+}

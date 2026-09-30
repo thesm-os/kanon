@@ -7,16 +7,15 @@ import (
 	"go.thesmos.sh/kanon"
 )
 
-// The file compiles against a runtime that supports version 1 of the generator.
+// The file compiles against a runtime that supports version 2 of the generator.
 const (
-	_ = kanon.EnforceVersion(1 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 1)
+	_ = kanon.EnforceVersion(2 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 2)
 )
 
-// ValidateKanon returns nil, since every value of Tick is valid. kanon encodes
-// a value of Tick as a value of its underlying type uint64, ahead of the binary
-// methods of Tick, and calls ValidateKanon on every value of Tick that it
-// encodes or decodes.
-func (Tick) ValidateKanon() error {
-	return nil
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Tick as
+// a value of its underlying type uint64, ahead of the binary methods of Tick,
+// and calls ValidateKanon on every value of Tick that it encodes or decodes.
+func (x Tick) ValidateKanon() error {
+	return x.valid()
 }

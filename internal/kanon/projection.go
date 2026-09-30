@@ -177,51 +177,86 @@ func (e *emitter) floatWord(size int, x string) string {
 	return e.std(mathPath) + ".Float" + strconv.Itoa(size) + "bits(" + x + ")"
 }
 
-// nanExpr returns the condition that x, a map key or a part of one of v, has
-// a NaN component: x != x for a float and a complex number, and the call of
-// the nan function of the code file for any other value that contains one.
-func (e *emitter) nanExpr(v *value, x string) string {
+// componentExpr returns the condition that x, a map key or a part of one of
+// v, has a float component that o finds: a NaN for opNaN, and -0.0 for
+// opNegZero. For a float and a complex number it is x != x and the
+// condition of [emitter.negativeZero], and for any other value that contains
+// one the call of the helper of o in the code file.
+func (e *emitter) componentExpr(o op, v *value, x string) string {
 	switch v.kind {
 	case kindFloat32, kindFloat64, kindComplex64, kindComplex128:
-		return x + " != " + x
+		if o == opNaN {
+			return x + " != " + x
+		}
+		return e.negativeZero(v, x)
 	default:
-		return e.fn(opNaN, v) + "(" + x + ")"
+		return e.fn(o, v) + "(" + x + ")"
 	}
 }
 
-// nanHelper writes the function that reports whether a map key of v has a
-// NaN component, in the parts of v that contain a float: the fields of a
-// struct, the elements of an array, the value that a pointer points at, and
-// the value of each concrete type of an interface.
-func (e *emitter) nanHelper(name string, v *value) {
+// negativeZero returns the condition that x, a float or a complex number of
+// v, is -0.0 or has a part of -0.0: zero with its sign bit set. A NaN with
+// its sign bit set is not zero.
+func (e *emitter) negativeZero(v *value, x string) string {
+	signbit := e.std(mathPath) + ".Signbit"
+	switch v.kind {
+	case kindFloat32:
+		return x + " == 0 && " + signbit + "(float64(" + x + "))"
+	case kindFloat64:
+		return x + " == 0 && " + signbit + "(" + as(v, x, types.Float64) + ")"
+	case kindComplex64:
+		re, im := "real("+x+")", "imag("+x+")"
+		return re + " == 0 && " + signbit + "(float64(" + re + ")) || " + im + " == 0 && " + signbit +
+			"(float64(" + im + "))"
+	default:
+		re, im := "real("+x+")", "imag("+x+")"
+		return re + " == 0 && " + signbit + "(" + re + ") || " + im + " == 0 && " + signbit + "(" + im + ")"
+	}
+}
+
+// componentHelper writes the helper of o, opNaN or opNegZero, which reports
+// whether a map key of v has a float component that o finds, in the parts of
+// v that contain a float: the fields of a struct, the elements of an array,
+// the value that a pointer points at, and the value of each concrete type of
+// an interface.
+func (e *emitter) componentHelper(name string, o op, v *value) {
 	typ := e.p.typ(v.typ)
-	e.doc(name + " reports whether x, a map key of type " + typ + ", has a NaN component, which makes the key " +
-		"invalid.")
+	if o == opNaN {
+		e.doc(name + " reports whether x, a map key of type " + typ + ", has a NaN component, which makes the " +
+			"key invalid.")
+	} else {
+		e.doc(name + " reports whether x, a map key of type " + typ + ", has a float component of -0.0, which " +
+			"the projection of the key writes as +0.0.")
+	}
 	e.line("func %s(x %s) bool {", name, typ)
 	switch v.kind {
 	case kindStruct:
 		var conds []string
 		for _, f := range e.orderedFields(v) {
 			if e.floats(f.val) {
-				conds = append(conds, e.nanExpr(f.val, "x."+f.name))
+				conds = append(conds, e.componentExpr(o, f.val, "x."+f.name))
 			}
 		}
 		e.line("return %s", strings.Join(conds, " || "))
 	case kindArray:
 		e.line("for k := range x {")
-		e.line("if %s {", e.nanExpr(v.elem, "x[k]"))
+		e.line("if %s {", e.componentExpr(o, v.elem, "x[k]"))
 		e.line("return true")
 		e.line("}")
 		e.line("}")
 		e.line("return false")
 	case kindPointer:
-		e.line("return x != nil && %s", e.nanExpr(v.elem, "*x"))
+		cond := e.componentExpr(o, v.elem, "*x")
+		if strings.Contains(cond, " || ") {
+			cond = "(" + cond + ")"
+		}
+		e.line("return x != nil && %s", cond)
 	default:
 		e.line("switch x := x.(type) {")
 		for _, w := range v.variants {
 			if e.floats(w.val) {
 				e.line("case %s:", e.p.typ(w.c.typ))
-				e.line("return %s", e.nanExpr(w.val, "x"))
+				e.line("return %s", e.componentExpr(o, w.val, "x"))
 			}
 		}
 		e.line("}")
@@ -373,7 +408,7 @@ func (e *emitter) keyChecks(v *value, sorted string, pairs bool, key func(k stri
 	w := e.wire()
 	if e.floats(v.key) {
 		e.line("for k := range len(%s) {", sorted)
-		e.line("if %s {", e.nanExpr(v.key, key("k")))
+		e.line("if %s {", e.componentExpr(opNaN, v.key, key("k")))
 		e.line("return 0, %s%s(%s, %s)", w, invalidKeyName, locParam, numParam)
 		e.line("}")
 		e.line("}")

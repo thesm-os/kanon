@@ -36,14 +36,25 @@
 // the input buffer passes the buffer itself as the slab, and the decode
 // then allocates nothing for its strings.
 //
+// # Canonical decoding
+//
+// A decoder accepts other encodings of a value than the one that the encoder
+// writes: a varint longer than its shortest form, fields in any order and
+// twice, a bool above 1, map keys in any order, unknown fields, and fields
+// at a value that the encoding leaves out. The -canonical flag of a
+// directive makes the decode of its struct types reject every such input
+// with [ErrNotCanonical], so that one value has one accepted encoding. The
+// flag applies to every decode of the type: DecodeKanon, MergeKanon and
+// UnmarshalBinary.
+//
 // # Errors
 //
 // A decode returns a [*DecodeError] that names the struct type, the field,
 // the field number and the offset of the malformed input, and that wraps
 // one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth],
-// [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey] and
-// [ErrRepeatedView], the error of a type that decodes itself, or the error
-// of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
+// [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey], [ErrRepeatedView]
+// and [ErrNotCanonical], the error of a type that decodes itself, or the
+// error of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
 // that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
 // [ErrSize], the error of a type that encodes itself, or the error of
 // ValidateKanon.

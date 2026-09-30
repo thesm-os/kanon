@@ -142,12 +142,13 @@ func (s *suite[T, P]) viewResult(tb assert.TB, fields map[string]*field, owner r
 // wire.Find for any other value, and the error of the decode of the value.
 func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error) {
 	s := f.viewShape()
+	d := &decoder{r: r}
 	i, err := f.find()(data, f.tag(), l.loc(f))
 	if s.kind == kindString || s.kind == kindBytes || s.kind == kindStruct || s.kind == kindInline {
 		var b []byte
 		if err == nil && i != -1 {
 			var start, end int
-			start, end, err = length(data, i, 0, l.loc(f), f.Number)
+			start, end, err = d.length(data, i, 0, l.loc(f), f.Number)
 			b = data[start:end]
 		}
 		if !s.validate {
@@ -166,7 +167,6 @@ func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error)
 	}
 	x := reflect.New(s.typ).Elem()
 	if err == nil && i != -1 {
-		d := &decoder{r: r}
 		_, err = d.read(s, x, data, i, 0, 0, l.loc(f), f.Number)
 	}
 	return x, err

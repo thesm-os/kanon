@@ -81,9 +81,11 @@ type Message interface {
 	// first clears the fields that the encoding leaves out, as Reset does.
 	// Every decoded string is a substring of the slab of opts. It returns a
 	// [*DecodeError] for malformed input, and for a value that the
-	// ValidateKanon of a [Validator] rejects. After an error the receiver
-	// contains the fields decoded before it, and the failed field has an
-	// unspecified value.
+	// ValidateKanon of a [Validator] rejects. The decode of a type whose
+	// directive has the -canonical flag also returns a [*DecodeError] that
+	// wraps [ErrNotCanonical] for input that is not the canonical encoding of
+	// its value. After an error the receiver contains the fields decoded
+	// before it, and the failed field has an unspecified value.
 	DecodeKanon(data []byte, opts Options) error
 
 	// MergeKanon decodes data into the receiver without resetting it first,

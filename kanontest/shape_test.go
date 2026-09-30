@@ -102,6 +102,35 @@ var keysSpec = kanontest.Spec[iface.Keys]{
 	},
 }
 
+// privateSpec describes number.Private, whose unexported fields a kanon tag
+// opts into the encoding in every role of a field, among them a map whose key
+// struct has an unexported field of its own.
+var privateSpec = kanontest.Spec[number.Private]{
+	Fields: []kanontest.Field{
+		{Name: "Name", Number: 1},
+		{Name: "count", Number: 2},
+		{Name: "total", Number: 3, Fixed: true},
+		{Name: "tags", Number: 4},
+		{Name: "byKey", Number: 5},
+		{Name: "next", Number: 6},
+		{Name: "detail", Number: 7},
+		member("text", 8, "Kind", number.PrivateKindText),
+		member("number", 9, "Kind", number.PrivateKindNumber),
+	},
+	Structs: []kanontest.Struct{
+		{Type: fieldType[number.Private]("detail"), Name: "privateDetail", Fields: fields("label", "Rank")},
+	},
+	Keys: []kanontest.Struct{{Type: reflect.TypeFor[number.PrivateKey](), Fields: fields("id", "Name")}},
+}
+
+// fieldType returns the type of the field of the struct type T named name,
+// for a type that a test outside the package of T cannot name, such as an
+// unexported struct type, and nil when T has no such field.
+func fieldType[T any](name string) reflect.Type {
+	f, _ := reflect.TypeFor[T]().FieldByName(name)
+	return f.Type
+}
+
 // treesSpec describes iface.Trees, whose interface stores slices and maps
 // of itself.
 var treesSpec = kanontest.Spec[iface.Trees]{
@@ -217,6 +246,10 @@ func TestShape(t *testing.T) {
 		t.Run("passes interfaces that store a type of every family", func(t *testing.T) {
 			t.Parallel()
 			passes(t, variantsSpec)
+		})
+		t.Run("passes unexported fields that a kanon tag opts into the encoding", func(t *testing.T) {
+			t.Parallel()
+			passes(t, privateSpec)
 		})
 		t.Run("fails for a field that the struct type does not declare", func(t *testing.T) {
 			t.Parallel()

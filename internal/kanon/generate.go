@@ -60,6 +60,11 @@ type File struct {
 //   - a named type of opts.Types that is not a struct declares ValidateKanon
 //     itself or lacks the method that opts.Validate names;
 //   - opts.Validate is set and opts.Types names only struct types;
+//   - opts.Canonical is set and opts.Types names no struct type;
+//   - opts.Canonical is set and a struct type of opts.Types, or an inline
+//     struct of its fields, has a field that keeps unknown fields, or
+//     contains a struct with a kanon codec whose directive does not set
+//     -canonical or that is written by hand;
 //   - the kanon directive of another file names a type of opts.Types;
 //   - a code file does not read or parse;
 //   - two code files record different numbers for a struct that Generate
@@ -123,6 +128,9 @@ type unit struct {
 	codecs map[string]*types.Named
 	// views reports that the code file declares a view type per target.
 	views bool
+	// canonical reports that the decode of every target and inline struct
+	// accepts only the canonical encoding of a value.
+	canonical bool
 }
 
 // newUnit returns the unit of the kanon directive of the Go source file
@@ -151,6 +159,7 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 		}
 		p.listed[t] = file
 	}
+	p.directives[file] = opts
 	prefix, err := p.prefix(file)
 	if err != nil {
 		return nil, err
@@ -158,6 +167,9 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 	named, others, err := p.named(names)
 	if err != nil {
 		return nil, err
+	}
+	if opts.Canonical && len(named) == 0 {
+		return nil, errors.New("kanon: -canonical is set, and -type names no struct type")
 	}
 	values, err := p.valueTypes(others, opts.Validate)
 	if err != nil {
@@ -168,17 +180,22 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 		return nil, err
 	}
 	c := classifier{
-		nested:    p.nested,
-		generated: p.generated,
-		validated: p.validated,
-		pkg:       p.types,
-		fset:      p.fset,
-		inlines:   newInlines(),
-		lists:     newLists(),
-		named:     make(map[string]*value),
-		codecs:    make(map[string]*types.Named),
+		nested:      p.nested,
+		generated:   p.generated,
+		validated:   p.validated,
+		canonicalOf: p.canonical,
+		canonical:   opts.Canonical,
+		pkg:         p.types,
+		fset:        p.fset,
+		inlines:     newInlines(),
+		lists:       newLists(),
+		named:       make(map[string]*value),
+		codecs:      make(map[string]*types.Named),
 	}
-	u := &unit{pkg: p, file: file, prefix: prefix, inlines: c.inlines, values: values, codecs: c.codecs}
+	u := &unit{
+		pkg: p, file: file, prefix: prefix, inlines: c.inlines, values: values, codecs: c.codecs,
+		canonical: opts.Canonical,
+	}
 	if u.targets, err = c.targets(named, own, recorded); err != nil {
 		return nil, err
 	}
@@ -191,6 +208,10 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 		return nil, err
 	}
 	u.numbered = slices.Concat(u.targets, inlined)
+	err = u.keepsNoUnknown()
+	if err != nil {
+		return nil, err
+	}
 	u.lists = c.lists.list
 	if u.keyStructs, err = u.orderNumbers(c, own, recorded); err != nil {
 		return nil, err
@@ -201,6 +222,22 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 	}
 	u.carried = carried(own, recorded, keys, p.declares)
 	return u, nil
+}
+
+// keepsNoUnknown fails, for a canonical unit, at the first target or inline
+// struct with a field that keeps unknown fields: a canonical decode rejects
+// every unknown field, so the field would always be empty.
+func (u *unit) keepsNoUnknown() error {
+	if !u.canonical {
+		return nil
+	}
+	for _, m := range u.numbered {
+		if m.unknown != nil {
+			return m.fail(m.unknown, errors.New("kanon: -canonical rejects every unknown field, and the field "+
+				"tagged unknown would always be empty: remove the tag or the flag"))
+		}
+	}
+	return nil
 }
 
 // header returns the comment lines that open both files of u.

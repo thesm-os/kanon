@@ -3,7 +3,17 @@
 
 package kanon_test
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"go.dokimi.dev/assert"
+)
+
+// oneMember is the source of the struct type A with a union of one member,
+// Only, whose discriminator is Kind.
+const oneMember = "type Choice uint8\n\nconst ChoiceOnly Choice = 1\n\n" +
+	"type A struct {\n\tKind Choice\n\tOnly int32 `kanon:\",union=Kind\"`\n}\n"
 
 func TestDecode(t *testing.T) {
 	t.Parallel()
@@ -21,5 +31,16 @@ func TestDecode(t *testing.T) {
 					}
 				})
 			})
+		t.Run("sets the discriminator of a union of one member without a deselect function", func(t *testing.T) {
+			t.Parallel()
+			files, err := generate(t, module(t, map[string]string{source: oneMember}), source, "A")
+			assert.NoError(t, err, "Generate generates a struct with a union of one member")
+			assert.Contains(t, files[codeName], "m.Kind = ChoiceOnly",
+				"the decode of the member sets the discriminator")
+			assert.False(t, strings.Contains(files[codeName], "if m.Kind != ChoiceOnly"),
+				"the decode sets the discriminator without a check of its value")
+			assert.False(t, strings.Contains(files[codeName], "deselect"),
+				"the code file declares no deselect function, since the union has no other member to zero")
+		})
 	})
 }

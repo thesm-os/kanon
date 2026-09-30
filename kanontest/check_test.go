@@ -9,13 +9,20 @@ import (
 	"go.dokimi.dev/assert/golden"
 
 	"go.thesmos.sh/kanon/internal/fixture/codec"
+	"go.thesmos.sh/kanon/internal/fixture/unknown"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
 )
 
-// marshalErrorCheck names the check of the errors of the samples that fail
-// to encode.
-const marshalErrorCheck = "MarshalBinary/returns the error of a value that fails to encode"
+// Names of checks that the cases run.
+const (
+	// marshalErrorCheck names the check of the errors of the samples that
+	// fail to encode.
+	marshalErrorCheck = "MarshalBinary/returns the error of a value that fails to encode"
+	// roundTripCheck names the check of a canonical Spec that its reference
+	// decode accepts exactly the inputs that round-trip.
+	roundTripCheck = "DecodeKanon/accepts exactly the inputs that the reference encode writes back"
+)
 
 // codecsSpec describes codec.Codecs, a struct with a field of each type of
 // the codec package that encodes itself, each of which fails to encode for
@@ -200,6 +207,24 @@ func TestCheck(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[nilEncodeByte]{Fields: itemSpec.Fields},
 				"EncodeKanon/writes nothing for a nil receiver", "EncodeKanon returns length 0 for a nil receiver")
+		})
+	})
+	t.Run("DecodeKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("passes a canonical codec whose reference decode accepts the inputs that round-trip", func(t *testing.T) {
+			t.Parallel()
+			holds(t, mapsSpec, roundTripCheck)
+		})
+		t.Run("fails for a canonical Spec of a struct type that keeps unknown fields", func(t *testing.T) {
+			t.Parallel()
+			// The unknown fields at the end of an encoding round-trip through the
+			// field that keeps them, and the canonical reference decode rejects them.
+			spec := kanontest.Spec[unknown.Record]{
+				Fields:    fields("ID", "Name", "Inner"),
+				Unknown:   "Rest",
+				Canonical: true,
+			}
+			rejects(t, spec, roundTripCheck, "the reference decode succeeds exactly when the input round-trips")
 		})
 	})
 }

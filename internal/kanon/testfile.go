@@ -32,8 +32,9 @@ const (
 
 // testFile returns the test file of u: for each target, the kanontest.Spec
 // that describes its fields, the inline structs of the types of its fields,
-// the key structs of the code file and the view type of the target when the
-// code file declares one, and the test, benchmark and fuzz functions that
+// the key structs of the code file, the view type of the target when the
+// code file declares one and whether its decode is canonical, and the test,
+// benchmark and fuzz functions that
 // run the conformance suite on it. A field of a spec states
 // what its Go type does not: its name, its number, the fixed option, the
 // union it belongs to and the constant that selects it, and the concrete
@@ -66,6 +67,9 @@ func testFile(u *unit) ([]byte, error) {
 		specKeys(p, u.keyStructs)
 		if u.views {
 			p.line("View: %s%s(nil),", m.name, viewSuffix)
+		}
+		if u.canonical {
+			p.line("Canonical: true,")
 		}
 		p.line("}")
 		p.line("")

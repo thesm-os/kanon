@@ -27,7 +27,9 @@ var (
 // the bits of its Value, through MarshalBinary and UnmarshalBinary, and the
 // zero Reading as no bytes. == reports a Value of -0.0 equal to +0.0, so a
 // codec decides the presence of a Reading field by the length of its
-// encoding, and a Reading of -0.0 is present.
+// encoding, and a Reading of -0.0 is present. SizeKanon returns -1 for a
+// Value of +Inf and 16 for -Inf, so that the encode of an infinite Reading
+// fails before MarshalBinary or with kanon.ErrSize.
 type Reading struct {
 	Value float64
 }
@@ -47,13 +49,20 @@ func (r Reading) MarshalBinary() ([]byte, error) {
 }
 
 // SizeKanon returns the length of the encoding that MarshalBinary returns
-// for r: 0 when every bit of r.Value is zero, and 8 otherwise. It makes
-// Reading a kanon.Sizer, whose field is present when SizeKanon is not 0.
+// for r: 0 when every bit of r.Value is zero, and 8 otherwise. It returns -1
+// for +Inf and 16 for -Inf, which it does not count. It makes Reading a
+// kanon.Sizer, whose field is present when SizeKanon is not 0.
 func (r Reading) SizeKanon() int {
-	if math.Float64bits(r.Value) == 0 {
+	switch {
+	case math.IsInf(r.Value, 1):
+		return -1
+	case math.IsInf(r.Value, -1):
+		return 2 * readingLength
+	case math.Float64bits(r.Value) == 0:
 		return 0
+	default:
+		return readingLength
 	}
-	return readingLength
 }
 
 // UnmarshalBinary sets r.Value to the float64 whose bits are the eight

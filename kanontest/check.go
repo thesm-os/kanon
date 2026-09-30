@@ -199,6 +199,38 @@ func (s *suite[T, P]) unmarshal(tb assert.TB) {
 	}
 }
 
+// roundTrips checks, for a canonical Spec, that the reference decode accepts
+// the encoding of every sample that encodes and the data of every probe
+// exactly when the input round-trips, as [suite.roundTrip] checks it. The
+// round trip does not depend on the rules of the canonical encoding, so the
+// check proves that the reference decode applies them.
+func (s *suite[T, P]) roundTrips(tb assert.TB) {
+	tb.Helper()
+	for _, x := range s.encodable() {
+		s.roundTrip(tb, probe{name: x.name, data: x.enc})
+	}
+	for _, f := range s.families() {
+		for _, p := range f.probes() {
+			s.roundTrip(tb, p)
+		}
+	}
+}
+
+// roundTrip checks that the reference decode of the probe p succeeds exactly
+// when the input round-trips: the decode without the rules of the canonical
+// encoding succeeds, and the reference encoding of the value that it decodes
+// is the data of p.
+func (s *suite[T, P]) roundTrip(tb assert.TB, p probe) {
+	tb.Helper()
+	_, err := s.reference(p)
+	slab, off := p.opts.Source(p.data)
+	v := reflect.New(s.l.typ).Elem()
+	lenient := s.r.decodeAs(false, s.l, v, p.data, slab, off, p.opts.Limit())
+	enc, encErr := s.r.encode(s.l, v)
+	trips := lenient == nil && encErr == nil && bytes.Equal(enc, p.data)
+	assert.Equal(tb, err == nil, trips, p.name+": the reference decode succeeds exactly when the input round-trips")
+}
+
 // probing returns the check that decodes the probes of a family, which
 // probes returns, as the reference decode.
 func (s *suite[T, P]) probing(probes func() []probe) func(assert.TB) {
@@ -240,7 +272,7 @@ func (s *suite[T, P]) same(tb assert.TB, op string, got T, err error, want T, wa
 // causes lists the causes of a decode error that kanon defines.
 var causes = [...]error{
 	io.ErrUnexpectedEOF, kanon.ErrMalformed, kanon.ErrRange, kanon.ErrDepth, kanon.ErrUnknownType,
-	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey,
+	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey, kanon.ErrNotCanonical,
 }
 
 // sameError reports whether a and b are the same error of a decode: both

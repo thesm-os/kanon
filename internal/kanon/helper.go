@@ -61,6 +61,13 @@ const (
 	// opCanon reports whether a map key is the key that a decode of its
 	// projection yields.
 	opCanon op = 15
+	// opNegZero reports whether a map key has a float component of -0.0,
+	// which a canonical decode rejects, since the projection of the key
+	// writes it as +0.0.
+	opNegZero op = 16
+	// opTag returns the error of the canonical decode of a struct for a byte
+	// that begins no field after the fields before it.
+	opTag op = 17
 )
 
 // word returns the word of o in the names of its helpers, after the prefix
@@ -95,24 +102,30 @@ func (o op) word() string {
 		return "nan"
 	case opCanon:
 		return "canon"
+	case opNegZero:
+		return "negzero"
+	case opTag:
+		return "tag"
 	default:
 		return "deselect"
 	}
 }
 
 // helper is a function that the code file declares: an operation on the
-// values of one encoding, or the deselector of a union.
+// values of one encoding, the deselector of a union, or the tag error of the
+// canonical decode of a struct.
 type helper struct {
 	name string
 	op   op
 	v    *value
-	// m is the struct of a deselector, and disc its discriminator.
+	// m is the struct of a deselector and of a tag error, and disc the
+	// discriminator of a deselector.
 	m    *target
 	disc *types.Var
 }
 
-// helperKey identifies a helper: its operation and the id of its values, or
-// the discriminator of a deselector.
+// helperKey identifies a helper: its operation and the id of its values, the
+// discriminator of a deselector, or the key of the struct of a tag error.
 type helperKey struct {
 	op   op
 	id   string
@@ -203,10 +216,12 @@ func (e *emitter) writeHelper(h helper) {
 		e.compareHelper(h.name, h.v)
 	case opPresent, opKeyPresent:
 		e.presentHelper(h.name, h.v)
-	case opNaN:
-		e.nanHelper(h.name, h.v)
+	case opNaN, opNegZero:
+		e.componentHelper(h.name, h.op, h.v)
 	case opCanon:
 		e.canonHelper(h.name, h.v)
+	case opTag:
+		e.tagHelper(h.name, h.m)
 	default:
 		e.deselectHelper(h.name, h.m, h.disc)
 	}

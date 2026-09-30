@@ -44,7 +44,7 @@ const (
 
 // generatorVersion is the version of the generator, which the EnforceVersion
 // constants of every code file state.
-const generatorVersion = 1
+const generatorVersion = 2
 
 // Names of the parameters of the helpers that locate a value in errors: the
 // location, "Type.Field", and the field number.
@@ -141,6 +141,10 @@ type emitter struct {
 	// that contains a float to the target that writes its projection field by
 	// field, as [emitter.keyTarget] builds it.
 	keyTargets map[string]*target
+	// canonical makes the decode of every struct of the file accept only the
+	// canonical encoding of a value, as [emitter.fieldsBody] and
+	// [emitter.read] check it.
+	canonical bool
 }
 
 // line writes format, expanded with args, as one line of the file.
@@ -268,6 +272,13 @@ func wrap(text string) []string {
 // the low three bits, so it does not change the length.
 func tagSize(num int) int {
 	return varintSize(uint64(num) << 3)
+}
+
+// tagBytes returns the bytes of the tag of field num with the wire format w:
+// the shortest varint of the tag, the only form that a canonical decode
+// matches.
+func tagBytes(num, w int) []byte {
+	return binary.AppendUvarint(nil, uint64(num)<<3|uint64(w))
 }
 
 // varintSize returns the length of the shortest varint of v.

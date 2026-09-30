@@ -30,9 +30,15 @@ type Check struct {
 	Run func(tb assert.TB)
 }
 
-// specCheck names the one check of a Spec that does not describe its struct
-// type.
-const specCheck = "Spec/describes the fields of the struct type"
+// Names of checks that [Checks] returns for some Specs only.
+const (
+	// specCheck names the one check of a Spec that does not describe its
+	// struct type.
+	specCheck = "Spec/describes the fields of the struct type"
+	// roundTripCheck names the check of a canonical Spec that its reference
+	// decode accepts exactly the inputs that round-trip.
+	roundTripCheck = "DecodeKanon/accepts exactly the inputs that the reference encode writes back"
+)
 
 // Checks returns the checks of the codec of T that spec describes. When
 // spec does not describe T, as a hand-edited Spec can fail to, Checks
@@ -83,6 +89,9 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 	}
 	for _, f := range s.families() {
 		checks = append(checks, Check{Name: f.check, Run: s.probing(f.probes)})
+	}
+	if s.r.canonical {
+		checks = append(checks, Check{Name: roundTripCheck, Run: s.roundTrips})
 	}
 	if s.view != nil {
 		checks = append(checks, Check{Name: viewCheck, Run: s.views})
@@ -170,7 +179,9 @@ func Bench[T any, P Codec[T]](b *testing.B, spec Spec[T]) {
 // reference encodings of the samples of the checks that encode, and those
 // encodings without their last byte, as the seeds. DecodeKanon decodes
 // every input as the reference decode: with the same error, or to the same
-// value. Fuzz skips a Spec that does not describe T, which [Run] reports.
+// value. For a canonical Spec the reference decode also succeeds exactly
+// when the input round-trips through the reference encode. Fuzz skips a Spec
+// that does not describe T, which [Run] reports.
 func Fuzz[T any, P Codec[T]](f *testing.F, spec Spec[T]) {
 	f.Helper()
 	s, err := newSuite[T, P](spec)
@@ -377,10 +388,15 @@ func (s *suite[T, P]) reference(p probe) (T, error) {
 }
 
 // fuzz checks the decode of data: DecodeKanon decodes it as the reference
-// decode.
+// decode, and for a canonical Spec the reference decode succeeds exactly
+// when data round-trips, as [suite.roundTrip] checks it.
 func (s *suite[T, P]) fuzz(t *testing.T, data []byte) {
 	t.Helper()
-	s.decode(t, probe{name: "the input", data: data})
+	p := probe{name: "the input", data: data}
+	s.decode(t, p)
+	if s.r.canonical {
+		s.roundTrip(t, p)
+	}
 }
 
 // failingName returns the name of table sample i with its value j that can

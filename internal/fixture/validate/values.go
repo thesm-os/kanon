@@ -14,6 +14,8 @@ const (
 	KindText Kind = 1
 	// KindCount selects the member Count.
 	KindCount Kind = 2
+	// KindFlag selects the member Flag.
+	KindFlag Kind = 3
 )
 
 // Valid is an interface whose method set has ValidateKanon. kanon encodes a
@@ -25,7 +27,10 @@ type Valid interface {
 
 // Values has fields of the types of the package in every position that a
 // codec encodes, so that its generated tests call ValidateKanon on a value
-// of each position that the encode writes and the decode reads.
+// of each position that the encode writes and the decode reads. Flag is a
+// member of the union, which the encode writes at both of its values: a
+// field of a bool is present at true alone, so that the encode of a Flag
+// field would either fail for every value that it writes or for none.
 type Values struct {
 	Level   Level
 	Amount  Amount
@@ -38,7 +43,6 @@ type Values struct {
 	Blob    Blob
 	Span    Span
 	Port    Port
-	Flag    Flag
 	Weight  Weight
 	Wave    Wave
 	Phase   Phase
@@ -50,6 +54,7 @@ type Values struct {
 	Kind    Kind
 	Text    Code  `kanon:",union=Kind"`
 	Count   Level `kanon:",union=Kind"`
+	Flag    Flag  `kanon:",union=Kind"`
 	Any     any   `kanon:",types=Level|Tags"`
 	Checked Valid `kanon:",types=Grade"`
 	Fixed   Tick  `kanon:",fixed"`

@@ -6,10 +6,15 @@ package kanontest_test
 import (
 	"testing"
 
+	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
 	"go.thesmos.sh/kanon/wire"
 )
+
+// valuesView describes validate.Values with its view type, whose methods of
+// a string and a byte slice of a kanon.Validator pass their ValidateKanon.
+var valuesView = kanontest.Spec[validate.Values]{Fields: valuesSpec.Fields, View: validate.ValuesView(nil)}
 
 // Names of the checks of a view type and of its index type.
 const (
@@ -158,6 +163,10 @@ func TestView(t *testing.T) {
 			t.Parallel()
 			holds(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: view.ItemView(nil)}, viewCheck)
 		})
+		t.Run("passes the view type of a struct of kanon.Validator values", func(t *testing.T) {
+			t.Parallel()
+			holds(t, valuesView, viewCheck)
+		})
 		t.Run("fails for a view method that returns another value", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: nameless(nil)}, viewCheck,
@@ -189,6 +198,10 @@ func TestView(t *testing.T) {
 		t.Run("passes the index of a struct of every type that a view reads", func(t *testing.T) {
 			t.Parallel()
 			holds(t, kanontest.Spec[view.Record]{Fields: recordSpec.Fields, View: view.RecordView(nil)}, indexCheck)
+		})
+		t.Run("passes the index of a struct of kanon.Validator values", func(t *testing.T) {
+			t.Parallel()
+			holds(t, valuesView, indexCheck)
 		})
 		t.Run("fails for an index method that returns another value", func(t *testing.T) {
 			t.Parallel()

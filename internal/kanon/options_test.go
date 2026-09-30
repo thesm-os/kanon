@@ -43,6 +43,11 @@ func TestOptions(t *testing.T) {
 				want: kanon.Options{Types: []string{"A"}, Args: []string{}, Views: true},
 			},
 			{
+				name: "reports -canonical",
+				args: []string{"-type=A", "-canonical"},
+				want: kanon.Options{Types: []string{"A"}, Args: []string{}, Canonical: true},
+			},
+			{
 				name: "reports -version without -type",
 				args: []string{"-version"},
 				want: kanon.Options{Args: []string{}, Version: true},
@@ -93,9 +98,11 @@ func TestOptions(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
 			_, _ = kanon.ParseOptions([]string{"-h"}, &out)
-			assert.HasPrefix(t, out.String(), "usage: kanon -type=T[,T...] [-views] [-validate=method] [file]\n",
+			assert.HasPrefix(t, out.String(),
+				"usage: kanon -type=T[,T...] [-views] [-validate=method] [-canonical] [file]\n",
 				"ParseOptions writes the synopsis first")
 			assert.Contains(t, out.String(), "-validate", "ParseOptions writes the flags")
+			assert.Contains(t, out.String(), "-canonical", "ParseOptions writes the flag -canonical")
 		})
 	})
 }

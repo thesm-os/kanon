@@ -58,6 +58,8 @@ const (
 	opKeyPresent = "keypresent"
 	opNaN        = "nan"
 	opCanon      = "canon"
+	opNegZero    = "negzero"
+	opTag        = "tag"
 )
 
 // viewSuffix ends the name of the view type of a struct type.

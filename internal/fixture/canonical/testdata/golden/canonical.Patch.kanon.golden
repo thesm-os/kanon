@@ -1,0 +1,34 @@
+the zero value: 
+table sample 0: 390100000000000000
+table sample 1: 39ffffffffffffffff42206161616161616161616161616161616161616161616161616161616161616161
+table sample 2: 39800000000000000042206262626262626262626262626262626262626262626262626262626262626262
+table sample 3: 390000000008000000
+table sample 4: 3900000000f8ffffff
+table sample 5: 39ffffffffffffff7f4220ff00000000000000000000000000000000000000000000000000000000000000
+table sample 6: 390000000000000080
+table sample 7: 4220deadbeef00000000000000000000000000000000000000000000000000000000
+the sample of field Fixed64Val: 390100000000000000
+the sample of field BlobRef: 4220deadbeef00000000000000000000000000000000000000000000000000000000
+wide sample 0: 39010000000000000042207732000000000000000000000000000000000000000000000000000000000000
+wide sample 1: 39020000000000000042207733000000000000000000000000000000000000000000000000000000000000
+the key sample: 39ffffffffffffffff42206161616161616161616161616161616161616161616161616161616161616161
+DecodeKanon/decodes each prefix of a field as the reference decode: 255 probes, digest 63a28a71a9e5db33
+DecodeKanon/decodes a field with one value written wrong as the reference decode: 165 probes, digest 245b50e0ce153136
+DecodeKanon/decodes a field with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes a field with one changed byte as the reference decode: 726 probes, digest c9338d957f4693eb
+DecodeKanon/decodes a field with its tag in another wire format as the reference decode: 39 probes, digest 61153c067af4336b
+DecodeKanon/decodes a field written twice as the reference decode: 13 probes, digest 8bc5e1579cff0dc5
+DecodeKanon/decodes a field under each depth limit as the reference decode: 80 probes, digest 333bb847c82f8bf4
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 14 probes, digest 12cc962f30b44ef1
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest c163f8494940df8f
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 14 probes, digest 1967e28991596434
+DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode: 18 probes, digest 11dd08bb3e31340f
+DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode: 3 probes, digest 7a5596811542ca96
+DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode: 24 probes, digest 7231f6d0d05245de
+DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode: 22 probes, digest 800d2ead20afb0fc
+DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode: 72 probes, digest 7d52a5b365208921
+DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 5 probes, digest ba677f539cccd389
+the samples that the encode allocation checks measure: 11 samples, digest 8dc3eadc737d9730
+the samples that the decode allocation check measures: 11 samples, digest 8dc3eadc737d9730

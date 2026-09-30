@@ -3,7 +3,8 @@
 
 // Package external declares the types of another package that the fixtures
 // use as field types: a struct with a kanon codec, a struct with a kanon
-// codec whose encoding is empty, named basic types, an interface, a type
+// codec whose encoding is empty, a struct with a kanon codec whose directive
+// sets -canonical, named basic types, an interface, a type
 // that encodes itself through MarshalBinary alone, a type that appends its
 // encoding, the discriminator of a union, and structs without a kanon
 // codec, one of them with an unexported field, which the code files of the

@@ -11,30 +11,34 @@ import (
 	"go.thesmos.sh/kanon"
 )
 
-// generatorVersion is the version of the generator that the runtime
-// supports.
-const generatorVersion = 1
-
-// The constants a generated file of generatorVersion declares compile.
+// The oldest and the newest generator version that the runtime supports.
 const (
-	_ = kanon.EnforceVersion(generatorVersion - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - generatorVersion)
+	oldestVersion = 1
+	newestVersion = 2
+)
+
+// The constants that generated files of both versions declare compile.
+const (
+	_ = kanon.EnforceVersion(oldestVersion - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - oldestVersion)
+	_ = kanon.EnforceVersion(newestVersion - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - newestVersion)
 )
 
 func TestEnforceVersion(t *testing.T) {
 	t.Parallel()
 	t.Run("MinVersion", func(t *testing.T) {
 		t.Parallel()
-		t.Run("is the generator version", func(t *testing.T) {
+		t.Run("is the oldest generator version", func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, kanon.MinVersion, generatorVersion, "the runtime supports generator version 1")
+			assert.Equal(t, kanon.MinVersion, oldestVersion, "the runtime supports generator version 1")
 		})
 	})
 	t.Run("MaxVersion", func(t *testing.T) {
 		t.Parallel()
-		t.Run("is the generator version", func(t *testing.T) {
+		t.Run("is the newest generator version", func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, kanon.MaxVersion, generatorVersion, "no newer generator version exists")
+			assert.Equal(t, kanon.MaxVersion, newestVersion, "the runtime supports generator version 2")
 		})
 	})
 }

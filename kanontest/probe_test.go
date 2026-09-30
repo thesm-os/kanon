@@ -10,11 +10,64 @@ import (
 	"testing"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/canonical"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
 	"go.thesmos.sh/kanon/wire"
 )
+
+// Names of the checks of the families of probes of a canonical Spec that the
+// cases run.
+const (
+	canonicalPrefixCheck = "DecodeKanon/decodes each prefix of a field as the reference decode"
+	longFormCheck        = "DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the " +
+		"reference decode"
+	fieldOrderCheck   = "DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode"
+	keyOrderCheck     = "DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode"
+	unknownFieldCheck = "DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference " +
+		"decode"
+	zeroFieldCheck = "DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode"
+	badTagCheck    = "DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode"
+	negZeroCheck   = "DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference " +
+		"decode"
+)
+
+// Specs of canonical fixtures, whose directives set -canonical.
+var (
+	// mapsSpec describes canonical.Maps, whose two maps with string keys give
+	// the probes a site of every breach but breachNegZero.
+	mapsSpec = kanontest.Spec[canonical.Maps]{Fields: fields("Attrs", "Counts"), Canonical: true}
+	// scoresSpec describes canonical.Keys, whose map with float64 keys gives
+	// the probes the sites of breachNegZero.
+	scoresSpec = kanontest.Spec[canonical.Keys]{Fields: fields("Scores", "Refs"), Canonical: true}
+)
+
+// lenientOff is a canonical.Maps whose DecodeKanon decodes input that is not
+// the canonical encoding of its value without an error.
+type lenientOff struct{ canonical.Maps }
+
+// DecodeKanon decodes data, and drops an error that wraps
+// kanon.ErrNotCanonical.
+func (m *lenientOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	if err := renamed(m.Maps.DecodeKanon(data, opts), "Maps", "lenientOff"); !errors.Is(err, kanon.ErrNotCanonical) {
+		return err
+	}
+	return nil
+}
+
+// signOff is a canonical.Keys whose DecodeKanon decodes input that is not the
+// canonical encoding of its value without an error.
+type signOff struct{ canonical.Keys }
+
+// DecodeKanon decodes data, and drops an error that wraps
+// kanon.ErrNotCanonical.
+func (m *signOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	if err := renamed(m.Keys.DecodeKanon(data, opts), "Keys", "signOff"); !errors.Is(err, kanon.ErrNotCanonical) {
+		return err
+	}
+	return nil
+}
 
 // Names of the checks of the families of probes that the cases run.
 const (
@@ -50,7 +103,6 @@ var valuesSpec = kanontest.Spec[validate.Values]{
 		{Name: "Blob", Number: 9},
 		{Name: "Span", Number: 10},
 		{Name: "Port", Number: 25},
-		{Name: "Flag", Number: 11},
 		{Name: "Weight", Number: 12},
 		{Name: "Wave", Number: 13},
 		{Name: "Phase", Number: 14},
@@ -61,6 +113,7 @@ var valuesSpec = kanontest.Spec[validate.Values]{
 		{Name: "Index", Number: 19},
 		{Name: "Text", Number: 20, Union: "Kind", Case: validate.KindText},
 		{Name: "Count", Number: 21, Union: "Kind", Case: validate.KindCount},
+		{Name: "Flag", Number: 11, Union: "Kind", Case: validate.KindFlag},
 		{Name: "Any", Number: 22, Types: []kanontest.ConcreteType{
 			{Type: reflect.TypeFor[validate.Level](), Number: 1},
 			{Type: reflect.TypeFor[validate.Tags](), Number: 2},
@@ -212,6 +265,37 @@ func TestProbe(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[slabOff]{Fields: itemSpec.Fields}, slabCheck,
 				"DecodeKanon decodes the value of the reference decode")
+		})
+		t.Run("returns the checks of the pieces of a canonical Spec without unknown fields", func(t *testing.T) {
+			t.Parallel()
+			holds(t, mapsSpec, canonicalPrefixCheck)
+		})
+		canonicalCases := []struct {
+			name  string
+			check string
+		}{
+			{
+				name:  "fails for a canonical codec that decodes a varint longer than its shortest form",
+				check: longFormCheck,
+			},
+			{name: "fails for a canonical codec that decodes two fields out of order", check: fieldOrderCheck},
+			{name: "fails for a canonical codec that decodes two map entries out of order", check: keyOrderCheck},
+			{name: "fails for a canonical codec that decodes an unknown field", check: unknownFieldCheck},
+			{name: "fails for a canonical codec that decodes a field at its zero value", check: zeroFieldCheck},
+			{
+				name:  "fails for a canonical codec that decodes a tag of field number 0 in a longer form",
+				check: badTagCheck,
+			},
+		}
+		for _, tt := range canonicalCases {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				rejects(t, kanontest.Spec[lenientOff]{Fields: mapsSpec.Fields, Canonical: true}, tt.check, errorCheck)
+			})
+		}
+		t.Run("fails for a canonical codec that decodes a map key of -0.0", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[signOff]{Fields: scoresSpec.Fields, Canonical: true}, negZeroCheck, errorCheck)
 		})
 	})
 }

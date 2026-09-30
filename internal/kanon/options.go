@@ -19,6 +19,9 @@ const (
 	// flagValidate names the method that the ValidateKanon method of each
 	// named type that is not a struct calls.
 	flagValidate = "validate"
+	// flagCanonical makes the decode of each struct type accept only its
+	// canonical encoding.
+	flagCanonical = "canonical"
 	// flagVersion requests the version of the command.
 	flagVersion = "version"
 	// typeSeparator separates the names in the value of -type.
@@ -26,7 +29,7 @@ const (
 )
 
 // usageLine is the synopsis of the kanon command.
-const usageLine = "usage: kanon -type=T[,T...] [-views] [-validate=method] [file]"
+const usageLine = "usage: kanon -type=T[,T...] [-views] [-validate=method] [-canonical] [file]"
 
 // Options are the command-line options of kanon. A go:generate directive
 // passes them in the same form.
@@ -42,6 +45,10 @@ type Options struct {
 	Validate string
 	// Views reports that -views requests a view type per struct type.
 	Views bool
+	// Canonical reports that -canonical makes the decode of each struct type
+	// of Types, and of the inline structs of their fields, accept only the
+	// canonical encoding of a value.
+	Canonical bool
 	// Version reports that -version requests the version of the command.
 	Version bool
 }
@@ -60,6 +67,8 @@ func ParseOptions(args []string, output io.Writer) (Options, error) {
 	flags.BoolVar(&opts.Views, flagViews, false, "generate a view type per struct type")
 	flags.StringVar(&opts.Validate, flagValidate, "",
 		"the `method` that ValidateKanon of each named type that is not a struct calls")
+	flags.BoolVar(&opts.Canonical, flagCanonical, false,
+		"make the decode of each struct type accept only the canonical encoding of a value")
 	flags.BoolVar(&opts.Version, flagVersion, false, "print the version and exit")
 	flags.Usage = func() {
 		fmt.Fprintln(output, usageLine)

@@ -7,36 +7,36 @@ import (
 	"go.thesmos.sh/kanon"
 )
 
-// The file compiles against a runtime that supports version 1 of the generator.
+// The file compiles against a runtime that supports version 2 of the generator.
 const (
-	_ = kanon.EnforceVersion(1 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 1)
+	_ = kanon.EnforceVersion(2 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 2)
 )
 
-// ValidateKanon returns nil, since every value of Flag is valid. kanon encodes
-// a value of Flag as a value of its underlying type bool and calls
-// ValidateKanon on every value of Flag that it encodes or decodes.
-func (Flag) ValidateKanon() error {
-	return nil
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Flag as
+// a value of its underlying type bool and calls ValidateKanon on every value of
+// Flag that it encodes or decodes.
+func (x Flag) ValidateKanon() error {
+	return x.valid()
 }
 
-// ValidateKanon returns nil, since every value of Weight is valid. kanon
-// encodes a value of Weight as a value of its underlying type float32 and calls
-// ValidateKanon on every value of Weight that it encodes or decodes.
-func (Weight) ValidateKanon() error {
-	return nil
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Weight
+// as a value of its underlying type float32 and calls ValidateKanon on every
+// value of Weight that it encodes or decodes.
+func (x Weight) ValidateKanon() error {
+	return x.valid()
 }
 
-// ValidateKanon returns nil, since every value of Wave is valid. kanon encodes
-// a value of Wave as a value of its underlying type complex64 and calls
-// ValidateKanon on every value of Wave that it encodes or decodes.
-func (Wave) ValidateKanon() error {
-	return nil
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Wave as
+// a value of its underlying type complex64 and calls ValidateKanon on every
+// value of Wave that it encodes or decodes.
+func (x Wave) ValidateKanon() error {
+	return x.valid()
 }
 
-// ValidateKanon returns nil, since every value of Phase is valid. kanon encodes
-// a value of Phase as a value of its underlying type complex128 and calls
-// ValidateKanon on every value of Phase that it encodes or decodes.
-func (Phase) ValidateKanon() error {
-	return nil
+// ValidateKanon returns the error of x.valid. kanon encodes a value of Phase as
+// a value of its underlying type complex128 and calls ValidateKanon on every
+// value of Phase that it encodes or decodes.
+func (x Phase) ValidateKanon() error {
+	return x.valid()
 }

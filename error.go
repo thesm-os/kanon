@@ -36,6 +36,17 @@ var (
 	// encoding that a view reads the field from. A decode merges the
 	// occurrences, and one byte slice cannot hold the merge.
 	ErrRepeatedView = errors.New("kanon: struct field occurs twice in a view")
+	// ErrNotCanonical marks input that the decode of a type whose directive
+	// has the -canonical flag rejects, and that the wire format lets a
+	// decoder accept: input that is not the canonical encoding of the value
+	// that it decodes to. Such input has a varint longer than its shortest
+	// form, a field number that is not above the one before it or that the
+	// schema does not list, a second member of a union, a bool above 1, a
+	// field at a value that the encoding leaves out, a map key that is not
+	// above the key before it or that has a float component of -0.0, a time
+	// field of 0, or bytes of a type that encodes itself that its encode
+	// method does not write for the decoded value.
+	ErrNotCanonical = errors.New("kanon: input is not the canonical encoding")
 )
 
 // ErrUnlistedType and ErrSize are causes of an [EncodeError], which
@@ -84,8 +95,8 @@ type DecodeError struct {
 	Detail string
 	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
 	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
-	// [ErrRepeatedView], the error of a type that decodes itself, or the
-	// error of the ValidateKanon of a [Validator].
+	// [ErrRepeatedView], [ErrNotCanonical], the error of a type that decodes
+	// itself, or the error of the ValidateKanon of a [Validator].
 	Err error
 }
 

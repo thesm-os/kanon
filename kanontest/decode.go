@@ -4,6 +4,7 @@
 package kanontest
 
 import (
+	"bytes"
 	"math"
 	"reflect"
 	"slices"
@@ -29,6 +30,10 @@ type decoder struct {
 	// slab is the slab of the decode, from which a struct with a kanon codec
 	// decodes its strings.
 	slab string
+	// canonical makes the decode apply the rules of a canonical decode, in
+	// the order in which the generated code of a canonical type checks them,
+	// as [decoder.fields] states.
+	canonical bool
 }
 
 // fields merges data, the fields of a struct of l that start at offset off,
@@ -37,8 +42,17 @@ type decoder struct {
 // that keeps unknown fields when l has one. The tag of a field of l must
 // have the wire format of the field. A field takes a byte at least, so that
 // the loop runs len(data) times at most.
+//
+// A canonical decode checks each tag in this order: that it reads, that it
+// has its shortest form, that its field number is above the one before it
+// unless it is 0, that the schema lists the number, that the wire format is
+// the field's, and that the field is the first member of its union in data.
+// It then decodes the value, as [decoder.read] checks it, and last checks
+// the presence of the value, as [decoder.absent] states.
 func (d *decoder) fields(l *layout, v reflect.Value, data []byte, off, lv int) error {
 	i := 0
+	var prior uint64
+	members := make(map[string]bool)
 	for range len(data) {
 		if i == len(data) {
 			break
@@ -48,21 +62,115 @@ func (d *decoder) fields(l *layout, v reflect.Value, data []byte, off, lv int) e
 		if n <= 0 {
 			return wire.ReadError(n, l.name, 0, off+i)
 		}
+		if err := d.longForm(data, i, n, l.name, 0, off+i); err != nil {
+			return err
+		}
 		i += n
+		if d.canonical && tag>>3 != 0 {
+			if tag>>3 <= prior {
+				return wire.OrderError(tag>>3, prior, l.name, 0, off+at)
+			}
+			prior = tag >> 3
+		}
 		f := l.byNumber(tag >> 3)
 		var err error
-		if f == nil {
+		if f == nil && d.canonical && tag>>3 != 0 {
+			err = wire.UnknownFieldError(tag>>3, l.name, 0, off+at)
+		} else if f == nil {
 			i, err = skip(l, v, tag, data, at, i, off)
 		} else if tag != f.tag() {
 			err = wire.FormatError(tag, f.wire(), l.loc(f), off+at)
+		} else if d.canonical && f.Union != "" && members[f.Union] {
+			err = wire.MemberError(f.Union, l.loc(f), f.Number, off+at)
+		} else if d.canonical && f.Union == "" && f.shape.kind == kindBinary && f.shape.zeroAbsent {
+			i, err = d.selfField(l, f, f.of(v), data, i, off, at)
 		} else {
-			i, err = d.field(l, v, f, data, i, off, lv)
+			members[f.Union] = true
+			start := i
+			if i, err = d.field(l, v, f, data, i, off, lv); err == nil {
+				err = d.absent(l, f, f.of(v), data, start, off+at)
+			}
 		}
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// selfField decodes, in a canonical decode, the value at data[i] of the field
+// f of l, x, whose type encodes itself and is absent at its zero value, and
+// whose tag is at data[at], and returns the offset after it. It reads the
+// length, calls the decode method of the family of the type, and checks the
+// presence of the value before its encode method, as the generated code
+// checks it: the encoder never encodes the zero value of such a type.
+func (d *decoder) selfField(l *layout, f *field, x reflect.Value, data []byte, i, off, at int) (int, error) {
+	loc, num := l.loc(f), f.Number
+	start, end, err := d.length(data, i, off, loc, num)
+	if err != nil {
+		return 0, err
+	}
+	if err := unmarshal(x, data[start:end]); err != nil {
+		return 0, wire.UnmarshalError(err, loc, num, off+start)
+	}
+	if x.IsZero() {
+		return 0, wire.AbsentError(loc, num, off+at)
+	}
+	if enc, err := marshal(x); err != nil || !bytes.Equal(enc, data[start:end]) {
+		return 0, wire.EncodingError(loc, num, off+start)
+	}
+	return end, nil
+}
+
+// longForm returns, in a canonical decode, the error for the varint of n
+// bytes at data[i], at offset off, when its last byte is 0 after another, so
+// that it has a shorter form. loc and num locate the varint.
+func (d *decoder) longForm(data []byte, i, n int, loc string, num, off int) error {
+	if d.canonical && n > 1 && data[i+n-1] == 0 {
+		return wire.LongFormError(n, loc, num, off)
+	}
+	return nil
+}
+
+// absent returns, in a canonical decode, the error for the field f of l,
+// whose value x the decode read from data[start:], and whose tag is at
+// offset off, when the value is one that the encoding leaves out. A union
+// member and a pointer are present whatever their value. A field of a shape
+// that [byLength] reports is present when its encoding in data has bytes
+// after its length, which a merge into a value does not change, and any
+// other field as [encoder.present] states.
+func (d *decoder) absent(l *layout, f *field, x reflect.Value, data []byte, start, off int) error {
+	s := f.shape
+	if !d.canonical || f.Union != "" || s.kind == kindPointer {
+		return nil
+	}
+	var present bool
+	if byLength(s) {
+		n, _ := wire.Uvarint(data[start:])
+		present = n > 0
+	} else {
+		e := &encoder{r: d.r}
+		present = e.present(s, x, l.loc(f), f.Number)
+	}
+	if present {
+		return nil
+	}
+	return wire.AbsentError(l.loc(f), f.Number, off)
+}
+
+// byLength reports whether a field of s is present exactly when its encoding
+// has bytes after its length: a string, a byte slice, a slice, a map, a
+// struct, and a value of a type that encodes itself and that is not absent at
+// its zero value.
+func byLength(s *shape) bool {
+	switch s.kind {
+	case kindString, kindBytes, kindSlice, kindMap, kindStruct, kindInline:
+		return true
+	case kindBinary:
+		return !s.zeroAbsent
+	default:
+		return false
+	}
 }
 
 // field decodes the value at data[i] of one occurrence of the field f of v,
@@ -79,13 +187,13 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 	}
 	switch s.kind {
 	case kindStruct, kindInline:
-		start, end, err := length(data, i, off, loc, num)
+		start, end, err := d.length(data, i, off, loc, num)
 		if err != nil {
 			return 0, err
 		}
 		return end, d.readStruct(s, x, data[start:end], off+start, lv-1, true)
 	case kindSlice, kindMap:
-		start, end, err := length(data, i, off, loc, num)
+		start, end, err := d.length(data, i, off, loc, num)
 		if err != nil {
 			return 0, err
 		}
@@ -128,7 +236,7 @@ func (d *decoder) pointerField(
 		x.Set(reflect.New(e.typ))
 	}
 	if e.kind == kindStruct || e.kind == kindInline {
-		start, end, err := length(data, i, off, loc, num)
+		start, end, err := d.length(data, i, off, loc, num)
 		if err != nil {
 			return 0, err
 		}
@@ -144,7 +252,7 @@ func (d *decoder) pointerField(
 // field puts in a length of its own at data[i], and returns the offset after
 // the length and the value. The value must take the length exactly.
 func (d *decoder) framed(s *shape, x reflect.Value, data []byte, i, off, lv int, loc string, num int) (int, error) {
-	start, end, err := length(data, i, off, loc, num)
+	start, end, err := d.length(data, i, off, loc, num)
 	if err != nil {
 		return 0, err
 	}
@@ -177,7 +285,7 @@ func (d *decoder) mergeInterface(
 	loc string,
 	num int,
 ) (int, error) {
-	start, _, err := length(data, i, off, loc, num)
+	start, _, err := d.length(data, i, off, loc, num)
 	if err != nil {
 		return 0, err
 	}
@@ -242,7 +350,7 @@ func (d *decoder) merge(s *shape, x reflect.Value, data []byte, i, off int, loc 
 		d.merge(s.elem, x.Elem(), data, i+1, off, loc, num)
 		return
 	}
-	start, end, _ := length(data, i, off, loc, num)
+	start, end, _ := d.length(data, i, off, loc, num)
 	switch s.kind {
 	case kindSlice:
 		_ = d.readSlice(s, x, data[start:end], off+start, math.MaxInt, loc, num)
@@ -269,7 +377,8 @@ func (d *decoder) read(s *shape, x reflect.Value, data []byte, i, off, lv int, l
 }
 
 // readKind decodes the value of s at data[i] by the kind of s, as
-// [decoder.read] states.
+// [decoder.read] states. A canonical decode checks a varint after its range:
+// its shortest form, and then that a bool is 0 or 1.
 func (d *decoder) readKind(s *shape, x reflect.Value, data []byte, i, off, lv int, loc string, num int) (int, error) {
 	switch s.kind {
 	case kindBool, kindInt, kindUint:
@@ -277,7 +386,16 @@ func (d *decoder) readKind(s *shape, x reflect.Value, data []byte, i, off, lv in
 		if n <= 0 {
 			return 0, wire.ReadError(n, loc, num, off+i)
 		}
-		return i + n, setVarint(s, x, u, loc, num, off+i)
+		if err := setVarint(s, x, u, loc, num, off+i); err != nil {
+			return 0, err
+		}
+		if err := d.longForm(data, i, n, loc, num, off+i); err != nil {
+			return 0, err
+		}
+		if d.canonical && s.kind == kindBool && u > 1 {
+			return 0, wire.BoolError(u, loc, num, off+i)
+		}
+		return i + n, nil
 	case kindFixed, kindFloat, kindComplex64:
 		u, n := fixed(s, data[i:])
 		if n <= 0 {
@@ -294,7 +412,7 @@ func (d *decoder) readKind(s *shape, x reflect.Value, data []byte, i, off, lv in
 				return 0, wire.LengthError(l, want, loc, num, off+i)
 			}
 		}
-		start, end, err := length(data, i, off, loc, num)
+		start, end, err := d.length(data, i, off, loc, num)
 		if err != nil {
 			return 0, err
 		}
@@ -317,7 +435,11 @@ func (d *decoder) body(s *shape, x reflect.Value, data []byte, off, lv int, loc 
 	case kindByteArray:
 		reflect.Copy(x, reflect.ValueOf(data))
 	case kindTime:
-		t, err := wire.Time(data, loc, num, off)
+		decodeTime := wire.Time
+		if d.canonical {
+			decodeTime = wire.CanonicalTime
+		}
+		t, err := decodeTime(data, loc, num, off)
 		if err != nil {
 			return err
 		}
@@ -327,6 +449,12 @@ func (d *decoder) body(s *shape, x reflect.Value, data []byte, off, lv int, loc 
 	case kindBinary:
 		if err := unmarshal(x, data); err != nil {
 			return wire.UnmarshalError(err, loc, num, off)
+		}
+		if !d.canonical {
+			return nil
+		}
+		if enc, err := marshal(x); err != nil || !bytes.Equal(enc, data) {
+			return wire.EncodingError(loc, num, off)
 		}
 	case kindArray:
 		return d.readArray(s, x, data, off, lv, loc, num)
@@ -402,8 +530,10 @@ func (d *decoder) readArray(s *shape, x reflect.Value, data []byte, off, lv int,
 // has its projection, as [resolver.compareKeys] orders them equal, so that
 // the later value takes effect. It fails with kanon.ErrInvalidKey at a key
 // with a NaN component, and with kanon.ErrAmbiguousKey, before it changes
-// x, when two keys of x have one projection. An entry takes a byte at
-// least, so that the loop runs len(data) times at most.
+// x, when two keys of x have one projection. A canonical decode then fails
+// at a key with a float component of -0.0, and at a key that is not above
+// the key before it. An entry takes a byte at least, so that the loop runs
+// len(data) times at most.
 func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, loc string, num int) error {
 	if lv < 0 {
 		return wire.DepthError(loc, num, off)
@@ -420,6 +550,7 @@ func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, l
 		x.Set(reflect.MakeMap(s.typ))
 	}
 	i := 0
+	var prev reflect.Value
 	for range len(data) {
 		if i == len(data) {
 			break
@@ -433,6 +564,13 @@ func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, l
 		if d.r.hasNaN(s.key, k) {
 			return wire.KeyError(loc, num, off+at)
 		}
+		if d.canonical && d.r.hasNegativeZero(s.key, k) {
+			return wire.NegativeZeroError(loc, num, off+at)
+		}
+		if d.canonical && at > 0 && d.r.compareKeys(s.key, prev, k) >= 0 {
+			return wire.KeyOrderError(loc, num, off+at)
+		}
+		prev = k
 		if i, err = d.read(s.elem, v, data, i, off, lv-1, loc, num); err != nil {
 			return err
 		}
@@ -496,6 +634,9 @@ func (d *decoder) readInterface(s *shape, x reflect.Value, data []byte, off, lv 
 	if i <= 0 {
 		return 0, wire.ReadError(i, loc, num, off)
 	}
+	if err := d.longForm(data, 0, i, loc, num, off); err != nil {
+		return 0, err
+	}
 	if t == 0 {
 		x.SetZero()
 		return i, nil
@@ -533,11 +674,15 @@ func skip(l *layout, v reflect.Value, tag uint64, data []byte, at, i, off int) (
 // length reads the length at data[i] of a value that starts at offset off+i,
 // and returns the offsets in data of the first byte of the value and of the
 // byte after it. It fails when the length does not read or the value runs
-// past data.
-func length(data []byte, i, off int, loc string, num int) (int, int, error) {
+// past data, and in a canonical decode then when the length is not in its
+// shortest form.
+func (d *decoder) length(data []byte, i, off int, loc string, num int) (int, int, error) {
 	l, n := wire.Uvarint(data[i:])
 	if n <= 0 || uint64(len(data)-i-n) < l {
 		return 0, 0, wire.ReadError(n, loc, num, off+i)
+	}
+	if err := d.longForm(data, i, n, loc, num, off+i); err != nil {
+		return 0, 0, err
 	}
 	return i + n, i + n + int(l), nil
 }
@@ -591,21 +736,24 @@ func fixed(s *shape, data []byte) (uint64, int) {
 	return wire.Uint64(data)
 }
 
-// setFixed sets x, a value of the fixed-size shape s, to the value whose
-// little-endian bits are u: the bits of a float, the bits of the real part
-// and then of the imaginary part of a complex64, and the two's complement of
-// an integer.
+// setFixed sets x, an addressable value of the fixed-size shape s, to the
+// value whose little-endian bits are u: the bits of a float, the bits of the
+// real part and then of the imaginary part of a complex64, and the two's
+// complement of an integer. It sets a float32 and the parts of a complex64
+// bit for bit, as the generated code sets them: x.SetFloat and x.SetComplex
+// convert through float64, which sets the quiet bit of a signaling NaN.
 func setFixed(s *shape, x reflect.Value, u uint64) {
 	narrow := s.wire() == wire.Fixed32
 	switch s.kind {
 	case kindComplex64:
-		x.SetComplex(complex(float64(math.Float32frombits(uint32(u))), float64(math.Float32frombits(uint32(u>>32)))))
+		c := complex(math.Float32frombits(uint32(u)), math.Float32frombits(uint32(u>>32)))
+		complex64View(x.Addr()).Set(reflect.ValueOf(c))
 	case kindFloat:
-		f := math.Float64frombits(u)
 		if narrow {
-			f = float64(math.Float32frombits(uint32(u)))
+			x.Set(reflect.ValueOf(math.Float32frombits(uint32(u))).Convert(x.Type()))
+		} else {
+			x.SetFloat(math.Float64frombits(u))
 		}
-		x.SetFloat(f)
 	default:
 		if x.CanUint() {
 			x.SetUint(u)
@@ -620,9 +768,23 @@ func setFixed(s *shape, x reflect.Value, u uint64) {
 // decode merges data, the encoding of a struct of l that starts at offset
 // off of slab, into v, as MergeKanon with the depth limit depth merges it,
 // and returns the error of the generated code. The merge into a zero v is
-// the decode of DecodeKanon.
+// the decode of DecodeKanon. The decode is canonical when the Spec is.
 func (r *resolver) decode(l *layout, v reflect.Value, data []byte, slab string, off, depth int) error {
-	d := &decoder{r: r, slab: slab}
+	return r.decodeAs(r.canonical, l, v, data, slab, off, depth)
+}
+
+// decodeAs merges data into v as [resolver.decode] states, and applies the
+// rules of a canonical decode when canonical is set. A struct with a kanon
+// codec decodes through its own MergeKanon whatever canonical is.
+func (r *resolver) decodeAs(
+	canonical bool,
+	l *layout,
+	v reflect.Value,
+	data []byte,
+	slab string,
+	off, depth int,
+) error {
+	d := &decoder{r: r, slab: slab, canonical: canonical}
 	return d.fields(l, v, data, off, depth)
 }
 

@@ -24,6 +24,13 @@ func TestValidator(t *testing.T) {
 			t.Parallel()
 			goldenDeclarations(t, codeSuffix, func(d declaration) bool { return d.method == validateKanon })
 		})
+		t.Run("writes a ValidateKanon that returns nil for a type without -validate", func(t *testing.T) {
+			t.Parallel()
+			files, err := generate(t, module(t, map[string]string{source: "type N int32\n"}), source, "N")
+			assert.NoError(t, err, "Generate generates a named type that is not a struct")
+			assert.Contains(t, files[codeName], "func (N) ValidateKanon() error {\n\treturn nil\n}\n",
+				"the method accepts every value of N")
+		})
 		failures := []struct {
 			name     string
 			src      string

@@ -4,5 +4,5 @@ value 2: 087f
 value 3: 088001
 value 4: 08ff7f
 value 5: 08808001
-value 6: 08ffff03
+value 6: fails: validate: port in the dynamic range
 value 7: 08ac02

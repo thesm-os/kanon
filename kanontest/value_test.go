@@ -24,8 +24,36 @@ const (
 	valueGoldenCheck = "ValidateKanon/matches the golden file of the values"
 )
 
-// errMinInt64 is the error of the encode method of lax for math.MinInt64.
+// errMinInt64 is the error of the encode methods of lax and strict, and of
+// the ValidateKanon of strict, for math.MinInt64.
 var errMinInt64 = errors.New("kanontest_test: the value is math.MinInt64")
+
+// strict is an int64 whose ValidateKanon rejects math.MinInt64, the one value
+// that its encode method rejects.
+type strict int64
+
+// ValidateKanon returns errMinInt64 for math.MinInt64, and nil otherwise.
+func (x strict) ValidateKanon() error {
+	if x == math.MinInt64 {
+		return errMinInt64
+	}
+	return nil
+}
+
+// AppendBinary appends the eight big-endian bytes of x to b. It fails with
+// the error of ValidateKanon for a value that ValidateKanon rejects.
+func (x strict) AppendBinary(b []byte) ([]byte, error) {
+	if err := x.ValidateKanon(); err != nil {
+		return b, err
+	}
+	return binary.BigEndian.AppendUint64(b, uint64(x)), nil
+}
+
+// UnmarshalBinary sets x to the eight big-endian bytes in data.
+func (x *strict) UnmarshalBinary(data []byte) error {
+	*x = strict(binary.BigEndian.Uint64(data))
+	return nil
+}
 
 // errUndecodable is the error of the decode method of undecodable.
 var errUndecodable = errors.New("kanontest_test: the type decodes no encoding")
@@ -208,14 +236,19 @@ func TestValue(t *testing.T) {
 	})
 }
 
-// TestValueAllocs runs the check of ValueChecks that counts allocations,
-// which counts them while no parallel test runs, so that it and its
+// TestValueAllocs runs the check of ValueChecks that counts allocations, and
+// RunValue, which runs it, while no parallel test runs, so that it and its
 // subtests do not call t.Parallel.
 func TestValueAllocs(t *testing.T) {
 	t.Run("ValidateKanon", func(t *testing.T) {
 		t.Run("fails for a method that allocates", func(t *testing.T) {
 			countsAllocations(t)
 			rejectsValue[allocatingValue](t, valueAllocsCheck, "ValidateKanon allocates nothing")
+		})
+	})
+	t.Run("RunValue", func(t *testing.T) {
+		t.Run("passes a type whose ValidateKanon rejects the value that its encode method rejects", func(t *testing.T) {
+			kanontest.RunValue[strict](t)
 		})
 	})
 }

@@ -1,7 +1,7 @@
 value 0: 
 value 1: 0d0000c03f
 value 2: 0d00000080
-value 3: 0d0000c07f
+value 3: fails: validate: weight is NaN
 value 4: 0d0000807f
 value 5: 0d000080ff
 value 6: 0dffff7f7f

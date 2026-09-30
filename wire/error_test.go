@@ -145,6 +145,55 @@ func TestError(t *testing.T) {
 			err:  wire.RepeatedError(errLoc, errNumber, errOff),
 			want: located(kanon.ErrRepeatedView, ""),
 		},
+		{
+			name: "LongFormError/counts the bytes of the varint",
+			err:  wire.LongFormError(3, errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "varint of 3 bytes has a shorter form"),
+		},
+		{
+			name: "OrderError/names the field and the field before it at the struct",
+			err:  wire.OrderError(2, 5, errType, 0, errOff),
+			want: &kanon.DecodeError{
+				Type: errType, Offset: errOff, Detail: "field 2 after field 5", Err: kanon.ErrNotCanonical,
+			},
+		},
+		{
+			name: "UnknownFieldError/names the field number at the struct",
+			err:  wire.UnknownFieldError(9, errType, 0, errOff),
+			want: &kanon.DecodeError{
+				Type: errType, Offset: errOff, Detail: "field 9 not in the schema", Err: kanon.ErrNotCanonical,
+			},
+		},
+		{
+			name: "MemberError/names the discriminator of the union",
+			err:  wire.MemberError("Kind", errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "second member of the union of Kind"),
+		},
+		{
+			name: "BoolError/names the value of the bool",
+			err:  wire.BoolError(2, errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "bool 2, want 0 or 1"),
+		},
+		{
+			name: "AbsentError/locates a field at a value that the encoding leaves out",
+			err:  wire.AbsentError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "field at a value that the encoding leaves out"),
+		},
+		{
+			name: "KeyOrderError/locates a map key that does not ascend",
+			err:  wire.KeyOrderError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "key not above the key before it"),
+		},
+		{
+			name: "NegativeZeroError/locates a map key with a component of -0.0",
+			err:  wire.NegativeZeroError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "key with a float component of -0.0"),
+		},
+		{
+			name: "EncodingError/locates bytes that the encode method does not write",
+			err:  wire.EncodingError(errLoc, errNumber, errOff),
+			want: located(kanon.ErrNotCanonical, "bytes differ from the encoding of the decoded value"),
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

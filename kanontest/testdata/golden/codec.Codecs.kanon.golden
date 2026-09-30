@@ -1,12 +1,12 @@
 the zero value: 
 table sample 0: 0a040000000112040000007f22056b616e6f6e2a02000132ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363634204deadbeef4a0880000000000000005201005a0100
-table sample 1: 0a040000007f12040000008022ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a02012c4204deadbeef4a083ff8000000000000527f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615a0100620100
-table sample 2: 0a04000000801204000040001a01422202fffe3a01014204deadbeef4a087ff00000000000005a0100
-table sample 3: 0a04000040001204002000002a02000132056b616e6f6e3a01014204616161614a08fff00000000000005a01006202fffe
+table sample 1: 0a040000007f12040000008022ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a02012c4204deadbeef4a083ff8000000000000527f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615a0100
+table sample 2: 0a04000000801204000040001a01422202fffe3a01014204deadbeef4a083ff80000000000005a0100
+table sample 3: 0a04000040001204002000002a02000132056b616e6f6e3a01014204616161614a083ff80000000000005a0100
 table sample 4: 0a040020000012041000000022056b616e6f6e2a02007f3207c3a9e29c93cf893a01004204deadbeef4a087fefffffffffffff5a0100
 table sample 5: 0a04100000002207c3a9e29c93cf892a020080327f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613a01004204deadbeef4a0800000000000000015201ff5a0100
 table sample 6: 1a0141227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a023fff32800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262623a01014204636363635a0100
-table sample 7: 12040000000122800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a0240003201003a01014204ff0000004a083ff80000000000005204deadbeef5a0100
+table sample 7: 12040000000122800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a0240003201003a01014204deadbeef4a083ff80000000000005204deadbeef5a0100
 the sample of field Token: 0a0400000001
 the sample of field Ticket: 120400000001
 the sample of field Grade: 1a0141
@@ -26,12 +26,17 @@ table sample 0 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 0 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 0 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 0 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 0 that fails at value 7: 0a040000000112040000007f22056b616e6f6e2a02000132ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363634a0880000000000000005201005a0100
-table sample 0 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 0 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 0 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 0 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 0 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 0 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 0 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 0 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 0 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 0 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 0 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 0 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 0 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 0 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 0 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 0 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 1 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 1 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 1 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -39,12 +44,17 @@ table sample 1 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 1 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 1 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 1 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 1 that fails at value 7: 0a040000007f12040000008022ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a02012c4a083ff8000000000000527f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615a0100620100
-table sample 1 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 1 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 1 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 1 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 1 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 1 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 1 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 1 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 1 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 1 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 1 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 1 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 1 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 1 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 1 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 1 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 2 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 2 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 2 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -52,12 +62,17 @@ table sample 2 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 2 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 2 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 2 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 2 that fails at value 7: 0a04000000801204000040001a01422202fffe3a01014a087ff00000000000005a0100
-table sample 2 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 2 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 2 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 2 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 2 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 2 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 2 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 2 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 2 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 2 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 2 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 2 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 2 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 2 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 2 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 2 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 3 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 3 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 3 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -65,12 +80,17 @@ table sample 3 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 3 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 3 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 3 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 3 that fails at value 7: 0a04000040001204002000002a02000132056b616e6f6e3a01014a08fff00000000000005a01006202fffe
-table sample 3 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 3 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 3 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 3 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 3 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 3 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 3 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 3 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 3 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 3 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 3 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 3 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 3 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 3 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 3 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 3 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 4 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 4 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 4 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -78,12 +98,17 @@ table sample 4 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 4 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 4 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 4 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 4 that fails at value 7: 0a040020000012041000000022056b616e6f6e2a02007f3207c3a9e29c93cf893a01004a087fefffffffffffff5a0100
-table sample 4 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 4 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 4 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 4 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 4 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 4 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 4 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 4 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 4 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 4 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 4 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 4 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 4 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 4 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 4 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 4 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 5 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 5 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 5 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -91,12 +116,17 @@ table sample 5 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 5 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 5 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 5 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 5 that fails at value 7: 0a04100000002207c3a9e29c93cf892a020080327f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161613a01004a0800000000000000015201ff5a0100
-table sample 5 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 5 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 5 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 5 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 5 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 5 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 5 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 5 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 5 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 5 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 5 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 5 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 5 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 5 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 5 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 5 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 6 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 6 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 6 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -104,12 +134,17 @@ table sample 6 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 6 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 6 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 6 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 6 that fails at value 7: 1a0141227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a023fff32800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262623a01015a0100
-table sample 6 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 6 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 6 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 6 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 6 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 6 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 6 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 6 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 6 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 6 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 6 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 6 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 6 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 6 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 6 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 6 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 table sample 7 that fails at value 0: fails: kanon: Codecs.Token (field 1): codec: token is revoked
 table sample 7 that fails at value 1: fails: kanon: Codecs.Ticket (field 2): codec: ticket is void
 table sample 7 that fails at value 2: fails: kanon: Codecs.Grade (field 3): codec: grade is after F
@@ -117,24 +152,29 @@ table sample 7 that fails at value 3: fails: kanon: Codecs.Word (field 4): codec
 table sample 7 that fails at value 4: fails: kanon: Codecs.Stamp (field 5): codec: stamp is sealed
 table sample 7 that fails at value 5: fails: kanon: Codecs.Note (field 6): codec: note text is not valid UTF-8
 table sample 7 that fails at value 6: fails: kanon: Codecs.Parity (field 7): codec: parity is void
-table sample 7 that fails at value 7: 12040000000122800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a0240003201003a01014a083ff80000000000005204deadbeef5a0100
-table sample 7 that fails at value 8: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
-table sample 7 that fails at value 9: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
-table sample 7 that fails at value 10: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
-table sample 7 that fails at value 11: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
-table sample 7 that fails at value 12: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 7 that fails at value 7: fails: kanon: Codecs.Seal (field 8): codec: the void seal has no encoding
+table sample 7 that fails at value 8: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 7 that fails at value 9: fails: kanon: Codecs.Reading (field 9): codec: reading is NaN
+table sample 7 that fails at value 10: fails: kanon: Codecs.Reading (field 9): encoding length differs from SizeKanon
+table sample 7 that fails at value 11: fails: kanon: Codecs.Blob (field 10): codec: blob is longer than 127 bytes
+table sample 7 that fails at value 12: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 7 that fails at value 13: fails: kanon: Codecs.Hash (field 11): codec: hash size outside 1 to 8 bytes
+table sample 7 that fails at value 14: fails: kanon: Codecs.Hash (field 11): encoding length differs from SizeKanon
+table sample 7 that fails at value 15: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
+table sample 7 that fails at value 16: fails: kanon: Codecs.Clip (field 12): codec: clip is not valid UTF-8
+table sample 7 that fails at value 17: fails: kanon: Codecs.Clip (field 12): encoding length differs from SizeKanon
 wide sample 0: 0a04000000011204000000021a0143220277352a020006320277363a01014204773800004a08402400000000000052037731305a01006203773132
 wide sample 1: 0a04000000021204000000031a0144220277362a020007320277373a01004204773900004a08402600000000000052037731315a01006203773133
-the key sample: 0a040000007f12040000008022ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a02012c4204deadbeef4a083ff8000000000000527f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615a0100620100
-DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 3752 probes, digest f99bcab568634ff2
-DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 1468 probes, digest 67ed4812801b41aa
+the key sample: 0a040000007f12040000008022ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a02012c4204deadbeef4a083ff8000000000000527f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161615a0100
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 3534 probes, digest 9ac331e6cef3c881
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 1440 probes, digest 55cc8a7fdc0dea9a
 DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
-DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 4596 probes, digest 775d4c7217a1feb4
-DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 180 probes, digest 52666d8bf4c70c0c
-DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 60 probes, digest deb7c2c6276877cd
-DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 395 probes, digest c3c373825215cf2f
-DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 32 probes, digest 99789719ec2b3e90
-DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 9d08e8e29b0586a5
-DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 32 probes, digest d7c60d3aba713ba4
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 4497 probes, digest f23ffb866259d00b
+DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 165 probes, digest 6b9b985f95f30601
+DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 55 probes, digest f9e40615a645bb86
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 370 probes, digest e80fcc23e142f3e6
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 24 probes, digest 1b384e5fbd05077b
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 44c6d1745c86eb0a
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 24 probes, digest 7acde0ac0a4431da
 the samples that the encode allocation checks measure: 0 samples, digest cbf29ce484222325
 the samples that the decode allocation check measures: 0 samples, digest cbf29ce484222325

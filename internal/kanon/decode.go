@@ -152,6 +152,10 @@ func (e *emitter) decodeMethods(m *target) {
 	if !m.tree {
 		copied = "which do not copy data, since " + m.name + " contains no string"
 	}
+	canonical := ""
+	if e.canonical {
+		canonical = canonicalDoc
+	}
 	e.doc("UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with the zero Options, " +
 		copied + ".")
 	e.line("func (m *%s) UnmarshalBinary(data []byte) error {", typ)
@@ -162,8 +166,8 @@ func (e *emitter) decodeMethods(m *target) {
 		"pointers point at, its nested structs, the capacity of its slices and maps, and up to " +
 		strconv.Itoa(freeListLength) + " values of each map whose values refer to memory. It first clears the " +
 		"fields that the encoding leaves out, as Reset does. Every decoded string is a substring of the slab of " +
-		"opts. It returns a *kanon.DecodeError for malformed input, after which m contains the fields decoded " +
-		"before the error.")
+		"opts." + canonical + " It returns a *kanon.DecodeError for malformed input, after which m contains the " +
+		"fields decoded before the error.")
 	e.line("func (m *%s) DecodeKanon(data []byte, opts %s) error {", typ, opts)
 	e.source(m)
 	e.line("return m.%s(data, slab, off, opts.Limit())", decodeMethod)
@@ -324,11 +328,16 @@ func (e *emitter) fieldsDoc(name, callers string) {
 // field is skipped, and appended to the field that keeps unknown fields
 // when m has one. The caller of the decode of a nested struct checks its
 // level, as [emitter.structLevel] writes it, and the top struct of a decode
-// is at a level of 0 or more.
+// is at a level of 0 or more. A canonical code file decodes the fields in
+// their order instead, as [emitter.decodeInOrder] writes it.
 func (e *emitter) fieldsBody(m *target) {
 	e.ret = retError
 	if e.seenWords() > 0 {
 		e.ret = retSeen
+	}
+	if e.canonical {
+		e.decodeInOrder(m)
+		return
 	}
 	w, loc := e.wire(), structLoc(m)
 	e.line("for i := 0; i < len(data); {")
@@ -384,23 +393,31 @@ func (e *emitter) skipField(m *target) {
 // An occurrence of a union member replaces the union: a member that the
 // discriminator does not select yet zeroes the selected member and sets the
 // discriminator, and every occurrence of a member decodes as a first
-// occurrence.
+// occurrence. A union of one member has no other member to zero.
+//
+// The body checks the wire format of the tag first. The ordered decode of a
+// canonical code file matches the tag, wire format included, before the
+// body, and its body has no such check.
 func (e *emitter) readField(m *target, f *field) {
 	x, v := "m."+f.name, f.val
 	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), k: 1}
-	format := wireName(v.kind.wire())
-	if v.kind == kindPointer {
-		format = wireName(v.elem.kind.wire())
-	}
-	e.line("if tag != %d<<3|%s%s {", f.num, e.wire(), format)
-	e.fail(e.wire() + "FormatError(tag, " + e.wire() + format + ", " + p.loc + ", off+at)")
-	e.line("}")
-	if f.member != nil {
-		selector := e.p.object(f.member.value)
-		e.line("if m.%s != %s {", f.member.disc.Name(), selector)
-		e.line("%s(m)", e.deselector(m, f.member.disc))
-		e.line("m.%s = %s", f.member.disc.Name(), selector)
+	if !e.canonical {
+		format := wireName(fieldWire(f))
+		e.line("if tag != %d<<3|%s%s {", f.num, e.wire(), format)
+		e.fail(e.wire() + "FormatError(tag, " + e.wire() + format + ", " + p.loc + ", off+at)")
 		e.line("}")
+	}
+	if f.member != nil {
+		e.member(m, f, p)
+		selector := e.p.object(f.member.value)
+		if first, last := unionEnds(m, f); first == last {
+			e.line("m.%s = %s", f.member.disc.Name(), selector)
+		} else {
+			e.line("if m.%s != %s {", f.member.disc.Name(), selector)
+			e.line("%s(m)", e.deselector(m, f.member.disc))
+			e.line("m.%s = %s", f.member.disc.Name(), selector)
+			e.line("}")
+		}
 		if v.kind == kindSlice {
 			e.line("%s = %s[:0]", x, x)
 		}
@@ -420,6 +437,7 @@ func (e *emitter) readField(m *target, f *field) {
 			merge = "seen[" + w + "]&(1<<" + s + ") != 0"
 		}
 		e.readFramed(v, x, p, merge)
+		e.absent(f, x, p)
 	case kindSlice:
 		e.validFrom(v, p)
 		e.readLength(p)
@@ -429,6 +447,7 @@ func (e *emitter) readField(m *target, f *field) {
 		e.line("}")
 		e.line("i += int(l)")
 		e.validRead(v, x, p)
+		e.absent(f, x, p)
 	case kindMap:
 		collect := trueName
 		if f.member == nil {
@@ -442,8 +461,19 @@ func (e *emitter) readField(m *target, f *field) {
 		e.line("}")
 		e.line("i += int(l)")
 		e.validRead(v, x, p)
+		e.absent(f, x, p)
+	case kindBinary:
+		if e.canonical && f.member == nil && zeroAbsent(v) {
+			// The encoder never encodes the zero value of such a type, so the
+			// decode checks the presence of the value before it encodes it.
+			e.readSelf(v, x, p, func() { e.absent(f, x, p) })
+			break
+		}
+		e.read(v, x, p, "")
+		e.absent(f, x, p)
 	default:
 		e.read(v, x, p, "")
+		e.absent(f, x, p)
 	}
 	if _, ok := e.bits[f]; ok {
 		_, set := e.seen(f)
@@ -454,7 +484,8 @@ func (e *emitter) readField(m *target, f *field) {
 // readStructField writes the statements that decode an occurrence of the
 // struct x of v, the value of the field f or the struct that f points at,
 // at p: into the memory of x when the bit of f in the seen bitmap is clear
-// or f is a union member, and merged into x otherwise.
+// or f is a union member, and merged into x otherwise. In a canonical code
+// file a struct field of no bytes then fails, as [emitter.absent] writes it.
 func (e *emitter) readStructField(f *field, v *value, x string, p place) {
 	unseen, set := e.seen(f)
 	e.readLength(p)
@@ -473,6 +504,7 @@ func (e *emitter) readStructField(f *field, v *value, x string, p place) {
 	}
 	e.check()
 	e.line("i += int(l)")
+	e.absent(f, x, p)
 }
 
 // readPointerField writes the statements that decode an occurrence of the
@@ -534,19 +566,22 @@ func (e *emitter) mergeArg(v *value, merge string) string {
 
 // readLength writes the statements that read the length l of the value at
 // data[i], check that the value ends within data, and move i past the
-// length.
+// length. In a canonical code file they also check that the length has its
+// shortest form.
 func (e *emitter) readLength(p place) {
 	w := e.wire()
 	e.line("l, n := %sUvarint(data[i:])", w)
 	e.line("if n <= 0 || uint64(len(data)-i-n) < l {")
 	e.fail(w + "ReadError(n, " + p.loc + ", " + p.num + ", off+i)")
 	e.line("}")
+	e.shortest("n", "i+n", p.loc, p.num, "off+i")
 	e.line("i += n")
 }
 
 // readExact writes the statements that read the length l of the value at
 // data[i], check that it is size and that the value ends within data, and
-// move i past the length.
+// move i past the length. In a canonical code file they also check that the
+// length has its shortest form.
 func (e *emitter) readExact(p place, size int64) {
 	w := e.wire()
 	e.line("l, n := %sUvarint(data[i:])", w)
@@ -556,6 +591,7 @@ func (e *emitter) readExact(p place, size int64) {
 	e.line("if n <= 0 || uint64(len(data)-i-n) < l {")
 	e.fail(w + "ReadError(n, " + p.loc + ", " + p.num + ", off+i)")
 	e.line("}")
+	e.shortest("n", "i+n", p.loc, p.num, "off+i")
 	e.line("i += n")
 }
 
@@ -582,7 +618,10 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 			e.line("if n <= 0 {")
 			e.fail(w + "ReadError(n, " + p.loc + ", " + p.num + ", off+i)")
 			e.line("}")
-			e.line("%s = %s", dst, e.varint(v, "u", p))
+			x := e.varint(v, "u", p)
+			e.shortest("n", "i+n", p.loc, p.num, p.offset())
+			e.boolRange(v, p)
+			e.line("%s = %s", dst, x)
 		}
 		e.line("i += n")
 	case kindFixed32, kindFloat32, kindFixed64, kindFloat64, kindComplex64:
@@ -617,7 +656,11 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		e.line("i += copy(%s[:], data[i:])", primary(dst))
 	case kindTime:
 		e.readLength(p)
-		e.line("t, err := %sTime(data[i:i+int(l)], %s, %s, off+i)", w, p.loc, p.num)
+		decodeTime := "Time"
+		if e.canonical {
+			decodeTime = "CanonicalTime"
+		}
+		e.line("t, err := %s%s(data[i:i+int(l)], %s, %s, off+i)", w, decodeTime, p.loc, p.num)
 		e.check()
 		e.line("%s = t", dst)
 		e.line("i += int(l)")
@@ -643,12 +686,7 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		}
 		e.line("i += int(l)")
 	case kindBinary:
-		e.readLength(p)
-		e.line("%s = %s", dst, e.zero(v.typ))
-		e.line("if err := %s(data[i:i+int(l)]); err != nil {", method(dst, v.self.unmarshaler))
-		e.fail(w + "UnmarshalError(err, " + p.loc + ", " + p.num + ", off+i)")
-		e.line("}")
-		e.line("i += int(l)")
+		e.readSelf(v, dst, p, nil)
 	case kindArray:
 		if v.size == 0 {
 			e.readExact(p, 0)
@@ -721,6 +759,24 @@ func (e *emitter) varint(v *value, u string, p place) string {
 	return e.cast(v, x, wide)
 }
 
+// readSelf writes the statements that decode the value dst of v, a type that
+// encodes itself, at p and move i past it: its length, the decode method of
+// its family into the zero value, the statements of check when it is not
+// nil, and in a canonical code file the encode method of the value, as
+// [emitter.reencode] writes it.
+func (e *emitter) readSelf(v *value, dst string, p place, check func()) {
+	e.readLength(p)
+	e.line("%s = %s", dst, e.zero(v.typ))
+	e.line("if err := %s(data[i:i+int(l)]); err != nil {", method(dst, v.self.unmarshaler))
+	e.fail(e.wire() + "UnmarshalError(err, " + p.loc + ", " + p.num + ", off+i)")
+	e.line("}")
+	if check != nil {
+		check()
+	}
+	e.reencode(v, dst, p)
+	e.line("i += int(l)")
+}
+
 // nativeVarint writes the statements that set dst to the value of v, an
 // int, a uint or a uintptr, that the varint u of length n encodes. One
 // condition rejects both a varint that does not read and a value outside
@@ -737,6 +793,7 @@ func (e *emitter) nativeVarint(v *value, dst string, p place) {
 	e.line("if n <= 0 || %s != %s(%s(%s)) {", x, types.Typ[wide].Name(), basic, x)
 	e.fail(w + "VarintError(n, " + x + ", " + quoted(basic) + ", " + p.loc + ", " + p.num + ", " + p.offset() + ")")
 	e.line("}")
+	e.shortest("n", "i+n", p.loc, p.num, p.offset())
 	e.line("%s = %s", dst, e.cast(v, x, wide))
 }
 
@@ -947,7 +1004,9 @@ func (e *emitter) readArray(v *value) {
 // checks the keys that the map has, and its error, kanon.ErrAmbiguousKey for
 // two of them with one projection, ends the function before it changes the
 // map: the loop runs while err is nil, and wire.KeepLastKeys finds no key
-// to delete.
+// to delete. In a canonical code file the keys must ascend, as
+// [emitter.keyOrder] writes the check, and a decode, which sets collect,
+// collects no key.
 func (e *emitter) readMap(v *value) {
 	kt, vt := e.p.typ(v.key.typ), e.p.typ(v.elem.typ)
 	reuse := v.elem.holdsMemory()
@@ -991,19 +1050,23 @@ func (e *emitter) readMap(v *value) {
 	e.line("}")
 	e.line("var mk %s", kt)
 	e.line("var mv %s", vt)
+	if e.keepsKey(v) {
+		e.line("var %s %s", prevKeyName, kt)
+	}
 	e.line("for i := 0; %si < len(data); {", whileNoError(dedup))
 	if v.key.holdsMemory() {
 		e.line("mk = %s", e.zero(v.key.typ))
 	}
-	if nan {
+	if nan || e.canonical {
 		e.line("at := i")
 	}
 	e.readScoped(v.key, "mk", place{loc: locParam, num: numParam, k: 1})
 	if nan {
-		e.line("if %s {", e.nanExpr(v.key, "mk"))
+		e.line("if %s {", e.componentExpr(opNaN, v.key, "mk"))
 		e.fail(w + keyErrorName + "(loc, num, off+at)")
 		e.line("}")
 	}
+	e.keyOrder(v)
 	if reuse {
 		e.line("mv = %s", e.zero(v.elem.typ))
 		e.line("if held > 0 {")
@@ -1014,7 +1077,13 @@ func (e *emitter) readMap(v *value) {
 	e.readScoped(v.elem, "mv", place{loc: locParam, num: numParam, k: 1, checked: checksLevel(v.key)})
 	e.line("x[mk] = mv")
 	if dedup {
-		e.line("if all || !%s(mk) {", e.canonFunc(v.key))
+		collected := "all || !" + e.canonFunc(v.key) + "(mk)"
+		if e.canonical {
+			// The order check leaves no two keys of one projection in data, so a
+			// decode, which clears the map first, has no key to delete.
+			collected = "!collect && (" + collected + ")"
+		}
+		e.line("if %s {", collected)
 		e.line("keys = append(keys, mk)")
 		e.line("}")
 	}
@@ -1094,6 +1163,7 @@ func (e *emitter) readInterface(v *value) {
 	e.line("if i <= 0 {")
 	e.fail(w + "ReadError(i, loc, num, off)")
 	e.line("}")
+	e.shortest("i", "i", locParam, numParam, "off")
 	e.line("switch t {")
 	e.line("case 0:")
 	e.line("*dst = nil")

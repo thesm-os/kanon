@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io"
 	"path/filepath"
 	"strings"
@@ -116,38 +117,57 @@ func (p *pkg) addDirective(name string, c *ast.Comment, args []string) error {
 }
 
 // remoteListed reports whether a kanon directive of the dependency with the
-// import path importPath names the type name. It parses the Go files of the
-// dependency on the first call and caches the names. A file that does not
-// parse and a directive whose flags do not parse name nothing: the build and
-// the generation of the dependency report them.
+// import path importPath names the type name.
 func (p *pkg) remoteListed(importPath, name string) bool {
-	names, ok := p.remote[importPath]
-	if !ok {
-		names = make(map[string]bool)
-		dep := p.deps[importPath]
-		fset := token.NewFileSet()
-		for _, file := range dep.GoFiles {
-			f, err := parser.ParseFile(fset, filepath.Join(dep.Dir, file), nil, sourceMode)
-			if err != nil {
-				continue
-			}
-			for _, group := range f.Comments {
-				for _, c := range group.List {
-					args, ok := directiveArgs(c)
-					if !ok {
-						continue
-					}
-					opts, err := ParseOptions(args, io.Discard)
-					if err != nil {
-						continue
-					}
-					for _, t := range opts.Types {
-						names[t] = true
-					}
+	_, listed := p.remoteDirectives(importPath)[name]
+	return listed
+}
+
+// canonical reports whether the kanon directive that names the struct type t
+// has the -canonical flag, in p or in a dependency. A type that no directive
+// names, such as a struct whose codec is written by hand, is not canonical.
+func (p *pkg) canonical(t *types.Named) bool {
+	obj := t.Obj()
+	if obj.Pkg() == p.types {
+		return p.directives[p.listed[obj.Name()]].Canonical
+	}
+	return obj.Pkg() != nil && p.remoteDirectives(obj.Pkg().Path())[obj.Name()]
+}
+
+// remoteDirectives returns the type names that the kanon directives of the
+// dependency with the import path importPath name, each mapped to the
+// -canonical flag of its directive. It parses the Go files of the dependency
+// on the first call and caches the names. A file that does not parse and a
+// directive whose flags do not parse name nothing: the build and the
+// generation of the dependency report them.
+func (p *pkg) remoteDirectives(importPath string) map[string]bool {
+	if names, ok := p.remote[importPath]; ok {
+		return names
+	}
+	names := make(map[string]bool)
+	dep := p.deps[importPath]
+	fset := token.NewFileSet()
+	for _, file := range dep.GoFiles {
+		f, err := parser.ParseFile(fset, filepath.Join(dep.Dir, file), nil, sourceMode)
+		if err != nil {
+			continue
+		}
+		for _, group := range f.Comments {
+			for _, c := range group.List {
+				args, ok := directiveArgs(c)
+				if !ok {
+					continue
+				}
+				opts, err := ParseOptions(args, io.Discard)
+				if err != nil {
+					continue
+				}
+				for _, t := range opts.Types {
+					names[t] = opts.Canonical
 				}
 			}
 		}
-		p.remote[importPath] = names
 	}
-	return names[name]
+	p.remote[importPath] = names
+	return names
 }

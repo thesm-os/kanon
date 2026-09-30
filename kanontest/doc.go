@@ -76,6 +76,36 @@
 // family, and the encodings of the samples. [Fuzz] decodes its inputs with
 // both decoders as well.
 //
+// # Canonical Specs
+//
+// A Spec with Canonical set describes a type whose decode accepts only the
+// canonical encoding of a value. Its reference decoder applies the rules of
+// a canonical decode, in the order and at the offsets of the generated code.
+// Each field of a sample is then probed alone, without unknown fields around
+// it. Eight more families each break one rule of the canonical encoding at
+// one site, the first in each field of a sample alone and the others in the
+// encoding of each sample:
+//
+//   - a varint one byte longer than its shortest form: a tag, a length, an
+//     integer, a bool, a type number or the length of a complex128;
+//   - two adjacent fields of a struct, swapped;
+//   - two adjacent entries of a map, swapped;
+//   - the unknown fields of every wire format, at a boundary between fields;
+//   - a field written at the zero value of its type, as a selected union
+//     member is written, which gives a union a second member;
+//   - a malformed tag at a boundary between fields: a tag cut short, the tag
+//     of field number 0, and that tag one byte longer than its shortest
+//     form;
+//   - a float component of a map key written as -0.0;
+//   - the bytes of a value with a length written as zero bytes, which decode
+//     a type that encodes itself to its zero value.
+//
+// A further check tests the reference decoder itself. The reference decode
+// of the encoding of each sample and of each probe succeeds exactly when the
+// input round-trips: the decode without the canonical rules succeeds, and
+// the reference encoding of the decoded value is the input. [Fuzz] runs the
+// same check on its inputs.
+//
 // # Views
 //
 // When the Spec names a view type, a check calls each of its methods on the

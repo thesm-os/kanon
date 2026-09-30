@@ -774,13 +774,17 @@ func other(f float64) float64 {
 
 // failures returns values of t, a type that encodes itself, that fail to
 // encode: per way to fail, as [failModeOf] tells them apart, the first value
-// of the value tables that fails that way, in the order of the ways.
+// of the value tables that fails that way, in the order of the ways. A value
+// other than the zero value takes the place of the zero value, when the
+// tables have one that fails the same way: a field leaves out the zero value
+// of a type whose == compares every bit, so that it fails in no field.
 func (r *resolver) failures(t reflect.Type) []reflect.Value {
 	var first [failsLength + 1]reflect.Value
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
 		r.scalar(table(i), v, 0)
-		if m := failModeOf(v); m != 0 && !first[m].IsValid() {
+		m := failModeOf(v)
+		if m != 0 && (!first[m].IsValid() || first[m].IsZero() && !v.IsZero()) {
 			first[m] = v
 		}
 	}
@@ -818,14 +822,16 @@ func (r *resolver) success(t reflect.Type) reflect.Value {
 
 // rejected returns a value of s, the shape of a kanon.Validator, that its
 // ValidateKanon rejects: the first value of the value tables that it
-// rejects, as [resolver.shaped] builds them. It reports false when it
-// rejects none.
+// rejects, as [resolver.shaped] builds them. A value other than the zero
+// value takes the place of the zero value, when the method rejects one: a
+// field leaves out the zero value, so that its encode meets no rejection.
+// It reports false when it rejects none.
 func (r *resolver) rejected(s *shape) (reflect.Value, bool) {
 	var fail reflect.Value
 	found := false
 	for i := range drawCount {
 		v := r.shaped(table(i), s, nesting)
-		if !found && validate(v) != nil {
+		if validate(v) != nil && (!found || fail.IsZero() && !v.IsZero()) {
 			fail, found = v, true
 		}
 	}

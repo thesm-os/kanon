@@ -38,6 +38,11 @@ type Spec[T any] struct {
 	// the -views flag, and nil when T has none. The checks compare each
 	// method of the view type with the field that it reads.
 	View any
+	// Canonical reports that the directive of T has the -canonical flag, so
+	// that the decode of T accepts only the canonical encoding of a value.
+	// The reference decode then applies the canonical rules, and the checks
+	// compare it with the round trip through the reference encode.
+	Canonical bool
 }
 
 // Field describes one encoded field of a struct.

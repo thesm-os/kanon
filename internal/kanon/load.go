@@ -97,7 +97,8 @@ type pkg struct {
 	// order of go list.
 	codes []string
 	// directives maps the base name of each file with a kanon directive to
-	// the options of the directive.
+	// the options of the directive, and the file that kanon generates for to
+	// the options of the generation.
 	directives map[string]Options
 	// listed maps each type name that the -type flag of a kanon directive
 	// names to the base name of the file of the directive.
@@ -105,7 +106,8 @@ type pkg struct {
 	// deps maps the import path of each dependency to its go list entry.
 	deps map[string]listed
 	// remote caches, per import path of a dependency, the type names that
-	// its kanon directives name.
+	// its kanon directives name, each mapped to the -canonical flag of its
+	// directive.
 	remote map[string]map[string]bool
 	// dir is the directory of the package, as go list reports it.
 	dir string
