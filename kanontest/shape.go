@@ -174,7 +174,8 @@ type layout struct {
 	name string
 	// fields lists the encoded fields in ascending field number, the order
 	// of the encoding. A layout that no Spec describes lists its fields in
-	// declaration order, with number 0.
+	// the order of their names, with number 0, so that a reorder of the
+	// field declarations leaves the samples that fill the struct unchanged.
 	fields []*field
 	// unknown is the index of the field that keeps unknown fields, and nil
 	// when the struct keeps none.
@@ -476,8 +477,8 @@ func (r *resolver) sequence(s *shape, o opts) error {
 
 // inline returns the layout of the inline struct type t: the layout of its
 // Struct in the Spec, or with loose set a layout of the encoded fields of t
-// in declaration order. It fails for a struct type that the Spec does not
-// describe unless loose is set.
+// in the order of their names. It fails for a struct type that the Spec does
+// not describe unless loose is set.
 func (r *resolver) inline(t reflect.Type, loose bool) (*layout, error) {
 	if l := r.layouts[t]; l != nil {
 		return l, nil
@@ -489,10 +490,12 @@ func (r *resolver) inline(t reflect.Type, loose bool) (*layout, error) {
 }
 
 // looseLayout returns the layout of the struct type t that no Spec
-// describes: its fields that kanon encodes, as [encoded] reports, in
-// declaration order, whose interfaces store nothing. looseLayout records
-// the layout before it resolves the fields, so that a struct type that
-// contains itself ends the resolution.
+// describes: its fields that kanon encodes, as [encoded] reports, in the
+// order of their names, whose interfaces store nothing. A reorder of the
+// declarations of t, which keeps the field numbers of a struct with a kanon
+// codec, leaves the layout unchanged. looseLayout records the layout before
+// it resolves the fields, so that a struct type that contains itself ends
+// the resolution.
 func (r *resolver) looseLayout(t reflect.Type) *layout {
 	if l := r.loose[t]; l != nil {
 		return l
@@ -508,6 +511,7 @@ func (r *resolver) looseLayout(t reflect.Type) *layout {
 		s, _ := r.shapeOf(sf.Type, opts{seen: make(map[seenKey]*shape), loose: true})
 		l.fields = append(l.fields, &field{Name: sf.Name, index: sf.Index, exported: sf.IsExported(), shape: s})
 	}
+	slices.SortFunc(l.fields, func(a, b *field) int { return cmp.Compare(a.Name, b.Name) })
 	return l
 }
 

@@ -54,6 +54,11 @@
 // from byte strings of every length that it accepts, up to the size of the
 // type in memory.
 //
+// A struct with a kanon codec that a value of T contains, and a struct that
+// encodes itself, take the values of their fields in the order of the field
+// names. A reorder of the field declarations, which keeps the field numbers,
+// leaves the samples unchanged.
+//
 // An int, a uint and a uintptr take values of 32 bits in every sample, so
 // the samples and their encodings are the same on every platform. The map
 // keys of the samples other than the key sample have a value in every field

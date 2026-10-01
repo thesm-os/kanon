@@ -4,14 +4,18 @@
 package kanontest_test
 
 import (
+	"os"
 	"reflect"
 	"testing"
 	"time"
+
+	"go.dokimi.dev/assert"
 
 	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/external"
 	"go.thesmos.sh/kanon/internal/fixture/iface"
 	"go.thesmos.sh/kanon/internal/fixture/mapkey"
+	"go.thesmos.sh/kanon/internal/fixture/nested"
 	"go.thesmos.sh/kanon/internal/fixture/number"
 	"go.thesmos.sh/kanon/internal/fixture/union"
 	"go.thesmos.sh/kanon/internal/fixture/view"
@@ -21,6 +25,16 @@ import (
 // specCheck names the check of a Spec that does not describe its struct
 // type.
 const specCheck = "Spec/describes the fields of the struct type"
+
+// Golden files of the specs of nested.WithDeclared and nested.WithReordered,
+// which the check that goldenCheck names compares and the -update flag
+// writes.
+const (
+	declaredGolden  = "testdata/golden/nested.WithDeclared.kanon.golden"
+	reorderedGolden = "testdata/golden/nested.WithReordered.kanon.golden"
+	// goldenCheck names the check of the golden file of a Spec.
+	goldenCheck = "MarshalBinary/matches the golden file of the samples and the probes"
+)
 
 // placesSpec describes iface.Places, which has an interface in every place
 // that a value can be.
@@ -250,6 +264,17 @@ func TestShape(t *testing.T) {
 		t.Run("passes unexported fields that a kanon tag opts into the encoding", func(t *testing.T) {
 			t.Parallel()
 			passes(t, privateSpec)
+		})
+		t.Run("fills a struct with a kanon codec alike in either order of its field declarations", func(t *testing.T) {
+			t.Parallel()
+			holds(t, kanontest.Spec[nested.WithDeclared]{Fields: fields("In")}, goldenCheck)
+			holds(t, kanontest.Spec[nested.WithReordered]{Fields: fields("In")}, goldenCheck)
+			declared, err := os.ReadFile(declaredGolden)
+			assert.NoError(t, err, "the golden file of WithDeclared reads")
+			reordered, err := os.ReadFile(reorderedGolden)
+			assert.NoError(t, err, "the golden file of WithReordered reads")
+			assert.Equal(t, string(reordered), string(declared),
+				"the samples of WithReordered encode as the samples of WithDeclared")
 		})
 		t.Run("fails for a field that the struct type does not declare", func(t *testing.T) {
 			t.Parallel()
