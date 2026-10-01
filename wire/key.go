@@ -70,11 +70,11 @@ func OneKey(n int, loc string, num int) error {
 // DecodedTime reports whether t is the time that [Time] decodes from the
 // encoding of t: a time without a monotonic clock reading, in UTC, in the
 // local zone when that zone has the offset of t at its instant, or else in
-// the unnamed fixed zone of its offset, when time.FixedZone shares that
-// zone between calls. Two times that DecodedTime accepts are equal exactly
-// when they encode alike, so the key equality of a Go map merges two such
-// keys of one encoding. A zone that time.FixedZone allocates for every
-// call makes DecodedTime allocate once.
+// the unnamed fixed zone of its offset that [zoneAt] shares between calls,
+// for a whole number of quarter hours from UTC-12 to UTC+14. Two times that
+// DecodedTime accepts are equal exactly when they encode alike, so the key
+// equality of a Go map merges two such keys of one encoding. An offset whose
+// zone zoneAt does not share makes DecodedTime allocate once.
 func DecodedTime(t time.Time) bool {
 	if t != t.Round(0) {
 		return false
@@ -87,7 +87,7 @@ func DecodedTime(t time.Time) bool {
 	if _, local := t.In(time.Local).Zone(); local == off {
 		return loc == time.Local
 	}
-	return loc == time.FixedZone("", off)
+	return loc == zoneAt(off)
 }
 
 // MergeKeys returns keys with the keys of x that a merge into x compares

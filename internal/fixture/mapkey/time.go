@@ -9,8 +9,8 @@ import "time"
 
 // Moment is a struct of this package without a kanon codec with a time
 // field, which the code file of Times encodes as an inline struct. A decode
-// yields a Moment whose time is in UTC, the local zone or a zone that
-// time.FixedZone shares.
+// yields a Moment whose time is in UTC, in the local zone, or in a fixed
+// zone that the decode shares for each offset that wire.SharesZone reports.
 type Moment struct {
 	At  time.Time
 	Seq int32

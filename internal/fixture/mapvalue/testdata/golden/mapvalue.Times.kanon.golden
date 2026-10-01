@@ -22,4 +22,4 @@ DecodeKanon/decodes an encoding that writes every field twice as the reference d
 DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest dcf1f17ee10115b3
 DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 13 probes, digest de6976f2b61470a2
 the samples that the encode allocation checks measure: 10 samples, digest 4954ea90671bf2ac
-the samples that the decode allocation check measures: 9 samples, digest a9e125d843f346d9
+the samples that the decode allocation check measures: 10 samples, digest 4954ea90671bf2ac

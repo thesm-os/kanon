@@ -25,8 +25,22 @@ const (
 	timeOff    = 100
 )
 
-// hourEast is the offset of a zone one hour east of UTC, in seconds.
-const hourEast = 3600
+// Offsets of the zones of the Time cases, in seconds east of UTC: one hour
+// east, a zone that time.FixedZone shares, and three and a half hours west,
+// a whole number of quarter hours, a zone that the decode shares and that
+// time.FixedZone allocates on every call.
+const (
+	hourEast     = 3600
+	quartersWest = -12600
+)
+
+// Bounds of the offsets whose zones the decode shares, which the SharesZone
+// cases pin: UTC-12, UTC+14 and the quarter hour, in seconds.
+const (
+	westmostOffset = -12 * hourEast
+	eastmostOffset = 14 * hourEast
+	quarterHour    = 900
+)
 
 // timeVectors are the encodings of times that the wire format pins.
 func timeVectors() []struct {
@@ -69,6 +83,7 @@ func BenchmarkTime(b *testing.B) {
 		{name: "UTC", t: now.UTC()},
 		{name: "the local zone", t: now.In(time.Local)},
 		{name: "a zone a whole number of hours east", t: now.In(time.FixedZone("", 2*hourEast))},
+		{name: "a zone a whole number of quarter hours west", t: now.In(time.FixedZone("", quartersWest))},
 	}
 	for _, c := range times {
 		buf := make([]byte, wire.SizeTime(c.t))
@@ -98,12 +113,18 @@ func BenchmarkTime(b *testing.B) {
 			}
 		})
 	}
+	b.Run("SharesZone", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sinkBool = wire.SharesZone(quartersWest)
+		}
+	})
 }
 
 // TestTimeAllocs checks that the time functions allocate nothing for a
-// time in UTC, in the local zone, and in a zone a whole number of hours
-// east of UTC, whose zone time.FixedZone shares. It runs serially:
-// testing.AllocsPerRun panics while a parallel test runs.
+// time in UTC, in the local zone, and in a zone a whole number of hours east
+// or of quarter hours west of UTC, whose zone the decode shares. It runs
+// serially: testing.AllocsPerRun panics while a parallel test runs.
 func TestTimeAllocs(t *testing.T) {
 	now := time.Unix(1_790_000_000, 123_456_789)
 	times := []struct {
@@ -113,6 +134,7 @@ func TestTimeAllocs(t *testing.T) {
 		{name: "in UTC", t: now.UTC()},
 		{name: "in the local zone", t: now.In(time.Local)},
 		{name: "in a zone a whole number of hours east", t: now.In(time.FixedZone("", 2*hourEast))},
+		{name: "in a zone a whole number of quarter hours west", t: now.In(time.FixedZone("", quartersWest))},
 	}
 	for _, c := range times {
 		buf := make([]byte, wire.SizeTime(c.t))
@@ -132,6 +154,9 @@ func TestTimeAllocs(t *testing.T) {
 				"CanonicalTime allocates nothing for a zone it does not create")
 		})
 	}
+	t.Run("SharesZone/allocates nothing", func(t *testing.T) {
+		assert.MaxAllocs(t, func() { sinkBool = wire.SharesZone(quartersWest) }, 0, "SharesZone allocates nothing")
+	})
 }
 
 func TestTime(t *testing.T) {
@@ -197,6 +222,22 @@ func TestTime(t *testing.T) {
 			name, offset := got.Zone()
 			assert.Equal(t, name, "", "the fixed zone has no name")
 			assert.Equal(t, offset, local+1, "the fixed zone has the decoded offset")
+		})
+		t.Run("returns one zone to every decode at a whole number of quarter hours", func(t *testing.T) {
+			t.Parallel()
+			first, err := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
+			assert.NoError(t, err, "Time decodes a zone")
+			second, _ := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
+			assert.True(t, first.Location() == second.Location(), "the two decodes share the zone")
+			_, offset := first.Zone()
+			assert.Equal(t, offset, quartersWest, "the zone has the decoded offset")
+		})
+		t.Run("returns a new zone to every decode at an offset off the quarter hour", func(t *testing.T) {
+			t.Parallel()
+			first, err := wire.Time(timeWithZone(quartersWest+1), timeLoc, timeNumber, timeOff)
+			assert.NoError(t, err, "Time decodes a zone")
+			second, _ := wire.Time(timeWithZone(quartersWest+1), timeLoc, timeNumber, timeOff)
+			assert.False(t, first.Location() == second.Location(), "each decode creates its zone")
 		})
 		t.Run("decodes the offsets at the bounds of an int32", func(t *testing.T) {
 			t.Parallel()
@@ -306,6 +347,13 @@ func TestTime(t *testing.T) {
 				assert.Equal(t, got, want, "CanonicalTime decodes the time that Time decodes")
 			})
 		}
+		t.Run("returns one zone to every decode at a whole number of quarter hours", func(t *testing.T) {
+			t.Parallel()
+			first, err := wire.CanonicalTime(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
+			assert.NoError(t, err, "CanonicalTime decodes a zone")
+			second, _ := wire.CanonicalTime(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
+			assert.True(t, first.Location() == second.Location(), "the two decodes share the zone")
+		})
 		located := func(cause error, off int, detail string) *kanon.DecodeError {
 			return &kanon.DecodeError{
 				Type: timeType, Field: timeField, Number: timeNumber, Offset: off, Detail: detail, Err: cause,
@@ -394,6 +442,28 @@ func TestTime(t *testing.T) {
 				assert.Equal(t, got, time.Time{}, "CanonicalTime returns the zero time with an error")
 				e := assert.ErrorAs[*kanon.DecodeError](t, err, "CanonicalTime returns a *kanon.DecodeError")
 				assert.Equal(t, e, c.want, "CanonicalTime locates the error at the field of the time")
+			})
+		}
+	})
+	t.Run("SharesZone", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name string
+			give int
+			want bool
+		}{
+			{name: "reports true for a whole number of quarter hours", give: quartersWest, want: true},
+			{name: "reports true for UTC-12", give: westmostOffset, want: true},
+			{name: "reports true for UTC+14", give: eastmostOffset, want: true},
+			{name: "reports false for an offset off the quarter hour", give: quartersWest + 1, want: false},
+			{name: "reports false for a quarter hour west of UTC-12", give: westmostOffset - quarterHour, want: false},
+			{name: "reports false for a quarter hour east of UTC+14", give: eastmostOffset + quarterHour, want: false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, wire.SharesZone(tt.give), tt.want,
+					"SharesZone reports the offsets whose zone a decode shares")
 			})
 		}
 	})

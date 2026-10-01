@@ -45,6 +45,6 @@
 // # Dependency position
 //
 // wire imports go.thesmos.sh/kanon for the errors, and cmp, encoding/binary,
-// errors, fmt, io, math/bits, strconv, strings and time from the standard
-// library. Generated code imports it.
+// errors, fmt, io, math/bits, strconv, strings, sync/atomic and time from the
+// standard library. Generated code imports it.
 package wire

@@ -30,7 +30,8 @@ const DefaultDepth = 100
 //
 //   - a value of a type that decodes itself;
 //   - a time in a zone that is neither UTC, the local zone at that instant,
-//     nor a whole number of hours from UTC-12 to UTC+14;
+//     nor a whole number of quarter hours from UTC-12 to UTC+14, an offset
+//     that every zone in use has;
 //   - a map of more than 16 entries whose values refer to memory, and a map
 //     key that refers to memory;
 //   - a value that an interface stores by value;

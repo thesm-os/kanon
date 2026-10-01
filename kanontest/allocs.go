@@ -12,6 +12,7 @@ import (
 	"go.dokimi.dev/assert"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/wire"
 )
 
 // scratchLength is the length of the stack array that the generated code
@@ -41,15 +42,6 @@ func encodeAllocates(s *shape, x reflect.Value) bool {
 	}
 	enc, _ := marshal(x)
 	return !appends(s.typ) || !s.sizer && len(enc) > scratchLength
-}
-
-// sharedZone reports whether time.FixedZone returns one location for every
-// call with the unnamed zone at offset off, as it does for the whole hours
-// from UTC-12 to UTC+14, so that the decode of a time at that offset
-// allocates no location.
-func sharedZone(off int) bool {
-	zone := time.FixedZone("", off)
-	return zone == time.FixedZone("", off)
 }
 
 // sizeAllocs checks that SizeKanon allocates nothing for every sample that
@@ -176,11 +168,12 @@ func (r *resolver) contains(s *shape, x reflect.Value, is func(*shape, reflect.V
 
 // decodeAllocates reports whether the decode of x, a value of s, into a
 // receiver that decoded it before can allocate: x has a type that decodes
-// itself, is a time in a zone other than UTC whose offset time.FixedZone
-// does not share, is a map with entries whose keys refer to memory, or is
-// an interface that stores a value other than a pointer. The offset alone
-// decides a time, so that a time in the local zone at an offset that
-// FixedZone does not share counts as allocating on every machine.
+// itself, is a time in a zone other than UTC whose offset the decode does
+// not share, as wire.SharesZone reports, is a map with entries whose keys
+// refer to memory, or is an interface that stores a value other than a
+// pointer. The offset alone decides a time, so that a time in the local zone
+// at an offset that the decode does not share counts as allocating on every
+// machine.
 func (r *resolver) decodeAllocates(s *shape, x reflect.Value) bool {
 	switch s.kind {
 	case kindBinary:
@@ -188,7 +181,7 @@ func (r *resolver) decodeAllocates(s *shape, x reflect.Value) bool {
 	case kindTime:
 		t, _ := reflect.TypeAssert[time.Time](x)
 		_, off := t.Zone()
-		return t.Location() != time.UTC && !sharedZone(off)
+		return t.Location() != time.UTC && !wire.SharesZone(off)
 	case kindMap:
 		return x.Len() > 0 && r.refers(s.key)
 	case kindInterface:

@@ -17,8 +17,8 @@ import (
 
 // Offsets of the zones of the DecodedTime cases, in seconds east of UTC: a
 // minute, which added to the offset of a zone of our time, a multiple of
-// 15 minutes, makes one that no zone that time.FixedZone shares has, and a
-// whole hour, which every such zone has.
+// 15 minutes, makes one whose zone neither time.FixedZone nor the decode
+// shares, and a whole hour, which every such zone has.
 const (
 	oddMinute = 60
 	wholeHour = 3600
@@ -164,6 +164,7 @@ func TestKey(t *testing.T) {
 		if local == 0 {
 			shared = wholeHour
 		}
+		quarters, _ := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
 		tests := []struct {
 			name string
 			give time.Time
@@ -175,6 +176,16 @@ func TestKey(t *testing.T) {
 				name: "reports true for a time in a fixed zone that time.FixedZone shares",
 				give: at.In(time.FixedZone("", shared)),
 				want: true,
+			},
+			{
+				name: "reports true for a time that Time decodes at a whole number of quarter hours",
+				give: quarters,
+				want: true,
+			},
+			{
+				name: "reports false for a time in a fixed zone of quarter hours that time.FixedZone allocates",
+				give: quarters.In(time.FixedZone("", quartersWest)),
+				want: false,
 			},
 			{name: "reports false for a time with a monotonic clock reading", give: time.Now(), want: false},
 			{
@@ -294,6 +305,7 @@ func TestKey(t *testing.T) {
 // serially: testing.AllocsPerRun panics while a parallel test runs.
 func TestKeyAllocs(t *testing.T) {
 	at := time.Unix(1, 0).UTC()
+	quarters, _ := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
 	decoded := map[key]string{{p: 1}: "a", {p: 2}: "b"}
 	sorted := []key{{p: 1}, {p: 2}}
 	pairs := []wire.Pair[key, string]{{Key: key{p: 1}}, {Key: key{p: 2}}}
@@ -303,6 +315,10 @@ func TestKeyAllocs(t *testing.T) {
 		fn   func()
 	}{
 		{name: "DecodedTime/allocates nothing for a time in UTC", fn: func() { sinkBool = wire.DecodedTime(at) }},
+		{
+			name: "DecodedTime/allocates nothing for a time in a zone that the decode shares",
+			fn:   func() { sinkBool = wire.DecodedTime(quarters) },
+		},
 		{
 			name: "KeyTies/allocates nothing for keys of distinct projections",
 			fn:   func() { sinkErr = wire.KeyTies(sorted, compareKeys, keyLoc, keyNumber) },

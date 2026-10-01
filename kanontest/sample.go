@@ -49,8 +49,10 @@ const (
 	intBits = 32
 )
 
-// Zones of the time table: three and a half hours west of UTC, which
-// time.FixedZone allocates, and one hour east of UTC, which it shares.
+// Zones of the time table: three and a half hours west of UTC, a zone that
+// time.FixedZone allocates on every call and a decode shares, so that two
+// builds of one key differ under ==, and one hour east of UTC, a zone that
+// both share.
 const (
 	westOffset = 12600
 	eastOffset = 3600

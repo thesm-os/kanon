@@ -5,6 +5,7 @@ package wire
 
 import (
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"go.thesmos.sh/kanon"
@@ -22,6 +23,19 @@ const (
 
 // maxNanos is the largest nanosecond count of a time.
 const maxNanos = 999999999
+
+// Bounds of the zones that [zoneAt] shares, as [SharesZone] states them, in
+// seconds east of UTC.
+const (
+	quarterHour  = 15 * 60
+	westmostZone = -12 * 60 * 60
+	eastmostZone = 14 * 60 * 60
+)
+
+// quarterZones contains the zone that [zoneAt] shares for each quarter-hour
+// offset from westmostZone to eastmostZone, in ascending offset, and nil for
+// an offset that no decode has met.
+var quarterZones [(eastmostZone-westmostZone)/quarterHour + 1]atomic.Pointer[time.Location]
 
 // SizeTime returns the length of the encoding of t without its length
 // prefix: the seconds and the nanoseconds of t, each left out when zero,
@@ -64,9 +78,10 @@ func PutTime(buf []byte, i int, t time.Time) int {
 // Time decodes data, the encoding of a time without its length prefix,
 // which starts at offset off of the slab. A time without a zone is in UTC.
 // A time with one is in time.Local when the local zone has that offset at
-// that instant, and in time.FixedZone("", offset) otherwise, as
-// encoding/gob decodes a time. Empty data is the Unix epoch in UTC. A field
-// that repeats takes its last value, and an unknown field is skipped.
+// that instant, and otherwise in the unnamed fixed zone of that offset that
+// [zoneAt] returns, as encoding/gob decodes a time. Empty data is the Unix
+// epoch in UTC. A field that repeats takes its last value, and an unknown
+// field is skipped.
 //
 // Time fails for malformed input as the decode of a struct fails, and for
 // each occurrence of nanoseconds above 999999999 and of a zone offset
@@ -127,7 +142,7 @@ func Time(data []byte, loc string, num, off int) (time.Time, error) {
 	if _, lo := local.Zone(); lo == int(zone) {
 		return local, nil
 	}
-	return t.In(time.FixedZone("", int(zone))), nil
+	return t.In(zoneAt(int(zone))), nil
 }
 
 // CanonicalTime decodes data as [Time] does, and accepts only the encoding
@@ -179,7 +194,34 @@ func CanonicalTime(data []byte, loc string, num, off int) (time.Time, error) {
 	if _, lo := local.Zone(); lo == int(zone) {
 		return local, nil
 	}
-	return t.In(time.FixedZone("", int(zone))), nil
+	return t.In(zoneAt(int(zone))), nil
+}
+
+// SharesZone reports whether [Time] and [CanonicalTime] decode every time
+// whose zone has offset seconds east of UTC, and that is not in the local
+// zone, into one zone that they share, so that such a decode allocates no
+// location: offset is a whole number of quarter hours from UTC-12 to UTC+14.
+// Every zone of the tz database has such an offset from 1990 to 2030.
+func SharesZone(offset int) bool {
+	return offset%quarterHour == 0 && offset >= westmostZone && offset <= eastmostZone
+}
+
+// zoneAt returns the unnamed fixed zone of offset seconds east of UTC, as
+// time.FixedZone("", offset) returns it. For an offset that [SharesZone]
+// reports, it returns one zone to every call, which the first call creates,
+// so that the decode of times at such an offset allocates at most once per
+// process. For any other offset it returns a new zone. Concurrent calls are
+// safe.
+func zoneAt(offset int) *time.Location {
+	if !SharesZone(offset) {
+		return time.FixedZone("", offset)
+	}
+	slot := &quarterZones[(offset-westmostZone)/quarterHour]
+	if l := slot.Load(); l != nil {
+		return l
+	}
+	slot.CompareAndSwap(nil, time.FixedZone("", offset))
+	return slot.Load()
 }
 
 // timeFieldError returns the error of a canonical time for the field whose
