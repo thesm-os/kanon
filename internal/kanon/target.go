@@ -66,8 +66,9 @@ type target struct {
 	// string, so that a decode without a slab copies its input.
 	tree bool
 	// fails reports that the encoding can fail, as [classifier.mayFail]
-	// reports: the struct contains a type that encodes itself, or an
-	// interface.
+	// reports: the struct contains a type that encodes itself outside a field
+	// of a kanon.Exact type, a kanon.Validator, an interface, or a map whose
+	// keys can have a NaN component or share a projection.
 	fails bool
 }
 
@@ -326,6 +327,9 @@ func (c classifier) analyze(m *target, at site) error {
 		f := &field{obj: obj, name: obj.Name(), tag: t, list: list}
 		if f.val, err = c.classify(obj.Type(), t.fixed, list, at.field(obj.Name())); err != nil {
 			return m.fail(obj, err)
+		}
+		if exactField(f.val, t) {
+			f.val.fails = false
 		}
 		m.fields = append(m.fields, f)
 	}

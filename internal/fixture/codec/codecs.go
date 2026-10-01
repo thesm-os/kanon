@@ -20,6 +20,8 @@ type Codecs struct {
 	Blob    Blob
 	Hash    Hash
 	Clip    Clip
+	Sum     Sum
+	Serial  Serial
 }
 
 // Appenders has a field of each type of the package with an append method,
@@ -27,11 +29,13 @@ type Codecs struct {
 // that the allocation checks of its generated tests measure the encode of
 // every such type.
 type Appenders struct {
-	Token Token
-	Grade Grade
-	Stamp Stamp
-	Note  Note
-	Seal  Seal
-	Hash  Hash
-	Clip  Clip
+	Token  Token
+	Grade  Grade
+	Stamp  Stamp
+	Note   Note
+	Seal   Seal
+	Hash   Hash
+	Clip   Clip
+	Sum    Sum
+	Serial Serial
 }

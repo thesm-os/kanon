@@ -247,9 +247,26 @@ type resolver struct {
 	// [resolver.taintField] sets it to, and to the invalid value for a type of
 	// which [resolver.taintOf] returns none. [resolver.prepare] fills it.
 	taints map[reflect.Type]reflect.Value
+	// opaques maps each type that encodes itself that a sample builds to the
+	// lengths at which [resolver.opaque] found that its decode method decodes
+	// a value, and to nil for a type that reflection fills.
+	opaques map[reflect.Type][]int
 	// canonical reports that the Spec is canonical, so that the reference
 	// decode applies the rules of a canonical decode.
 	canonical bool
+}
+
+// resolverFor returns the resolver of the types of package pkg without a
+// Spec: every collection empty, and the reference decode not canonical.
+func resolverFor(pkg string) *resolver {
+	return &resolver{
+		pkg:     pkg,
+		layouts: make(map[reflect.Type]*layout),
+		loose:   make(map[reflect.Type]*layout),
+		bad:     make(map[*shape][]badKey),
+		taints:  make(map[reflect.Type]reflect.Value),
+		opaques: make(map[reflect.Type][]int),
+	}
 }
 
 // opts are the options of a field that apply to the shapes of its type.
@@ -287,14 +304,8 @@ type seenKey struct {
 // fits.
 func newResolver[T any](spec Spec[T]) (*resolver, *layout, error) {
 	typ := reflect.TypeFor[T]()
-	r := &resolver{
-		pkg:       typ.PkgPath(),
-		layouts:   make(map[reflect.Type]*layout),
-		loose:     make(map[reflect.Type]*layout),
-		bad:       make(map[*shape][]badKey),
-		taints:    make(map[reflect.Type]reflect.Value),
-		canonical: spec.Canonical,
-	}
+	r := resolverFor(typ.PkgPath())
+	r.canonical = spec.Canonical
 	root := &layout{typ: typ, name: typ.Name()}
 	r.layouts[typ] = root
 	structs := slices.Concat(spec.Structs, spec.Keys)

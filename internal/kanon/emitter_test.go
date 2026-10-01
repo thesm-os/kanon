@@ -60,6 +60,8 @@ const (
 	opCanon      = "canon"
 	opNegZero    = "negzero"
 	opTag        = "tag"
+	// opExactPut writes a field of a kanon.Exact type without an error.
+	opExactPut = "exactput"
 )
 
 // viewSuffix ends the name of the view type of a struct type.

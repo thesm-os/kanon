@@ -30,6 +30,9 @@ const (
 	// validateKanonName names the method of kanon.Validator, through which
 	// a named type that is not a struct encodes as its underlying type.
 	validateKanonName = "ValidateKanon"
+	// exactKanonName names the marker method of kanon.Exact, with which a
+	// type that encodes itself states the guarantees of its methods.
+	exactKanonName = "ExactKanon"
 )
 
 // Import path of the runtime package, and the names of its declarations
@@ -58,6 +61,13 @@ type selfCodec struct {
 	// zeroer reports that the type declares IsZero() bool, which the
 	// generated code tests the presence of a value with in place of ==.
 	zeroer bool
+	// exact reports that the type declares ExactKanon(), the marker of
+	// kanon.Exact: for every value but its zero value the append method does
+	// not fail and appends SizeKanon bytes, and the decode method accepts
+	// only the bytes that the append method writes for the value that it
+	// decodes. The encode of a field of the type then has no error path, and
+	// a canonical decode does not encode its values again.
+	exact bool
 }
 
 // selfCodecs returns the families of methods through which a type encodes
@@ -79,7 +89,7 @@ func selfCodecs() []selfCodec {
 // has, with the signatures of packages encoding and encoding/gob. The
 // appender of the result is empty when t has the encode method of the
 // family alone. The result records whether the pointer to t has SizeKanon()
-// int and IsZero() bool.
+// int, IsZero() bool and ExactKanon().
 func selfCodecOf(t *types.Named) (selfCodec, bool) {
 	s := methodsOf(t)
 	encoded := []types.Type{byteSlice(), errorType()}
@@ -94,6 +104,7 @@ func selfCodecOf(t *types.Named) (selfCodec, bool) {
 		}
 		c.sizer = s.has(sizeKanonName, nil, []types.Type{types.Typ[types.Int]})
 		c.zeroer = s.has(isZeroName, nil, []types.Type{types.Typ[types.Bool]})
+		c.exact = s.has(exactKanonName, nil, nil)
 		return c, true
 	}
 	return selfCodec{}, false

@@ -26,7 +26,7 @@ const (
 
 // codecsSpec describes codec.Codecs, a struct with a field of each type of
 // the codec package that encodes itself, each of which fails to encode for
-// one value.
+// a value, except Serial, a kanon.Exact type.
 var codecsSpec = kanontest.Spec[codec.Codecs]{
 	Fields: []kanontest.Field{
 		{Name: "Token", Number: 1},
@@ -41,6 +41,8 @@ var codecsSpec = kanontest.Spec[codec.Codecs]{
 		{Name: "Blob", Number: 10},
 		{Name: "Hash", Number: 11},
 		{Name: "Clip", Number: 12},
+		{Name: "Sum", Number: 13},
+		{Name: "Serial", Number: 14},
 	},
 }
 

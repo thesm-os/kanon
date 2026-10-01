@@ -155,6 +155,8 @@ An encode returns a `*kanon.EncodeError` in six cases:
 - The encoding of a type that declares `SizeKanon` has another length than `SizeKanon` returns, and the error wraps `kanon.ErrSize`.
 - The `ValidateKanon` method of a type rejects a value.
 
+A field of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
+
 ## Field numbers
 
 A field without a tag takes the smallest free number in declaration order.
@@ -216,6 +218,21 @@ Such a type can also declare these methods, which make its encode cheaper:
 
 - `SizeKanon() int` returns the length of that encoding. kanon sizes the value with it instead of encoding it twice, and appends the encoding into its buffer in place.
 - `IsZero() bool` reports whether the value is the zero value, which kanon leaves out of a field. kanon calls it instead of comparing the whole value with `==`, so it must report true for the zero value alone.
+- `ExactKanon()` declares `kanon.Exact` for a type with an append method, `SizeKanon` and an `==` that compares every bit. kanon then writes a field of the type without error handling, and a canonical decode does not encode its values again.
+
+A type that declares `kanon.Exact` keeps two guarantees:
+
+- For every value other than the zero value, the append method returns no error and appends `SizeKanon` bytes.
+- The decode method accepts only the bytes that the append method writes for the decoded value.
+
+A field value that breaks the first guarantee panics the encode.
+Check both guarantees in a test of the package that declares the type:
+
+```go
+func TestDigest(t *testing.T) {
+	kanontest.RunExact[Digest](t)
+}
+```
 
 A named type that is not a struct can encode as its underlying type instead.
 Name it in the directive, and name a method that checks a value with `-validate`:

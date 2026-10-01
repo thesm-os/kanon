@@ -26,7 +26,11 @@
 // code leaves it out without a call of a method of the type. It calls the
 // method IsZero() bool in place of == when the type declares it, which must
 // report true for the zero value alone. A [Sizer] sizes its values with
-// SizeKanon in place of an encode.
+// SizeKanon in place of an encode. An [Exact] type guarantees that its append
+// method does not fail for a value other than its zero value, and that its
+// decode method accepts only the bytes that its append method writes. The
+// generated code writes a field of such a type without an error path, and a
+// canonical decode does not encode its values again.
 //
 // # Decoding without a copy
 //
@@ -57,7 +61,8 @@
 // error of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
 // that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
 // [ErrSize], the error of a type that encodes itself, or the error of
-// ValidateKanon.
+// ValidateKanon. An encode panics with a [*EncodeError] that wraps
+// [ErrExact] for a field of an [Exact] type that breaks its guarantee.
 // errors.Is and errors.As classify both.
 //
 // # Versions

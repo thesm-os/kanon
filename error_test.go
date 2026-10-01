@@ -21,6 +21,7 @@ const (
 	unknownText   = "kanon: interface type number not listed"
 	unlistedText  = "kanon: type not listed in the tag option types"
 	canonicalText = "kanon: input is not the canonical encoding"
+	exactText     = "kanon: a type that declares ExactKanon breaks its guarantee"
 )
 
 func TestDecodeError(t *testing.T) {
@@ -120,6 +121,7 @@ func TestCauses(t *testing.T) {
 			{name: "states ErrUnknownType", err: kanon.ErrUnknownType, want: unknownText},
 			{name: "states ErrUnlistedType", err: kanon.ErrUnlistedType, want: unlistedText},
 			{name: "states ErrNotCanonical", err: kanon.ErrNotCanonical, want: canonicalText},
+			{name: "states ErrExact", err: kanon.ErrExact, want: exactText},
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {

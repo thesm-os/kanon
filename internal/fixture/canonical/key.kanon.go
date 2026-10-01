@@ -3848,7 +3848,7 @@ func _key_mergeCoord(m *Coord, data []byte, slab string, off, depth int) error {
 		}
 		m.Lat = math.Float64frombits(u)
 		i += n
-		if !(math.Float64bits(m.Lat) != 0) {
+		if math.Float64bits(m.Lat) == 0 {
 			return wire.AbsentError("Coord.Lat", 1, off+at)
 		}
 	}
@@ -3862,7 +3862,7 @@ func _key_mergeCoord(m *Coord, data []byte, slab string, off, depth int) error {
 		}
 		m.Lon = math.Float32frombits(u)
 		i += n
-		if !(math.Float32bits(m.Lon) != 0) {
+		if math.Float32bits(m.Lon) == 0 {
 			return wire.AbsentError("Coord.Lon", 2, off+at)
 		}
 	}

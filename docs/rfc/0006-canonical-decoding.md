@@ -4,7 +4,7 @@ title: Decoding that accepts only the canonical encoding
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Draft
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 discussion: none
 supersedes: none
 superseded-by: none
@@ -23,7 +23,11 @@ the types that its directive names. This document states the rules byte by byte,
 test vectors, so that a decoder in another language accepts the same inputs as the Go decoder.
 The generated code checks each rule as it reads the input, with the presence, key order and
 projection logic of the encoder. The conformance suite tests the check against its reference
-decoder and against a round trip through its reference encoder.
+decoder and against a round trip through its reference encoder. A type that encodes itself can
+declare `kanon.Exact`: its encode does not fail for a value other than its zero value, and its
+decode accepts only the bytes that its encode writes. The generated code writes a field of such a
+type without error handling and decodes it without a second encode, and the conformance suite
+checks the declaration.
 
 ## Motivation
 
@@ -76,6 +80,19 @@ Other canonical formats reject non-canonical input at the decoder:
 - Bitcoin Core rejects a CompactSize integer that is not in its shortest form, with the error
   `non-canonical ReadCompactSize()`.
 
+The generated code calls the methods of a type that encodes itself, such as the digest, the
+identifier and the instant of the core module, and it guards every result: an encode error, a
+`SizeKanon` that differs from the encoding, and in a canonical decode the zero value and a second
+encode. The generator cannot know that a type keeps its methods consistent. For a type that does,
+the guards never run:
+
+- The ledger's record package has 39 such statements in 5 code files, in the code of its fields
+  of core digests and identifiers. No test can run them, so no test covers its generated code in
+  full.
+- The two second encodes take 6.5 ns of the 11.8 ns of the canonical decode of `Opaque`.
+
+A declaration by the type, which the conformance suite checks, removes both.
+
 ## Detailed design
 
 ### Terms
@@ -83,15 +100,18 @@ Other canonical formats reject non-canonical input at the decoder:
 - A **canonical type** is a struct type that a directive with the `-canonical` flag names.
 - A **canonical decode** is `DecodeKanon`, `MergeKanon` or `UnmarshalBinary` of a canonical type.
 - A **default decode** is the decode of any other struct type.
+- An **opaque type** is a type that encodes itself through the methods of a family: binary, gob
+  or text.
+- An **Exact type** is an opaque type that declares `kanon.Exact`.
 
 ### Components
 
 | Component | Change |
 |---|---|
-| The generator | The `-canonical` flag. The decode of each canonical type applies the rules of this document, and the generation fails for the cases that the directive section lists |
-| `kanon` | `ErrNotCanonical`, one sentence in the contract of `DecodeKanon`, and `MaxVersion` of 2 |
-| `kanon/wire` | `CanonicalTime`, and nine error constructors that wrap `ErrNotCanonical` |
-| `kanontest` | `Spec.Canonical`, the canonical rules in the reference decoder, the round-trip check and new probe families |
+| The generator | The `-canonical` flag. The decode of each canonical type applies the rules of this document, and the generation fails for the cases that the directive section lists. A field of an Exact type encodes without error handling and decodes without a second encode |
+| `kanon` | `ErrNotCanonical`, `Exact`, `ErrExact`, one sentence in the contract of `DecodeKanon`, and `MaxVersion` of 2 |
+| `kanon/wire` | `CanonicalTime`, nine error constructors that wrap `ErrNotCanonical`, `MustExact` and `ExactError` |
+| `kanontest` | `Spec.Canonical`, the canonical rules in the reference decoder, the round-trip check, new probe families, values of opaque types from their decode method, `ExactChecks` and `RunExact` |
 | `Options`, `wire.Nested`, `wire.Time`, views, indexes, `frame`, `batch` and `kanon inspect` | No change |
 
 ### Invariants
@@ -101,14 +121,17 @@ Other canonical formats reject non-canonical input at the decoder:
   input.
 - A canonical decode accepts every encoding that `EncodeKanon` writes for a value of its type,
   when the decode method of each opaque type returns a value that encodes to the bytes it decoded.
+- A canonical decode rejects a non-canonical encoding of the value of an Exact type only when the
+  type keeps its declaration. The conformance suite checks the declaration on every value that it
+  builds and on every probe.
 - An input that a canonical decode accepts decodes to the value that the default rules of the
   wire format give it.
 - The flag changes only the code of the types that its directive names and of the inline structs
   of their fields.
 - A canonical decode allocates what a default decode of the same fields allocates, except for the
-  re-encode of an opaque value, and the encodes of two opaque map keys that it compares, of a type
-  without an append method or with an encoding longer than 128 bytes. The allocation contract of
-  `Message` already lists every value of a type that decodes itself.
+  re-encode of an opaque value that is not Exact, and the encodes of two opaque map keys that it
+  compares, of a type without an append method or with an encoding longer than 128 bytes. The
+  allocation contract of `Message` already lists every value of a type that decodes itself.
 
 ### The directive
 
@@ -153,7 +176,7 @@ applies the same rules in the same order, so that it rejects the same inputs at 
 | Map keys strictly ascend in the key order of the wire format | Every map | The key |
 | Each map key is its projection, without a float component of `-0.0` | Keys with a float component | The key |
 | A time payload contains fields 1 to 3 only, and neither field 1 nor field 2 is 0 | The payload of every time | The tag of the field |
-| The bytes of an opaque value are the bytes that the encode method of its type writes for the value that its decode method returns | Every opaque value | The value |
+| The bytes of an opaque value are the bytes that the encode method of its type writes for the value that its decode method returns | Every opaque value. An Exact type keeps the rule by its declaration, and the decode does not check it | The value |
 
 Strict ascent also excludes repetition:
 
@@ -195,7 +218,8 @@ the key has no NaN component, that the key is its projection, and last that the 
 key before it. When the value of a field ends, the decode applies the presence rule. A field of
 an opaque type whose `==` compares every bit is the exception: the decode applies the presence
 rule after the decode method of the type and before its encode method, since the encoder never
-passes the zero value of such a type to the encode method.
+passes the zero value of such a type to the encode method. A field of an Exact type checks an
+error of the decode method first and the presence rule second, and no encode follows.
 
 An input can break a requirement of the wire format and a rule of this document. The decode
 reports the first failure in this order. A canonical decode can return `ErrNotCanonical` for an
@@ -289,6 +313,68 @@ the reader rejects a field number that its schema does not list:
 A format with canonical readers versions its schema, so that a reader decodes each record with
 the schema of the version that the record states.
 
+### Exact types
+
+A type declares `kanon.Exact` with one method, `ExactKanon`. It can declare it when:
+
+- it encodes itself through an append method
+- it is a `kanon.Sizer`
+- its `==` compares every bit, so that a field leaves out its zero value
+
+A type that declares it keeps two guarantees:
+
+1. For every value other than its zero value, the append method returns no error and appends as
+   many bytes as `SizeKanon` returns.
+2. The decode method accepts a byte string only when the append method writes that byte string
+   for the value that the decode method sets.
+
+The second guarantee makes the decode method its own canonical check. The first guarantee leaves
+the zero value out, since the zero digest of the core module has no encoding. The generation fails
+for a type with an `ExactKanon` method and without an append method, without `SizeKanon`, or with
+an `==` that does not compare every bit.
+
+The code of a field of an Exact type differs from the code of a field of another opaque type:
+
+| Step | Another opaque type | An Exact type |
+|---|---|---|
+| Encode | An error of the append method, and a `SizeKanon` that differs from the length of the encoding, fail the encode | The encode has no error path. A type that breaks guarantee 1 panics with a `*kanon.EncodeError` that wraps `kanon.ErrExact` |
+| Canonical decode | The decode method, the presence rule, and a second encode compared with the input | The decode method and the presence rule in one statement, and no second encode |
+| Default decode | The decode method | No change |
+
+These rules apply to a field that the encoding leaves out at its zero value. In the positions that
+write the zero value, whose encode can fail, an Exact value encodes as another opaque value does:
+
+- an element of a slice or an array
+- a key or a value of a map
+- the target of a pointer
+- a union member
+- the value of an interface
+
+Guarantee 2 applies to every byte string, so a canonical decode skips the second encode of an
+Exact value in every position. A struct encodes without an error path when none of its fields can
+fail, and an Exact field counts as a field that cannot fail.
+
+The declaration removes the 39 statements of the ledger's record package that its conformance
+suite cannot run:
+
+- per field of a digest or an identifier: the error return after the put function, the three
+  failure returns of the put function, and the error return of the second encode
+- per field of a digest: the presence check after the decode method, since no input decodes to
+  the zero digest
+- per struct: the error return of `AppendBinary`
+
+The digest, the identifier and the instant of the core module keep both guarantees:
+
+- `crypto.Digest` decodes 32, 48 or 64 bytes to a value whose append method writes those bytes,
+  and it rejects every other length. Its append method fails for the zero digest alone.
+- `id.ID` decodes 16, 20 or 32 bytes the same way, and the empty input to its zero value, whose
+  encoding is empty. Its append method never fails.
+- `clock.Instant` decodes 16 bytes to its three fields and appends them in the same order. Its
+  `SizeKanon` returns 16 for every value.
+
+Each of the three adds `ExactKanon` and a test that runs `kanontest.RunExact`. The core module
+already depends on kanon for the codec of its signatures.
+
 ### The runtime
 
 ```go
@@ -300,7 +386,25 @@ var (
 	// decoder accept: input that is not the canonical encoding of the value
 	// that it decodes to.
 	ErrNotCanonical = errors.New("kanon: input is not the canonical encoding")
+	// ErrExact marks the panic of an encode that meets a value of an Exact
+	// type whose append method fails, or appends another number of bytes than
+	// its SizeKanon returns.
+	ErrExact = errors.New("kanon: a type that declares ExactKanon breaks its guarantee")
 )
+
+// Exact is implemented by a type that encodes itself through an append
+// method, is a Sizer, has an == that compares every bit, and keeps two
+// guarantees. For every value other than its zero value, the append method
+// returns no error and appends SizeKanon bytes. The decode method accepts a
+// byte string only when the append method writes that byte string for the
+// value that the decode method sets. The generated code writes a field of
+// such a type without an error path and decodes it without a second encode,
+// and kanontest checks both guarantees.
+type Exact interface {
+	Sizer
+	// ExactKanon marks the type. No code calls it.
+	ExactKanon()
+}
 
 // The generator versions that the runtime supports.
 const (
@@ -343,6 +447,18 @@ func AbsentError(loc string, num, off int) error
 func KeyOrderError(loc string, num, off int) error
 func NegativeZeroError(loc string, num, off int) error
 func EncodingError(loc string, num, off int) error
+
+// MustExact checks enc, the encoding that the append method of a value of an
+// Exact type returned with err, for a value whose SizeKanon is n. It panics
+// with a *kanon.EncodeError that names loc and num and wraps kanon.ErrExact
+// and err, when err is not nil or enc does not have n bytes.
+func MustExact(enc []byte, err error, n int, loc string, num int)
+
+// ExactError returns the error of the canonical decode of a field of an Exact
+// type, whose decode method returned err or set the zero value: the error of
+// UnmarshalError at the offset valueOff of the value for an error, and the
+// error of AbsentError at the offset tagOff of the tag otherwise.
+func ExactError(err error, loc string, num, tagOff, valueOff int) error
 ```
 
 `ReadError`, `TagError` and the other constructors of a default decode apply to both kinds of
@@ -394,7 +510,7 @@ func (m *Inner) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Count = wire.Unzigzag(u)
 		i += n
-		if !(m.Count != 0) {
+		if m.Count == 0 {
 			return wire.AbsentError("Inner.Count", 2, off+at)
 		}
 	}
@@ -440,9 +556,11 @@ comparison of the length for most varints.
 
 The other checks of the generated code:
 
-- **Presence.** The condition is the presence condition that the size pass of the encoder emits
-  for the field, negated. A slice, map or struct field tests the length in the input, so that a
-  merge checks the input and not the merged value. An interface field tests the type number 0.
+- **Presence.** The condition is the absence condition of the field, the negation of the presence
+  condition that the size pass of the encoder emits for it: `m.Count == 0` for `m.Count != 0`. A
+  slice, map or struct field tests the length in the input, so that a merge checks the input and
+  not the merged value. An interface field is absent when it is nil, which type number 0 decodes
+  to.
 - **Unions.** The decode of a struct with a union of two members or more keeps one bit per union
   for the members that the input contains. A member with a member of a smaller number in its
   union fails with `wire.MemberError` when the bit is set, and a member with a member of a larger
@@ -462,8 +580,40 @@ The other checks of the generated code:
 - **Opaque values.** After the decode method of the type, the code encodes the value again and
   compares the bytes with the input. It encodes through the append method into a stack array of
   128 bytes, or through the encode method of the type's family. A field of a type whose `==`
-  compares every bit checks its presence between the decode method and the encode method.
+  compares every bit checks its presence between the decode method and the encode method. An
+  Exact type skips the second encode.
 - **Times.** A time decodes through `wire.CanonicalTime`.
+
+The encode of the field `Chain` of `Head`, of type `crypto.Digest`, which declares `kanon.Exact`,
+calls a put function that has no error:
+
+```go
+if !m.Chain.IsZero() {
+	w := _head_exactputCryptoDigest(buf[:i], &m.Chain, "Head.Chain", 2)
+	i -= w
+	i = wire.PutUvarint(buf, i, uint64(w))
+	i = wire.PutTag(buf, i, 2<<3|wire.Bytes)
+}
+
+func _head_exactputCryptoDigest(buf []byte, x *crypto.Digest, loc string, num int) int {
+	n := x.SizeKanon()
+	i := len(buf) - n
+	enc, err := x.AppendBinary(buf[i:i:len(buf)])
+	wire.MustExact(enc, err, n, loc, num)
+	return n
+}
+```
+
+The canonical decode of the field checks the decode method and the presence rule in one
+statement, after the length of the value:
+
+```go
+m.Chain = crypto.Digest{}
+if err := m.Chain.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Chain.IsZero() {
+	return wire.ExactError(err, "Head.Chain", 2, off+at, off+i)
+}
+i += int(l)
+```
 
 The docblock of `DecodeKanon` of a canonical type states the rule:
 
@@ -483,8 +633,8 @@ func (m *Header) DecodeKanon(data []byte, opts kanon.Options) error
   their two version constants.
 - A canonical decode compares the tag bytes of each field once, where a default decode reads each
   tag as a varint and switches on its number. It adds a comparison per varint of two or more
-  bytes, a presence check per field, a call of the compare function per map key, and one encode
-  per opaque value, two more per opaque map key.
+  bytes, a presence check per field, a call of the compare function per map key, one encode per
+  opaque value that is not Exact, and two more per opaque map key.
 - A canonical type has one decode. Its code file grows by the checks, not by a second decode.
 
 Measured on 2026-09-30 at `GOMAXPROCS=4`, the median of 8 runs, with `DecodeKanon` of the table
@@ -506,6 +656,11 @@ to 9% faster. The re-encodes of `Opaque` include the allocation of `MarshalBinar
 which has no append method. `wire.CanonicalTime` decodes a time 11% to 15% faster than
 `wire.Time`, with no allocation: 7.86 ns against 9.27 ns in UTC, and 12.65 ns against 14.41 ns in
 the local zone.
+
+The second encodes take most of the time of the canonical decode of `Opaque`. Its generated code
+without them, which an Exact declaration of both of its types gives, measured 5.32 ns on
+2026-10-01, against 11.82 ns with them and 5.51 ns for the default decode. Each binary ran 8 times,
+in alternation with the other two.
 
 ### The conformance suite
 
@@ -561,6 +716,33 @@ The generator writes `Canonical: true` into the Spec of a canonical type.
   one changed byte turns a bool into 2.
 - **Fuzzing.** `Fuzz` compares the generated decode of a canonical Spec with its reference decoder
   on every input, and runs the round-trip check on every input.
+- **Values of opaque types.** A sample takes a value of an opaque type from its decode method when
+  reflection gives only the zero value, as for a struct whose fields are all unexported. The
+  decode method decodes byte strings of every length up to the size of the type in memory. A
+  field of a digest or an identifier of the core module then has a sample in which it is present.
+- **Exact fields.** The reference decoder encodes every opaque value again, an Exact one
+  included. A type that breaks guarantee 2 fails the decode checks, since the generated code
+  accepts an input that the reference decoder rejects. A type that breaks guarantee 1 panics the
+  generated encode, which fails the check that encodes.
+
+The package of an Exact type checks the declaration itself:
+
+```go
+// ExactChecks returns the checks of T, a type that declares kanon.Exact,
+// over the values that the value tables and its decode method give it. The
+// append method and SizeKanon keep guarantee 1 for every such value other
+// than the zero value. The decode method keeps guarantee 2 for the encoding
+// of every such value, every prefix of it, every change of one of its bytes,
+// the encoding with one more byte, and a byte string of every length up to
+// the size of T in memory. For a type that does not encode itself through
+// an append method, or whose == does not compare every bit, ExactChecks
+// returns one check, which fails with the reason.
+func ExactChecks[T kanon.Exact]() []Check
+
+// RunExact runs the checks of T that ExactChecks returns, each as a
+// parallel subtest of t.
+func RunExact[T kanon.Exact](t *testing.T)
+```
 
 The vectors of this document run as tests of fixture types that match the vector types of the
 wire format, generated with `-canonical`, with the offset of each rejection.
@@ -659,16 +841,61 @@ kept bytes have no canonical order.
 **Why not:** the flag then has no effect for such a type, and nothing tells the author. The
 generation fails instead, when the author sets the flag.
 
-### A contract for opaque types
+### Trusting every opaque type
 
-The types that encode themselves promise that their decode method accepts only the bytes that
-their encode method writes, and a canonical decode skips the re-encode of their values. The
-digest, the identifier and the instant of the core module keep this promise: each accepts one
-encoding per value.
+The generator takes every opaque type to keep the guarantees of `kanon.Exact`, without a
+declaration. The generated code uses the results of their methods without checks, and skips the
+second encode of every opaque value.
 
-**Why not:** no check enforces the promise, and any opaque type that an application declares can
-break it. The guarantee of this design would then depend on every opaque type of every consumer.
-The re-encode costs at most the time that the encode of the struct spends on the value.
+**Why not:** many opaque types break the guarantees on purpose. A reading that is not a number has
+no encoding, and a text type can accept leading zeros. The guarantee of this design would then
+depend on every opaque type of every consumer, and no check would find the one that breaks it. An
+Exact type states the guarantees, and the conformance suite checks them.
+
+### Byte arrays in the schema
+
+A field that contains a digest or an identifier is a byte array, such as `[32]byte`, and the
+application converts it to and from the core types. The generated code of a byte array calls no
+method, and the conformance suite runs every statement of it.
+
+**Why not:** a byte array fixes one length per field. The core digest has 32, 48 or 64 bytes and
+the identifier 16, 20 or 32. A format that keeps the choice of algorithm then needs a field per
+length, or a byte slice, whose length the generated decode does not check.
+
+### A kanon codec for the core types
+
+The digest, the identifier and the instant get kanon codecs, whose encode the generator knows
+cannot fail.
+
+**Why not:** a codec encodes a struct as its fields. A digest then writes its 64-byte array and
+its size, about 70 bytes in a field where its 32-byte form takes 34, in another wire format than
+the raw digest.
+
+### Guards in functions of the runtime
+
+The generated code passes the results of the methods of every opaque type to functions of the
+wire package, which return one error for every way in which they can fail. No type declares
+anything.
+
+**Why not:** the guards of the decode fold into one statement that a decode error runs. The encode
+still returns the error of a field whose type cannot fail, and so does the `AppendBinary` of its
+struct. 11 of the 39 statements of the ledger's record package remain, and the canonical decode
+keeps its second encode.
+
+### An Exact type without a check at run time
+
+The generated code of an Exact field uses the results of the append method without checking them.
+
+**Why not:** a type that breaks guarantee 1 then writes a wrong encoding without an error. The
+check is two comparisons, and its panic shows the breach at the first encode.
+
+### Generated code outside the coverage gate of a consumer
+
+A consumer leaves its generated files out of its coverage gate, since the tests of kanon cover
+every kind of statement that the generator writes.
+
+**Why not:** the consumer then runs generated code that none of its gates measures, and the
+canonical decode keeps its second encode.
 
 ## Drawbacks
 
@@ -682,10 +909,22 @@ The re-encode costs at most the time that the encode of the struct spends on the
   readers versions its schema. Every canonical reader upgrades before any writer sets a new
   field.
 - The code file of a canonical type grows by a presence check per field, a check per union
-  member, an order check and a projection check per map, and a re-encode per opaque value.
-- A canonical decode encodes every opaque value again, and every opaque map key twice more for
-  its order. It allocates for a type without an append method and for an encoding longer than
-  128 bytes. The decode of `Opaque` takes 113% more time.
+  member, an order check and a projection check per map, and a re-encode per opaque value that is
+  not Exact.
+- A canonical decode encodes every opaque value that is not Exact again, and every opaque map key
+  twice more for its order. It allocates for a type without an append method and for an encoding
+  longer than 128 bytes. The decode of `Opaque` takes 113% more time.
+- A type that breaks guarantee 1 of `kanon.Exact` panics the encode of every struct with a field
+  of it. The conformance suite finds the breach only for the values that it builds.
+- `wire.MustExact` is the one panic of the library code, which otherwise returns every error. The
+  lint configuration exempts its file from the rule that forbids `panic`.
+- A canonical decode relies on guarantee 2 for an Exact value. A type that breaks it lets another
+  encoding of its value through. The conformance suite checks the guarantee on the values and
+  probes that it builds, not on every input.
+- The generator writes the code of a field of an opaque type in two forms, one for Exact types
+  and one for the others, and its tests cover both.
+- The public API of kanon grows by an interface, an error, two functions of the wire package and
+  two functions of kanontest. Each Exact type of the core module adds a marker method and a test.
 - Views and indexes of a canonical type check no canonical rule, so a reader that reads through
   them does not check the encoding.
 - A port reports the offsets of the vectors only when it checks in the order of this document.
@@ -699,10 +938,6 @@ The re-encode costs at most the time that the encode of the struct spends on the
   format lists that file as future work.
 - A check without a decode, for a reader that measures that a decode into a reused receiver
   exceeds its budget, is not proposed here.
-- An opaque type could declare that its decode method accepts one encoding per value, with a
-  conformance check of the declaration, so that a canonical decode skips its re-encode. It is not
-  proposed here. A benchmark of a record with many opaque values, such as the ledger's header,
-  shows whether the saving justifies the contract.
 
 ## References
 
@@ -718,5 +953,7 @@ The re-encode costs at most the time that the encode of the struct spends on the
 | The maps shape of the shape benchmarks, run 2026-09-29 | `docs/benchmarks.md` |
 | The cost of a canonical decode, run 2026-09-30 | the types of `internal/fixture/canonical/vector.go` generated with and without `-canonical`, one test binary each, run in alternation 8 times with `-test.run '^$' -test.bench '^BenchmarkKanon' -test.benchtime=200ms`, compared with `benchstat` |
 | The decode of a time, run 2026-09-30 | `go test -run '^$' -bench 'BenchmarkTime/(Canonical)?Time/' -benchtime=200ms -count=8 ./wire/` |
+| The canonical decode of `Opaque` without its second encodes, run 2026-10-01 | the generated code of `Opaque` with `-canonical`, the same code with its two second encodes removed, and the code without `-canonical`, one test binary each, run in alternation 8 times with `-test.run '^$' -test.bench '^BenchmarkKanonOpaque$/^DecodeKanon$' -test.benchtime=200ms`, compared with `benchstat` |
+| The statements of the ledger's record package that its conformance suite cannot run, 2026-10-01 | `go test -coverprofile` of `evidence/format/record` in the ledger repository, generated by this design with values of opaque types from their decode method: 39 blocks in `head`, `link`, `manifest`, `precondition` and `unit` |
 | The count of decode functions and lines in the code files of the fixtures, 2026-09-30 | a `go/parser` walk of `internal/fixture/**/*.kanon.go` |
-| The decode methods of `crypto.Digest`, `id.ID` and `clock.Instant` | `go.thesmos.sh/core` at `df6887b`: `crypto/digest.go`, `id/binary.go`, `clock/instant.go` |
+| The encode and decode methods of `crypto.Digest`, `id.ID` and `clock.Instant` | `go.thesmos.sh/core` at `9caa95a`: `crypto/digest.go:107` and `:137`, `id/id.go:106` and `id/binary.go:17` and `:62`, `clock/instant.go:97`, `:133` and `:155` |

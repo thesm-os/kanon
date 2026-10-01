@@ -19,6 +19,6 @@
 // # Dependency position
 //
 // canonical imports encoding/binary, errors, math, strconv and time from the
-// standard library, the fixture packages external and validate, and its
-// generated code the kanon runtime.
+// standard library, the fixture packages codec, external and validate, and
+// its generated code the kanon runtime.
 package canonical

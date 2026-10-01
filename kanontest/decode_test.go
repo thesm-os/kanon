@@ -24,8 +24,9 @@ const (
 
 // scalarsSpec describes canonical.Scalars, a canonical struct with a field of
 // each kind of number, bools, text, arrays, a time, and types that encode
-// themselves, of which Count, Digest and Stamp are absent at their zero value
-// and Gauge is present when its encoding has bytes.
+// themselves, of which Count, Digest, Stamp and Serial, a kanon.Exact type,
+// are absent at their zero value and Gauge is present when its encoding has
+// bytes.
 var scalarsSpec = kanontest.Spec[canonical.Scalars]{
 	Fields: []kanontest.Field{
 		{Name: "Bool", Number: 1},
@@ -63,6 +64,7 @@ var scalarsSpec = kanontest.Spec[canonical.Scalars]{
 		{Name: "Level", Number: 33},
 		{Name: "Digests", Number: 34},
 		{Name: "Gauge", Number: 35},
+		{Name: "Serial", Number: 36},
 	},
 	Canonical: true,
 }

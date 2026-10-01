@@ -34,6 +34,9 @@
 // # Errors
 //
 // The error functions return a *kanon.DecodeError or a *kanon.EncodeError.
+// [MustExact] panics with a *kanon.EncodeError instead, since the encode of a
+// field of a kanon.Exact type has no error path. It panics only for a type
+// that breaks the guarantee of kanon.Exact.
 // They take the location of the value as loc, "Type.Field" for a field and
 // "Type" alone for the struct itself, with num, the field number, 0 for the
 // struct. Type names contain dots, and field names do not, so the last dot

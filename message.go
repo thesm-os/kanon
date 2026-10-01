@@ -197,6 +197,35 @@ type Sizer interface {
 	SizeKanon() int
 }
 
+// Exact is the method set of a [Sizer] that states two guarantees of its
+// methods. It encodes itself through an append method, AppendBinary or
+// AppendText, and == compares every bit of it, so that a field leaves out
+// its zero value. For every value other than its zero value, the append
+// method returns no error and appends SizeKanon bytes. The decode method of
+// its family accepts a byte string only when the append method writes that
+// byte string for the value that the decode method sets. The encode of the
+// zero value can fail.
+//
+// # Encoding
+//
+// The generated code writes a field of an Exact type without an error path,
+// and a canonical decode does not encode a decoded value again. A field
+// value whose append method fails, or appends another length than its
+// SizeKanon, panics the encode with an [*EncodeError] that wraps [ErrExact].
+// A value in any other position, such as an element or a union member,
+// which the encoding writes at the zero value too, encodes as the value of
+// a Sizer does. The generation fails for a type that declares ExactKanon
+// without an append method, without SizeKanon, or with an == that does not
+// compare every bit.
+//
+// [go.thesmos.sh/kanon/kanontest.RunExact] checks both guarantees, in the
+// package that declares the type.
+type Exact interface {
+	Sizer
+	// ExactKanon marks the type. No code calls it.
+	ExactKanon()
+}
+
 // Options set the slab and the nesting limit of a decode, and with the zero
 // Options a decode copies its input once, uses the copy as the slab and
 // applies [DefaultDepth].

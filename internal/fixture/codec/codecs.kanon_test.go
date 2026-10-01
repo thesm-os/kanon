@@ -24,6 +24,8 @@ var kanonSpecCodecs = kanontest.Spec[Codecs]{
 		{Name: "Blob", Number: 10},
 		{Name: "Hash", Number: 11},
 		{Name: "Clip", Number: 12},
+		{Name: "Sum", Number: 13},
+		{Name: "Serial", Number: 14},
 	},
 }
 
@@ -52,6 +54,8 @@ var kanonSpecAppenders = kanontest.Spec[Appenders]{
 		{Name: "Seal", Number: 5},
 		{Name: "Hash", Number: 6},
 		{Name: "Clip", Number: 7},
+		{Name: "Sum", Number: 8},
+		{Name: "Serial", Number: 9},
 	},
 }
 

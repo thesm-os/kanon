@@ -210,7 +210,7 @@ func (m *Inner) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Count = wire.Unzigzag(u)
 		i += n
-		if !(m.Count != 0) {
+		if m.Count == 0 {
 			return wire.AbsentError("Inner.Count", 2, off+at)
 		}
 	}
@@ -441,7 +441,7 @@ func (m *Numbers) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		m.A = uint32(u)
 		i += n
-		if !(m.A != 0) {
+		if m.A == 0 {
 			return seen, wire.AbsentError("Numbers.A", 1, off+at)
 		}
 	}
@@ -455,7 +455,7 @@ func (m *Numbers) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		m.D = int64(u)
 		i += n
-		if !(m.D != 0) {
+		if m.D == 0 {
 			return seen, wire.AbsentError("Numbers.D", 4, off+at)
 		}
 	}
@@ -475,7 +475,7 @@ func (m *Numbers) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		m.E = u != 0
 		i += n
-		if !(m.E) {
+		if !m.E {
 			return seen, wire.AbsentError("Numbers.E", 5, off+at)
 		}
 	}
@@ -496,7 +496,7 @@ func (m *Numbers) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		m.F = int32(s)
 		i += n
-		if !(m.F != 0) {
+		if m.F == 0 {
 			return seen, wire.AbsentError("Numbers.F", 6, off+at)
 		}
 	}
@@ -1575,7 +1575,7 @@ func (m *Times) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.CreatedAt = t
 		i += int(l)
-		if !(!m.CreatedAt.IsZero() || m.CreatedAt.Location() != time.UTC) {
+		if m.CreatedAt.IsZero() && m.CreatedAt.Location() == time.UTC {
 			return wire.AbsentError("Times.CreatedAt", 1, off+at)
 		}
 	}
@@ -1592,7 +1592,7 @@ func (m *Times) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Timeout = time.Duration(wire.Unzigzag(u))
 		i += n
-		if !(m.Timeout != 0) {
+		if m.Timeout == 0 {
 			return wire.AbsentError("Times.Timeout", 2, off+at)
 		}
 	}
@@ -2214,7 +2214,7 @@ func (m *Opaque) mergeKanon(data []byte, slab string, off, depth int) error {
 		if err := m.Digest.UnmarshalBinary(data[i : i+int(l)]); err != nil {
 			return wire.UnmarshalError(err, "Opaque.Digest", 1, off+i)
 		}
-		if !(m.Digest != (Digest{})) {
+		if m.Digest == (Digest{}) {
 			return wire.AbsentError("Opaque.Digest", 1, off+at)
 		}
 		{
@@ -2242,7 +2242,7 @@ func (m *Opaque) mergeKanon(data []byte, slab string, off, depth int) error {
 		if err := m.Stamp.UnmarshalBinary(data[i : i+int(l)]); err != nil {
 			return wire.UnmarshalError(err, "Opaque.Stamp", 2, off+i)
 		}
-		if !(m.Stamp != 0) {
+		if m.Stamp == 0 {
 			return wire.AbsentError("Opaque.Stamp", 2, off+at)
 		}
 		{
@@ -2465,7 +2465,7 @@ func (m *Fixture) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Score = wire.Unzigzag(u)
 		i += n
-		if !(m.Score != 0) {
+		if m.Score == 0 {
 			return wire.AbsentError("Fixture.Score", 4, off+at)
 		}
 	}
@@ -2485,7 +2485,7 @@ func (m *Fixture) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Enabled = u != 0
 		i += n
-		if !(m.Enabled) {
+		if !m.Enabled {
 			return wire.AbsentError("Fixture.Enabled", 6, off+at)
 		}
 	}
@@ -2505,7 +2505,7 @@ func (m *Fixture) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		i += n
 		i += copy(m.Ref[:], data[i:])
-		if !(m.Ref != ([32]byte{})) {
+		if m.Ref == ([32]byte{}) {
 			return wire.AbsentError("Fixture.Ref", 8, off+at)
 		}
 	}
@@ -2702,7 +2702,7 @@ func (m *Patch) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		m.Fixed64Val = int64(u)
 		i += n
-		if !(m.Fixed64Val != 0) {
+		if m.Fixed64Val == 0 {
 			return wire.AbsentError("Patch.Fixed64Val", 7, off+at)
 		}
 	}
@@ -2722,7 +2722,7 @@ func (m *Patch) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		i += n
 		i += copy(m.BlobRef[:], data[i:])
-		if !(m.BlobRef != ([32]byte{})) {
+		if m.BlobRef == ([32]byte{}) {
 			return wire.AbsentError("Patch.BlobRef", 8, off+at)
 		}
 	}
@@ -3102,7 +3102,7 @@ func (m *Holder) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			return seen, err
 		}
 		i += int(l)
-		if !(m.Arr != ([2]int32{})) {
+		if m.Arr == ([2]int32{}) {
 			return seen, wire.AbsentError("Holder.Arr", 5, off+at)
 		}
 	}
@@ -5399,7 +5399,7 @@ func _vector_mergePoint(m *Point, data []byte, slab string, off, depth int) erro
 		}
 		m.X = int32(s)
 		i += n
-		if !(m.X != 0) {
+		if m.X == 0 {
 			return wire.AbsentError("Point.X", 1, off+at)
 		}
 	}
@@ -5420,7 +5420,7 @@ func _vector_mergePoint(m *Point, data []byte, slab string, off, depth int) erro
 		}
 		m.Y = int32(s)
 		i += n
-		if !(m.Y != 0) {
+		if m.Y == 0 {
 			return wire.AbsentError("Point.Y", 2, off+at)
 		}
 	}
@@ -5982,7 +5982,7 @@ func _vector_mergeCircle(m *Circle, data []byte, slab string, off, depth int) er
 		}
 		m.Radius = math.Float64frombits(u)
 		i += n
-		if !(math.Float64bits(m.Radius) != 0) {
+		if math.Float64bits(m.Radius) == 0 {
 			return wire.AbsentError("Circle.Radius", 1, off+at)
 		}
 	}
@@ -6190,7 +6190,7 @@ func _vector_mergeSquare(m *Square, data []byte, slab string, off, depth int) er
 		}
 		m.Side = int32(s)
 		i += n
-		if !(m.Side != 0) {
+		if m.Side == 0 {
 			return wire.AbsentError("Square.Side", 1, off+at)
 		}
 	}

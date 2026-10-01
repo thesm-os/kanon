@@ -14,7 +14,7 @@ import (
 // ops lists the operations of the helpers of a code file.
 var ops = []string{
 	opSize, opPresent, opPut, opRead, opMerge, opFields, opDeselect, opReset, opClone, opCompare, opKeySize, opKeyPut,
-	opKeyPresent, opNaN, opCanon, opNegZero, opTag,
+	opKeyPresent, opNaN, opCanon, opNegZero, opTag, opExactPut,
 }
 
 func TestHelper(t *testing.T) {

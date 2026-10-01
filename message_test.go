@@ -25,6 +25,9 @@ var (
 	_ kanon.Sizer = codec.Clip("")
 )
 
+// codec.Serial is the kanon.Exact fixture.
+var _ kanon.Exact = codec.Serial{}
+
 // A codec.Clip longer than the 4 bytes that its SizeKanon counts, and the
 // field of codec.Codecs that the error of its encode names.
 const (

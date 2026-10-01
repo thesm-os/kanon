@@ -13,6 +13,19 @@ import (
 // tests generate.
 const typeDirective = "//go:generate go tool kanon -type=A\n\n"
 
+// exactStructs is the source of Tok, a type that declares kanon.Exact, and of
+// the struct types A, with a field of Tok, Mark, B, with a slice of it, and
+// C, with a union member of it.
+const exactStructs = "type Mode uint8\n\nconst ModeOne Mode = 1\n\n" +
+	"type Tok [2]byte\n\n" +
+	"func (t Tok) AppendBinary(b []byte) ([]byte, error) { return append(b, t[:]...), nil }\n\n" +
+	"func (t *Tok) UnmarshalBinary(d []byte) error { copy(t[:], d); return nil }\n\n" +
+	"func (Tok) SizeKanon() int { return 2 }\n\n" +
+	"func (Tok) ExactKanon() {}\n\n" +
+	"type A struct {\n\tMark Tok\n\tX int32\n}\n\n" +
+	"type B struct {\n\tToks []Tok\n}\n\n" +
+	"type C struct {\n\tKind Mode\n\tOne Tok `kanon:\",union=Kind\"`\n}\n"
+
 // leftOutArrayKey returns the source of a code file whose struct A has a map
 // with keys of K, a struct with an array of n elements of L, a struct with a
 // field that the encoding leaves out.
@@ -78,5 +91,38 @@ func TestTree(t *testing.T) {
 			assert.Contains(t, files[codeName], "i -= _a_putMapArray0PtrInt32String(buf[:i], m.M)",
 				"the encode of the map returns no error")
 		})
+		files, err := generate(t, module(t, map[string]string{source: exactStructs}), source, "A,B,C")
+		assert.NoError(t, err, "Generate generates the struct types with values of a kanon.Exact type")
+		appends := pickDeclarations(t, source, files[codeName], func(d declaration) bool {
+			return d.method == appendBinary
+		})
+		encodes := []struct {
+			name string
+			recv string
+			want string
+		}{
+			{
+				name: "encodes a struct with a field of a kanon.Exact type without an error",
+				recv: "A",
+				want: "\tm.encodeKanon(out)\n",
+			},
+			{
+				name: "encodes a struct with a slice of a kanon.Exact type with an error",
+				recv: "B",
+				want: "if _, err := m.encodeKanon(out); err != nil {",
+			},
+			{
+				name: "encodes a struct with a union member of a kanon.Exact type with an error",
+				recv: "C",
+				want: "if _, err := m.encodeKanon(out); err != nil {",
+			},
+		}
+		for _, tt := range encodes {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, appends[tt.recv+"."+appendBinary], tt.want,
+					"AppendBinary of "+tt.recv+" calls the encode of the struct")
+			})
+		}
 	})
 }

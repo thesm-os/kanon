@@ -23,6 +23,16 @@ const (
 	subImport   = "import \"example.com/m/sub\"\n\n"
 )
 
+// Methods of a type T that declares kanon.Exact, each followed by a blank
+// line, from which the classify tests leave one out or add another.
+const (
+	appendT    = "func (t T) AppendBinary(b []byte) ([]byte, error) { return append(b, 0), nil }\n\n"
+	unmarshalT = "func (t *T) UnmarshalBinary(d []byte) error { return nil }\n\n"
+	sizeT      = "func (T) SizeKanon() int { return 1 }\n\n"
+	exactT     = "func (T) ExactKanon() {}\n\n"
+	validateT  = "func (T) ValidateKanon() error { return nil }\n\n"
+)
+
 func TestClassify(t *testing.T) {
 	t.Parallel()
 	t.Run("Generate", func(t *testing.T) {
@@ -89,6 +99,39 @@ func TestClassify(t *testing.T) {
 				},
 				want: "kanon: a.go:8:2: A.E: ValidateKanon of type example.com/m.E has nothing to check: the zero " +
 					"value is the only value of the type",
+			},
+			{
+				name: "returns an error for a type that declares ExactKanon without an append method",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" +
+						"func (t T) MarshalBinary() ([]byte, error) { return t[:], nil }\n\n" +
+						unmarshalT + sizeT + exactT + structA("T T"),
+				},
+				want: "kanon: a.go:14:2: A.T: example.com/m.T declares ExactKanon, and does not encode itself " +
+					"through AppendBinary or AppendText",
+			},
+			{
+				name: "returns an error for a kanon.Validator that declares ExactKanon",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" + validateT + appendT + unmarshalT + sizeT + exactT + structA("T T"),
+				},
+				want: "kanon: a.go:16:2: A.T: example.com/m.T declares ExactKanon, and does not encode itself " +
+					"through AppendBinary or AppendText",
+			},
+			{
+				name: "returns an error for a type that declares ExactKanon without SizeKanon",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" + appendT + unmarshalT + exactT + structA("T T"),
+				},
+				want: "kanon: a.go:12:2: A.T: example.com/m.T declares ExactKanon, and has no method SizeKanon() int",
+			},
+			{
+				name: "returns an error for a type that declares ExactKanon and whose == does not compare every bit",
+				files: map[string]string{
+					source: "type T struct{ F float64 }\n\n" + appendT + unmarshalT + sizeT + exactT + structA("T T"),
+				},
+				want: "kanon: a.go:14:2: A.T: example.com/m.T declares ExactKanon, and == does not compare every bit " +
+					"of it",
 			},
 		}
 		// hiddenPart is the reason of the errors for the types that contain

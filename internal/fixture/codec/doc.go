@@ -17,11 +17,16 @@
 // A Clip counts 4 bytes at most, a Hash its Size above the 8 bytes that it
 // appends and a Reading 16 for -Inf, so that their encodes fail for such a
 // value with kanon.ErrSize, and a Clip with a NUL byte and a Reading of +Inf
-// return a SizeKanon of -1. The encoding of each type fails for a value in every way
-// that the generated code handles, and the decoding for malformed data, so
-// that the generated tests run the error branches of the code that calls
-// them. [Codecs] has a field of each, and [Appenders] a field of each with
-// an append method.
+// return a SizeKanon of -1. [Sum] has unexported fields alone, as the
+// digests and identifiers of go.thesmos.sh/core have, so that the
+// conformance suite builds its values through UnmarshalBinary, and its first
+// byte selects each way in which its encode fails. [Serial] has unexported
+// fields alone too, and declares kanon.Exact, so that a field of it encodes
+// without an error path, and its test runs kanontest.RunExact on it. The
+// encoding of each type fails for a value in every way that the generated
+// code handles, and the decoding for malformed data, so that the generated
+// tests run the error branches of the code that calls them. [Codecs] has a
+// field of each, and [Appenders] a field of each with an append method.
 //
 // # Dependency position
 //

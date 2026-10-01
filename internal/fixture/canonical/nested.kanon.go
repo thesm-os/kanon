@@ -426,7 +426,7 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			return seen, err
 		}
 		i += int(l)
-		if !(_nested_presentArray2SliceInt32(&m.Pairs)) {
+		if !_nested_presentArray2SliceInt32(&m.Pairs) {
 			return seen, wire.AbsentError("Deep.Pairs", 7, off+at)
 		}
 		seen[0] |= 1 << 4
@@ -936,7 +936,7 @@ func _nested_mergeCell(m *Cell, data []byte, slab string, off, depth int) error 
 		}
 		m.Row = int8(s)
 		i += n
-		if !(m.Row != 0) {
+		if m.Row == 0 {
 			return wire.AbsentError("Cell.Row", 1, off+at)
 		}
 	}
@@ -957,7 +957,7 @@ func _nested_mergeCell(m *Cell, data []byte, slab string, off, depth int) error 
 		}
 		m.Col = int8(s)
 		i += n
-		if !(m.Col != 0) {
+		if m.Col == 0 {
 			return wire.AbsentError("Cell.Col", 2, off+at)
 		}
 	}
@@ -1312,7 +1312,7 @@ func _nested_mergeDeepAnonym(m *struct {
 		}
 		m.A = int32(s)
 		i += n
-		if !(m.A != 0) {
+		if m.A == 0 {
 			return wire.AbsentError("Deep.Anonym.A", 1, off+at)
 		}
 	}
@@ -1333,7 +1333,7 @@ func _nested_mergeDeepAnonym(m *struct {
 		}
 		m.B = int32(s)
 		i += n
-		if !(m.B != 0) {
+		if m.B == 0 {
 			return wire.AbsentError("Deep.Anonym.B", 2, off+at)
 		}
 	}

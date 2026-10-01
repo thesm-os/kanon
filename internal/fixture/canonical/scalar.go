@@ -6,6 +6,7 @@ package canonical
 import (
 	"time"
 
+	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
 )
 
@@ -21,12 +22,13 @@ type (
 )
 
 // Scalars has a field of each kind of number, bools, text, a byte array,
-// arrays, a time, the types of this package that encode themselves and a
-// kanon.Validator of another package: a field of each kind whose presence
-// and whose varints a canonical decode checks. Digests encodes the zero
-// Digest, which a field leaves out, so that its encode fails. A Gauge field
-// is present when its encoding has bytes, since == does not compare every
-// bit of a Gauge.
+// arrays, a time, the types of this package that encode themselves, a
+// kanon.Validator of another package and a kanon.Exact type of another
+// package: a field of each kind whose presence and whose varints a canonical
+// decode checks. Digests encodes the zero Digest, which a field leaves out,
+// so that its encode fails. A Gauge field is present when its encoding has
+// bytes, since == does not compare every bit of a Gauge. A Serial field
+// decodes without a second encode.
 type Scalars struct {
 	Bool       bool
 	Flag       Flag
@@ -63,4 +65,5 @@ type Scalars struct {
 	Level      validate.Level
 	Digests    []Digest
 	Gauge      Gauge
+	Serial     codec.Serial
 }

@@ -441,7 +441,7 @@ func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 	case kindInterface:
 		r.buildInterface(src, s, v, depth)
 	case kindBinary:
-		r.scalar(src, v, depth)
+		r.self(src, v, depth)
 		if x, ok := failure(src, r.failures(s.typ)); ok {
 			v.Set(x)
 		} else if _, err := encodeSelf(v); err != nil {
@@ -774,15 +774,16 @@ func other(f float64) float64 {
 
 // failures returns values of t, a type that encodes itself, that fail to
 // encode: per way to fail, as [failModeOf] tells them apart, the first value
-// of the value tables that fails that way, in the order of the ways. A value
-// other than the zero value takes the place of the zero value, when the
-// tables have one that fails the same way: a field leaves out the zero value
-// of a type whose == compares every bit, so that it fails in no field.
+// that [resolver.self] builds from the value tables that fails that way, in
+// the order of the ways. A value other than the zero value takes the place of
+// the zero value, when the tables give one that fails the same way: a field
+// leaves out the zero value of a type whose == compares every bit, so that it
+// fails in no field.
 func (r *resolver) failures(t reflect.Type) []reflect.Value {
 	var first [failsLength + 1]reflect.Value
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
-		r.scalar(table(i), v, 0)
+		r.self(table(i), v, 0)
 		m := failModeOf(v)
 		if m != 0 && (!first[m].IsValid() || first[m].IsZero() && !v.IsZero()) {
 			first[m] = v
@@ -804,15 +805,15 @@ func failure(src source, fails []reflect.Value) (reflect.Value, bool) {
 }
 
 // success returns a value of t, a type that encodes itself, that encodes,
-// as [encodeSelf] reports it: the first value of the value tables that
-// does, or the zero value when none does, so that a sample fails to encode
-// only where a failing source fails it.
+// as [encodeSelf] reports it: the first value that [resolver.self] builds
+// from the value tables that does, or the zero value when none does, so that
+// a sample fails to encode only where a failing source fails it.
 func (r *resolver) success(t reflect.Type) reflect.Value {
 	ok := reflect.Zero(t)
 	found := false
 	for i := range drawCount {
 		v := reflect.New(t).Elem()
-		r.scalar(table(i), v, 0)
+		r.self(table(i), v, 0)
 		if _, err := encodeSelf(v); !found && err == nil {
 			ok, found = v, true
 		}

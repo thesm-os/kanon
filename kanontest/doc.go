@@ -5,8 +5,10 @@
 // against the kanon wire format. The test file that kanon generates beside
 // a code file declares one [Spec] per struct type and calls [Run], [Bench]
 // and [Fuzz] with it, and calls [RunValue] on each named type that is not a
-// struct. [Checks] and [ValueChecks] return the checks of [Run] and
-// [RunValue], so that a test runs them against a codec of its own.
+// struct. The package that declares a kanon.Exact type calls [RunExact] on
+// it in a test of its own. [Checks], [ValueChecks] and [ExactChecks] return
+// the checks of [Run], [RunValue] and [RunExact], so that a test runs them
+// against a codec of its own.
 //
 // # Reference
 //
@@ -44,6 +46,13 @@
 //     per side of the entries of a map whose keys or values can fail to
 //     encode, a wide sample in which one entry of such a map fails at that
 //     side.
+//
+// A value of a type that encodes itself takes the value of its Go kind, and
+// for a struct the values of the fields that kanon would encode. A type for
+// which that gives no value other than the zero value, such as a struct whose
+// fields are all unexported, takes the values that its decode method decodes
+// from byte strings of every length that it accepts, up to the size of the
+// type in memory.
 //
 // An int, a uint and a uintptr take values of 32 bits in every sample, so
 // the samples and their encodings are the same on every platform. The map
@@ -149,6 +158,25 @@
 // binary, gob or text family of the type accepts it, and the golden file of
 // the type pins the encoding or the error of each value of the value
 // tables.
+//
+// # Exact types
+//
+// The reference encoder and decoder treat a value of a kanon.Exact type as
+// the value of any other type that encodes itself. The reference decoder
+// encodes it again, so the decode checks of a struct with a field of such a
+// type fail for a type whose decode method accepts bytes that its append
+// method does not write. A type whose append method fails for a value other
+// than the zero value panics the generated encode of such a field.
+// [RunExact] checks both guarantees of kanon.Exact on the type itself:
+//
+//   - For every value of the value tables and every value that the decode
+//     method decodes, other than the zero value, the append method returns
+//     no error and appends as many bytes as SizeKanon returns.
+//   - The decode method decodes the encoding of every value of the value
+//     tables, every prefix of it, every change of one of its bytes, the
+//     encoding with one more byte, and a byte string of every length up to
+//     the size of the type in memory. For every input that it accepts, the
+//     append method writes the input for the decoded value.
 //
 // # Allocations
 //

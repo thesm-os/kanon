@@ -210,11 +210,46 @@ func EncodingError(loc string, num, off int) error {
 	return decodeError(kanon.ErrNotCanonical, loc, num, off, "bytes differ from the encoding of the decoded value")
 }
 
+// ExactError returns the error of the canonical decode of a field of a
+// kanon.Exact type, whose decode method returned err or set the zero value:
+// the error of [UnmarshalError] at the offset valueOff of the value for an
+// err that is not nil, and the error of [AbsentError] at the offset tagOff
+// of the tag of the field otherwise.
+func ExactError(err error, loc string, num, tagOff, valueOff int) error {
+	if err != nil {
+		return UnmarshalError(err, loc, num, valueOff)
+	}
+	return AbsentError(loc, num, tagOff)
+}
+
 // SizeError returns the error for the encode of a value of a kanon.Sizer,
 // whose encode method returned another length than its SizeKanon, which
 // loc and num locate at the field of the value. It wraps kanon.ErrSize.
 func SizeError(loc string, num int) error {
 	return MarshalError(kanon.ErrSize, loc, num)
+}
+
+// MustExact checks enc, the encoding that the append method of a
+// kanon.Exact type returned with err for a value other than its zero value,
+// whose SizeKanon is n. kanon.Exact guarantees that err is nil and that enc
+// has n bytes. For a type that breaks the guarantee, MustExact panics with a
+// *kanon.EncodeError that loc and num locate at the field of the value, and
+// that wraps kanon.ErrExact and err.
+func MustExact(enc []byte, err error, n int, loc string, num int) {
+	if err != nil || len(enc) != n {
+		panic(exactFailure(len(enc), err, n, loc, num))
+	}
+}
+
+// exactFailure returns the error of [MustExact] for an append method that
+// appended got bytes and returned err, for a value whose SizeKanon is n: the
+// error of [MarshalError] for a cause that wraps kanon.ErrExact and err, or
+// kanon.ErrExact alone and states got and n when err is nil.
+func exactFailure(got int, err error, n int, loc string, num int) error {
+	if err != nil {
+		return MarshalError(fmt.Errorf("%w: %w", kanon.ErrExact, err), loc, num)
+	}
+	return MarshalError(fmt.Errorf("%w: appended %d bytes, want %d", kanon.ErrExact, got, n), loc, num)
 }
 
 // decodeError returns the *kanon.DecodeError of loc and num at offset off,

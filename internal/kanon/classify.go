@@ -99,7 +99,8 @@ type classifier struct {
 //
 // classify fails for a type that kanon does not encode: a function, a
 // channel and an unsafe pointer; for a type that the generated code cannot
-// name, as [nameable] states; for a ValidateKanon that [validatorOf]
+// name, as [nameable] states; for an ExactKanon that [classifier.exactable]
+// rejects; for a ValidateKanon that [validatorOf]
 // rejects; for a kanon.Validator whose only value is its zero value, as
 // [value.zeroOnly] reports, since its encoding is a constant that the
 // generated code writes and reads without the value; for an interface
@@ -149,6 +150,9 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 	}
 	v := &value{typ: t, id: c.id(t, o)}
 	if named, ok := t.(*types.Named); ok {
+		if err := c.exactable(named); err != nil {
+			return nil, err
+		}
 		validates, err := c.validator(named)
 		if err != nil {
 			return nil, err
@@ -267,6 +271,31 @@ func (c classifier) validator(t *types.Named) (bool, error) {
 		return true, nil
 	}
 	return validatorOf(t)
+}
+
+// exactable fails for the named type t when it declares ExactKanon, as
+// [exactType] reports, and does not meet the requirements of kanon.Exact: t
+// encodes itself through an append method, as [classifier.binaryType]
+// reports and [selfCodecOf] names the method, it has SizeKanon, and ==
+// compares every bit of it, as [bitwiseType] reports, so that a field leaves
+// out its zero value.
+func (c classifier) exactable(t *types.Named) error {
+	if !exactType(t) {
+		return nil
+	}
+	name := types.TypeString(t, nil)
+	self, _ := selfCodecOf(t)
+	if !c.binaryType(t) || self.appender == "" {
+		return fmt.Errorf("kanon: %s declares %s, and does not encode itself through AppendBinary or AppendText",
+			name, exactKanonName)
+	}
+	if !self.sizer {
+		return fmt.Errorf("kanon: %s declares %s, and has no method SizeKanon() int", name, exactKanonName)
+	}
+	if !bitwiseType(t) {
+		return fmt.Errorf("kanon: %s declares %s, and == does not compare every bit of it", name, exactKanonName)
+	}
+	return nil
 }
 
 // validates reports whether the named type t is a kanon.Validator, as

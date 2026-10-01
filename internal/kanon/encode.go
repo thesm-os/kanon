@@ -166,19 +166,23 @@ func (e *emitter) putField(m *target, f *field) {
 	x, v, loc, num := "m."+f.name, f.val, fieldLoc(m, f), strconv.Itoa(f.num)
 	switch v.kind {
 	case kindStruct, kindBinary:
-		call := e.contentCall(v, x, loc, num)
 		if zeroAbsent(v) {
 			e.line("if %s {", e.present(v, x))
-			e.line("w, err := %s", call)
-			e.line("if err != nil {")
-			e.line("return 0, err")
-			e.line("}")
+			if v.fails {
+				e.line("w, err := %s", e.contentCall(v, x, loc, num))
+				e.line("if err != nil {")
+				e.line("return 0, err")
+				e.line("}")
+			} else {
+				e.line("w := %s(buf[:i], %s, %s, %s)", e.fn(opExactPut, v), addr(x), loc, num)
+			}
 			e.line("i -= w")
 			e.line("i = %sPutUvarint(buf, i, uint64(w))", e.wire())
 			e.putTag(f.num, wireBytes)
 			e.line("}")
 			return
 		}
+		call := e.contentCall(v, x, loc, num)
 		if v.fails {
 			e.line("if w, err := %s; err != nil {", call)
 			e.line("return 0, err")
@@ -424,6 +428,28 @@ func (e *emitter) putSized(v *value) {
 		e.line("copy(buf[i:], enc)")
 	}
 	e.line("return n, nil")
+}
+
+// exactPutHelper writes the put function of a field of v, a type that
+// declares kanon.Exact, which the encoding writes only at a value other than
+// the zero value: it sizes the value that x points at with SizeKanon, appends
+// its encoding into that room in place, and returns its length. kanon.Exact
+// guarantees that the append method does not fail and appends SizeKanon bytes
+// for such a value, so the function has no error path, and wire.MustExact
+// panics for a type that breaks the guarantee.
+func (e *emitter) exactPutHelper(name string, v *value) {
+	typ := e.p.typ(v.typ)
+	e.doc(name + " writes the encoding of the " + typ + " that x points at, which is not its zero value, into " +
+		"the end of buf, which has room for its SizeKanon, and returns its length. " + typ + " declares " +
+		"kanon.Exact, so the encoding does not fail, and a value that breaks the guarantee panics.")
+	e.line("func %s(buf []byte, x *%s, loc string, num int) int {", name, typ)
+	e.line("n := x.%s()", sizeKanonName)
+	e.line("i := len(buf) - n")
+	e.line("enc, err := x.%s(buf[i:i:len(buf)])", v.self.appender)
+	e.line("%sMustExact(enc, err, n, loc, num)", e.wire())
+	e.line("return n")
+	e.line("}")
+	e.line("")
 }
 
 // putHelper writes the put function of the values of v: the function that

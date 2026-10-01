@@ -55,13 +55,7 @@ func newValueSuite(t reflect.Type) (*valueSuite, error) {
 	if t.Kind() == reflect.Struct || t.Kind() == reflect.Interface {
 		return nil, fmt.Errorf("kanontest: %v is a struct or an interface type, which kanon does not validate", t)
 	}
-	r := &resolver{
-		pkg:     t.PkgPath(),
-		layouts: make(map[reflect.Type]*layout),
-		loose:   make(map[reflect.Type]*layout),
-		bad:     make(map[*shape][]badKey),
-		taints:  make(map[reflect.Type]reflect.Value),
-	}
+	r := resolverFor(t.PkgPath())
 	s, err := r.shapeOf(t, opts{seen: make(map[seenKey]*shape), loose: true})
 	if err != nil {
 		return nil, fmt.Errorf("kanontest: %v: %w", t, err)

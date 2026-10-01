@@ -68,6 +68,9 @@ const (
 	// opTag returns the error of the canonical decode of a struct for a byte
 	// that begins no field after the fields before it.
 	opTag op = 17
+	// opExactPut writes the encoding of a field of a type that declares
+	// kanon.Exact into the end of a buffer, without an error path.
+	opExactPut op = 18
 )
 
 // word returns the word of o in the names of its helpers, after the prefix
@@ -106,6 +109,8 @@ func (o op) word() string {
 		return "negzero"
 	case opTag:
 		return "tag"
+	case opExactPut:
+		return "exactput"
 	default:
 		return "deselect"
 	}
@@ -222,6 +227,8 @@ func (e *emitter) writeHelper(h helper) {
 		e.canonHelper(h.name, h.v)
 	case opTag:
 		e.tagHelper(h.name, h.m)
+	case opExactPut:
+		e.exactPutHelper(h.name, h.v)
 	default:
 		e.deselectHelper(h.name, h.m, h.disc)
 	}

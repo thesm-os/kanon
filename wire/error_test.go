@@ -23,10 +23,18 @@ const (
 	errField  = "Count"
 	errNumber = 7
 	errOff    = 12
+	// errTagOff and errValueOff are the offsets of a tag and of a value that
+	// wire.ExactError chooses between.
+	errTagOff   = 3
+	errValueOff = 20
 )
 
 // errOwn is the error of a type that encodes or decodes itself.
 var errOwn = errors.New("token: empty")
+
+// exactEncoding is the encoding of a value of a kanon.Exact type, which
+// wire.MustExact checks.
+var exactEncoding = []byte{1, 2, 3}
 
 // hexagon is a type that no list of concrete types names.
 type hexagon struct{}
@@ -194,6 +202,16 @@ func TestError(t *testing.T) {
 			err:  wire.EncodingError(errLoc, errNumber, errOff),
 			want: located(kanon.ErrNotCanonical, "bytes differ from the encoding of the decoded value"),
 		},
+		{
+			name: "ExactError/wraps the error of the decode method at the offset of the value",
+			err:  wire.ExactError(errOwn, errLoc, errNumber, errTagOff, errOff),
+			want: located(errOwn, ""),
+		},
+		{
+			name: "ExactError/locates the zero value at the offset of the tag",
+			err:  wire.ExactError(nil, errLoc, errNumber, errOff, errValueOff),
+			want: located(kanon.ErrNotCanonical, "field at a value that the encoding leaves out"),
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -245,4 +263,58 @@ func TestError(t *testing.T) {
 				"SizeError locates the field and wraps the cause")
 		})
 	})
+	t.Run("MustExact", func(t *testing.T) {
+		t.Parallel()
+		t.Run("returns for an encoding of SizeKanon bytes without an error", func(t *testing.T) {
+			t.Parallel()
+			assert.NotPanics(t, func() { wire.MustExact(exactEncoding, nil, len(exactEncoding), errLoc, errNumber) },
+				"MustExact accepts the result that kanon.Exact guarantees")
+		})
+		t.Run("panics with ErrExact and the error of the append method", func(t *testing.T) {
+			t.Parallel()
+			err := exactPanic(t, func() { wire.MustExact(nil, errOwn, len(exactEncoding), errLoc, errNumber) })
+			assert.ErrorIs(t, err, kanon.ErrExact, "the error wraps ErrExact")
+			assert.ErrorIs(t, err, errOwn, "the error wraps the error of the append method")
+			assert.Equal(t, err.Error(),
+				"kanon: shop.Order.Count (field 7): a type that declares ExactKanon breaks its guarantee: token: empty",
+				"the error names the field and states the error of the append method")
+		})
+		t.Run("panics with ErrExact for an encoding of another length than SizeKanon", func(t *testing.T) {
+			t.Parallel()
+			err := exactPanic(t, func() { wire.MustExact(exactEncoding, nil, len(exactEncoding)+1, errLoc, errNumber) })
+			assert.ErrorIs(t, err, kanon.ErrExact, "the error wraps ErrExact")
+			assert.Equal(t, err.Error(),
+				"kanon: shop.Order.Count (field 7): a type that declares ExactKanon breaks its guarantee: "+
+					"appended 3 bytes, want 4",
+				"the error names the field and states both lengths")
+		})
+	})
+}
+
+// TestErrorAllocs checks that the check of an encoding allocates nothing. It
+// runs serially: testing.AllocsPerRun panics while a parallel test runs.
+func TestErrorAllocs(t *testing.T) {
+	t.Run("MustExact/allocates nothing for an encoding of SizeKanon bytes", func(t *testing.T) {
+		assert.MaxAllocs(t, func() { wire.MustExact(exactEncoding, nil, len(exactEncoding), errLoc, errNumber) }, 0,
+			"MustExact allocates nothing")
+	})
+}
+
+func BenchmarkError(b *testing.B) {
+	b.Run("MustExact", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			wire.MustExact(exactEncoding, nil, len(exactEncoding), errLoc, errNumber)
+		}
+	})
+}
+
+// exactPanic runs fn, which calls wire.MustExact, and returns the
+// *kanon.EncodeError that it panics with. It fails t when fn does not panic
+// with one.
+func exactPanic(t *testing.T, fn func()) *kanon.EncodeError {
+	t.Helper()
+	reason := assert.Panics(t, fn, "MustExact panics")
+	err, _ := reason.(error)
+	return assert.ErrorAs[*kanon.EncodeError](t, err, "MustExact panics with a *kanon.EncodeError")
 }

@@ -114,7 +114,8 @@ func fieldWire(f *field) int {
 // readsTagOffset reports whether the canonical decode of the field f of m
 // reads at, the offset of its tag: for the error of a second member of a
 // union, as [emitter.member] writes it, and for the error of a value that
-// the encoding leaves out, as [emitter.absent] writes it.
+// the encoding leaves out, as [emitter.absent] and [emitter.readExactField]
+// write it.
 func readsTagOffset(m *target, f *field) bool {
 	if f.member != nil {
 		first, _ := unionEnds(m, f)
@@ -226,20 +227,17 @@ func (e *emitter) tagHelper(name string, m *target) {
 // are present whatever their value, and get no statements. A string, a byte
 // slice, a slice, a map, a struct and a value of a type that encodes itself
 // and that is not absent at its zero value are present when their encoding
-// has bytes after its length, l. An interface is present when it is not nil,
-// and any other value as [emitter.present] states.
+// has bytes after its length, l. Any other value is absent under the
+// absence condition of [emitter.presence].
 func (e *emitter) absent(f *field, x string, p place) {
 	if !e.canonical || f.member != nil || f.val.kind == kindPointer {
 		return
 	}
-	v := f.val
-	switch {
-	case byLength(v):
+	if byLength(f.val) {
 		e.line("if l == 0 {")
-	case v.kind == kindInterface:
-		e.line("if %s == nil {", x)
-	default:
-		e.line("if !(%s) {", e.present(v, x))
+	} else {
+		_, absent := e.presence(f.val, x)
+		e.line("if %s {", absent)
 	}
 	e.fail(e.wire() + "AbsentError(" + p.loc + ", " + p.num + ", off+at)")
 	e.line("}")
@@ -265,9 +263,11 @@ func byLength(v *value) bool {
 // set from data[i:i+int(l)], when the encode method of its family does not
 // write those bytes for it: through the append method into a stack array
 // when the type has one, and through the encode method otherwise. The error
-// names the offset of the value.
+// names the offset of the value. A type that declares kanon.Exact gets no
+// statements, since kanon.Exact guarantees that its decode method accepts
+// only those bytes.
 func (e *emitter) reencode(v *value, dst string, p place) {
-	if !e.canonical {
+	if !e.canonical || v.self.exact {
 		return
 	}
 	e.line("{")

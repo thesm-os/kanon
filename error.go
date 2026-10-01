@@ -49,7 +49,7 @@ var (
 	ErrNotCanonical = errors.New("kanon: input is not the canonical encoding")
 )
 
-// ErrUnlistedType and ErrSize are causes of an [EncodeError], which
+// ErrUnlistedType, ErrSize and ErrExact are causes of an [EncodeError], which
 // errors.Is matches through [EncodeError.Unwrap].
 var (
 	// ErrUnlistedType marks an interface that stores a value of a type that
@@ -58,6 +58,11 @@ var (
 	// ErrSize marks a value of a [Sizer] whose encode method returns another
 	// length than its SizeKanon, which sized the room of the value.
 	ErrSize = errors.New("kanon: encoding length differs from SizeKanon")
+	// ErrExact marks a field value of an [Exact] type whose append method
+	// fails, or appends another length than its SizeKanon, which the
+	// guarantees of Exact exclude. The encode panics with an [*EncodeError]
+	// that wraps it.
+	ErrExact = errors.New("kanon: a type that declares ExactKanon breaks its guarantee")
 )
 
 // Causes of an [EncodeError] and of a [DecodeError] for a map key. The

@@ -146,25 +146,34 @@ func encodeSelf(x reflect.Value) ([]byte, error) {
 
 // marshal returns the encoding of v, a value of a type that encodes itself,
 // through the method that the generated code calls: the append method of
-// its family when the type has one, and the encode method otherwise.
+// its family when the type has one, as [appends] reports, and the encode
+// method otherwise.
 func marshal(v reflect.Value) ([]byte, error) {
+	if appends(v.Type()) {
+		return appendTo(v, nil)
+	}
 	p := reflect.New(v.Type())
 	p.Elem().Set(v)
-	x := p.Interface()
-	switch familyOf(v.Type()) {
+	switch x := p.Interface(); familyOf(v.Type()) {
 	case familyBinary:
-		if a, ok := x.(encoding.BinaryAppender); ok {
-			return a.AppendBinary(nil)
-		}
 		return x.(encoding.BinaryMarshaler).MarshalBinary()
 	case familyGob:
 		return x.(gob.GobEncoder).GobEncode()
 	default:
-		if a, ok := x.(encoding.TextAppender); ok {
-			return a.AppendText(nil)
-		}
 		return x.(encoding.TextMarshaler).MarshalText()
 	}
+}
+
+// appendTo appends the encoding of v, a value of a type that has the append
+// method of its family, as [appends] reports, to b through that method, and
+// returns the extended slice and the error of the method.
+func appendTo(v reflect.Value, b []byte) ([]byte, error) {
+	p := reflect.New(v.Type())
+	p.Elem().Set(v)
+	if familyOf(v.Type()) == familyBinary {
+		return p.Interface().(encoding.BinaryAppender).AppendBinary(b)
+	}
+	return p.Interface().(encoding.TextAppender).AppendText(b)
 }
 
 // unmarshal sets x, an addressable value of a type that encodes itself, to

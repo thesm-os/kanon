@@ -192,7 +192,15 @@ func (e *emitter) content(v *value, x string) string {
 }
 
 // present returns the condition under which a field whose value is x, a
-// value of v, is present: a bool when it is true, a number when it is not
+// value of v, is present, as [emitter.presence] states it.
+func (e *emitter) present(v *value, x string) string {
+	present, _ := e.presence(v, x)
+	return present
+}
+
+// presence returns the condition under which a field whose value is x, a
+// value of v, is present, and its negation, the condition under which the
+// field is absent: a bool is present when it is true, a number when it is not
 // zero, a float and a complex number when a bit of them is set, so that
 // negative zero is present, a string, a byte slice, a slice and a map when
 // they are not empty, a time when it is not at the zero instant or not in
@@ -203,42 +211,51 @@ func (e *emitter) content(v *value, x string) string {
 // encodes itself when their encoding has bytes, and a pointer and an
 // interface when they are not nil. In the projection of a map key, which
 // writes -0.0 as +0.0, a float and a complex number are present when they
-// are not zero. The condition is an operand of || without parentheses.
-func (e *emitter) present(v *value, x string) string {
+// are not zero. The presence condition is an operand of || and the absence
+// condition an operand of && without parentheses.
+func (e *emitter) presence(v *value, x string) (present, absent string) {
 	switch v.kind {
 	case kindBool:
-		return x
+		return x, "!" + x
 	case kindInt, kindUint, kindFixed32, kindFixed64:
-		return x + " != 0"
+		return x + " != 0", x + " == 0"
 	case kindFloat32, kindFloat64, kindComplex64, kindComplex128:
-		if e.inKey {
-			return x + " != 0"
+		bits := x
+		if !e.inKey {
+			bits = e.floatBits(v, x)
 		}
-		return e.floatBits(v, x) + " != 0"
+		return bits + " != 0", bits + " == 0"
 	case kindString:
-		return x + ` != ""`
+		return x + ` != ""`, x + ` == ""`
 	case kindBytes, kindSlice, kindMap:
-		return "len(" + x + ") > 0"
+		return "len(" + x + ") > 0", "len(" + x + ") == 0"
 	case kindTime:
-		return "!" + method(x, isZeroName) + "() || " + method(x, locationName) + "() != " +
-			e.std(timePackage) + "." + utcName
+		zero, loc := method(x, isZeroName)+"()", method(x, locationName)+"()"
+		utc := e.std(timePackage) + "." + utcName
+		return "!" + zero + " || " + loc + " != " + utc, zero + " && " + loc + " == " + utc
 	case kindByteArray:
-		return x + " != " + e.composite(v.typ)
+		zero := e.composite(v.typ)
+		return x + " != " + zero, x + " == " + zero
 	case kindArray:
 		if bitwise(v) {
-			return x + " != " + e.composite(v.typ)
+			zero := e.composite(v.typ)
+			return x + " != " + zero, x + " == " + zero
 		}
-		return e.fn(e.keyOp(opPresent, v), v) + "(" + addr(x) + ")"
+		call := e.fn(e.keyOp(opPresent, v), v) + "(" + addr(x) + ")"
+		return call, "!" + call
 	case kindStruct, kindBinary:
 		if zeroAbsent(v) && v.self.zeroer {
-			return "!" + method(x, isZeroName) + "()"
+			zero := method(x, isZeroName) + "()"
+			return "!" + zero, zero
 		}
 		if zeroAbsent(v) {
-			return x + " != " + e.zeroOperand(v.typ)
+			zero := e.zeroOperand(v.typ)
+			return x + " != " + zero, x + " == " + zero
 		}
-		return e.content(v, x) + " > 0"
+		size := e.content(v, x)
+		return size + " > 0", size + " == 0"
 	default:
-		return x + " != nil"
+		return x + " != nil", x + " == nil"
 	}
 }
 

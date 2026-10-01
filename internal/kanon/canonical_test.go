@@ -18,8 +18,8 @@ import (
 // cover every check that a canonical decode makes: every kind of field, a
 // field number above 15, a union of two members, maps with every kind of key
 // that a float or a pointer makes, a key type of one value, and types that
-// encode themselves through an append method and through an encode method
-// alone. E is a struct without fields.
+// encode themselves through an append method, through an encode method alone,
+// and with an IsZero method. E is a struct without fields.
 const canonicalStructs = "import \"time\"\n\n" +
 	"type Mode uint8\n\nconst (\n\tModeWord Mode = 1\n\tModeCode Mode = 2\n)\n\n" +
 	"type Tok [2]byte\n\n" +
@@ -28,6 +28,10 @@ const canonicalStructs = "import \"time\"\n\n" +
 	"type Note [1]byte\n\n" +
 	"func (n Note) MarshalBinary() ([]byte, error) { return n[:], nil }\n\n" +
 	"func (n *Note) UnmarshalBinary(d []byte) error { copy(n[:], d); return nil }\n\n" +
+	"type Seal struct{ n uint8 }\n\n" +
+	"func (s Seal) AppendBinary(b []byte) ([]byte, error) { return append(b, s.n), nil }\n\n" +
+	"func (s *Seal) UnmarshalBinary(d []byte) error { s.n = d[0]; return nil }\n\n" +
+	"func (s Seal) IsZero() bool { return s.n == 0 }\n\n" +
 	"type Point struct {\n\tX float64\n\tY int32\n}\n\n" +
 	"type Temp float64\n\n" +
 	"type A struct {\n\tFlag bool\n\tCount int64\n\tSize int\n\tName string\n\tAt time.Time\n\tKind Mode\n" +
@@ -35,7 +39,7 @@ const canonicalStructs = "import \"time\"\n\n" +
 	"\tMarks map[float64]string\n\tPoints map[Point]int32\n\tRefs map[*int32]string\n\tGrid [2]int8\n" +
 	"\tAny any `kanon:\",types=string\"`\n\tToken Tok\n\tNext *A\n\tZs map[*complex128]bool\n}\n\n" +
 	"type B struct {\n\tF32 map[float32]bool\n\tC64 map[complex64]bool\n\tC128 map[complex128]bool\n" +
-	"\tNamed map[Temp]bool\n\tPairs map[[2]float64]bool\n\tOne map[struct{}]int32\n\tMemo Note\n}\n\n" +
+	"\tNamed map[Temp]bool\n\tPairs map[[2]float64]bool\n\tOne map[struct{}]int32\n\tMemo Note\n\tMark Seal\n}\n\n" +
 	"type E struct{}\n"
 
 // generateCanonical returns the files that Generate returns with -canonical
@@ -108,12 +112,12 @@ func TestCanonical(t *testing.T) {
 				name: "returns ErrNotCanonical for a bool above 1",
 				want: `return seen, wire.BoolError(u, "A.Flag", 1, off+i)`,
 			},
-			{name: "tests the presence of a bool field", want: "if !(m.Flag) {"},
+			{name: "tests the presence of a bool field", want: "if !m.Flag {"},
 			{
 				name: "returns ErrNotCanonical for a bool field of false",
 				want: `return seen, wire.AbsentError("A.Flag", 1, off+at)`,
 			},
-			{name: "tests the presence of an integer field", want: "if !(m.Count != 0) {"},
+			{name: "tests the presence of an integer field", want: "if m.Count == 0 {"},
 			{
 				name: "returns ErrNotCanonical for a varint of an int that is not in its shortest form",
 				want: `return seen, wire.LongFormError(n, "A.Size", 3, off+i)`,
@@ -124,7 +128,7 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "tests the presence of a time field",
-				want: "if !(!m.At.IsZero() || m.At.Location() != time.UTC) {",
+				want: "if m.At.IsZero() && m.At.Location() == time.UTC {",
 			},
 			{
 				name: "returns ErrNotCanonical for a slice field of no elements",
@@ -134,7 +138,7 @@ func TestCanonical(t *testing.T) {
 				name: "returns ErrNotCanonical for a length that is not in its shortest form",
 				want: `return seen, wire.LongFormError(n, "A.Tags", 8, off+i)`,
 			},
-			{name: "tests the presence of an array field", want: "if !(m.Grid != ([2]int8{})) {"},
+			{name: "tests the presence of an array field", want: "if m.Grid == ([2]int8{}) {"},
 			{name: "tests the presence of an interface field", want: "if m.Any == nil {"},
 			{
 				name: "returns ErrNotCanonical for an interface type number that is not in its shortest form",
@@ -152,7 +156,8 @@ func TestCanonical(t *testing.T) {
 				name: "returns ErrNotCanonical for bytes that the encode method does not write",
 				want: `return seen, wire.EncodingError("A.Token", 14, off+i)`,
 			},
-			{name: "tests the presence of a value of a type that encodes itself", want: "if !(m.Token != (Tok{})) {"},
+			{name: "tests the presence of a value of a type that encodes itself", want: "if m.Token == (Tok{}) {"},
+			{name: "tests the presence of a value of a type with an IsZero method", want: "if m.Mark.IsZero() {"},
 			{name: "declares the key before the current one", want: "var pk float64"},
 			{name: "finds a float64 key of -0.0", want: "if mk == 0 && math.Signbit(mk) {"},
 			{name: "finds a float32 key of -0.0", want: "if mk == 0 && math.Signbit(float64(mk)) {"},
@@ -222,6 +227,20 @@ func TestCanonical(t *testing.T) {
 			t.Parallel()
 			assert.False(t, strings.Contains(files[codeName], "var pk struct{}"),
 				"the read function of map[struct{}]int32 declares no pk, which it would never read")
+		})
+		t.Run("writes no negated presence condition", func(t *testing.T) {
+			t.Parallel()
+			assert.False(t, strings.Contains(files[codeName], "if !("),
+				"the code file tests the absence of every field with its absence condition")
+			for _, g := range generations(t) {
+				if !g.opts.Canonical {
+					continue
+				}
+				for _, f := range g.files {
+					assert.False(t, strings.Contains(string(f.Src), "if !("),
+						filepath.Join(g.dir, f.Name)+": the file writes no negated presence condition")
+				}
+			}
 		})
 		t.Run("marks the Spec of every canonical struct type", func(t *testing.T) {
 			t.Parallel()
@@ -330,6 +349,42 @@ func TestCanonical(t *testing.T) {
 				assert.Equal(t, err.Error(), tt.want, "Generate states why it fails")
 			})
 		}
+		exact, exactErr := generateCanonical(t, module(t, map[string]string{source: exactStructs}), "A,B,C")
+		assert.NoError(t, exactErr, "Generate generates the canonical struct types with values of a kanon.Exact type")
+		exactChecks := []struct {
+			name string
+			want string
+		}{
+			{
+				name: "decodes a field of a kanon.Exact type with its presence in one statement",
+				want: "if err := m.Mark.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Mark == (Tok{}) {",
+			},
+			{
+				name: "returns the error of wire.ExactError for a field of a kanon.Exact type",
+				want: `return wire.ExactError(err, "A.Mark", 1, off+at, off+i)`,
+			},
+			{
+				name: "decodes an element of a kanon.Exact type with the error of its decode method",
+				want: "if err := x[last].UnmarshalBinary(data[i : i+int(l)]); err != nil {\n" +
+					"\t\t\treturn wire.UnmarshalError(err, loc, num, off+i)\n\t\t}\n\t\ti += int(l)",
+			},
+			{
+				name: "decodes a union member of a kanon.Exact type with the error of its decode method",
+				want: "if err := m.One.UnmarshalBinary(data[i : i+int(l)]); err != nil {\n" +
+					"\t\t\treturn wire.UnmarshalError(err, \"C.One\", 1, off+i)\n\t\t}\n\t\ti += int(l)",
+			},
+		}
+		for _, tt := range exactChecks {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, exact[codeName], tt.want, "the code file writes the check")
+			})
+		}
+		t.Run("encodes no value of a kanon.Exact type again", func(t *testing.T) {
+			t.Parallel()
+			assert.NotContains(t, exact[codeName], "EncodingError",
+				"kanon.Exact guarantees that the decode method accepts only the bytes of the append method")
+		})
 		t.Run("returns an error for a struct type whose kanon codec is written by hand", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{

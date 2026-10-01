@@ -16,12 +16,12 @@ import (
 	"go.thesmos.sh/kanon"
 )
 
-// Check is one check of the codec of a struct type, or of the ValidateKanon
-// method of a kanon.Validator.
+// Check is one check of the codec of a struct type, of the ValidateKanon
+// method of a kanon.Validator, or of the guarantees of a kanon.Exact type.
 type Check struct {
-	// Name names the check as the subtest that [Run] or [RunValue] runs it
-	// in: the method whose contract the check states, a slash, and the
-	// behaviour.
+	// Name names the check as the subtest that [Run], [RunValue] or
+	// [RunExact] runs it in: the method whose contract the check states, a
+	// slash, and the behaviour.
 	Name string
 	// Serial reports that the check counts allocations, which the testing
 	// package counts while no parallel test runs.
