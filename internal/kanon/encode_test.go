@@ -45,6 +45,14 @@ func TestEncode(t *testing.T) {
 				want: "w, err := _a_putTok(buf[:i], &x[k], loc, num)",
 			},
 			{
+				name: "writes the put function of a kanon.Exact type in another position with the error of the " +
+					"append method and the check of wire.MustExact",
+				want: "func _a_putTok(buf []byte, x *Tok, loc string, num int) (int, error) {\n\tn := x.SizeKanon()\n" +
+					"\ti := len(buf) - n\n\tenc, err := x.AppendBinary(buf[i:i:len(buf)])\n\tif err != nil {\n" +
+					"\t\treturn 0, wire.MarshalError(err, loc, num)\n\t}\n\twire.MustExact(enc, nil, n, loc, num)\n" +
+					"\treturn n, nil\n}",
+			},
+			{
 				name: "writes a union member of a kanon.Exact type with the error of its put function",
 				want: `w, err := _a_putTok(buf[:i], &m.One, "C.One", 1)`,
 			},
@@ -55,5 +63,10 @@ func TestEncode(t *testing.T) {
 				assert.Contains(t, files[codeName], tt.want, "the code file writes the value")
 			})
 		}
+		t.Run("writes no check of the room or the length for a value of a kanon.Exact type", func(t *testing.T) {
+			t.Parallel()
+			assert.NotContains(t, files[codeName], "SizeError",
+				"kanon.Exact rules out a SizeKanon below 0 and an encoding of another length")
+		})
 	})
 }

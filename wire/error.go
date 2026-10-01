@@ -230,11 +230,13 @@ func SizeError(loc string, num int) error {
 }
 
 // MustExact checks enc, the encoding that the append method of a
-// kanon.Exact type returned with err for a value other than its zero value,
-// whose SizeKanon is n. kanon.Exact guarantees that err is nil and that enc
-// has n bytes. For a type that breaks the guarantee, MustExact panics with a
-// *kanon.EncodeError that loc and num locate at the field of the value, and
-// that wraps kanon.ErrExact and err.
+// kanon.Exact type returned with err for a value whose SizeKanon is n.
+// kanon.Exact guarantees that enc has n bytes when err is nil, and that err
+// is nil for a value other than the zero value. The put function of a field,
+// which never writes the zero value, passes err, and the put function of any
+// other position returns err itself and passes nil. For a type that breaks
+// the guarantee, MustExact panics with a *kanon.EncodeError that loc and num
+// locate at the field of the value, and that wraps kanon.ErrExact and err.
 func MustExact(enc []byte, err error, n int, loc string, num int) {
 	if err != nil || len(enc) != n {
 		panic(exactFailure(len(enc), err, n, loc, num))

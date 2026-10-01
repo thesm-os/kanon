@@ -189,10 +189,10 @@ linters:
         text: "G115:"
 
       # wire.MustExact panics for a type that declares kanon.Exact and breaks
-      # its guarantee. The encode of a field of such a type has no error
-      # path, and a wrong length would write a corrupt encoding without an
-      # error, so the breach panics, as bufio.Reader panics for a reader that
-      # returns a negative count.
+      # its guarantee. The generated code checks the guarantee without an
+      # error path, and a wrong length would write a corrupt encoding without
+      # an error, so the breach panics, as bufio.Reader panics for a reader
+      # that returns a negative count.
       - path: '^wire/error\.go$'
         linters: [forbidigo]
         text: "use of `panic` forbidden"

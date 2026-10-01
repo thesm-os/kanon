@@ -89,6 +89,8 @@ the guards never run:
 - The ledger's record package has 39 such statements in 5 code files, in the code of its fields
   of core digests and identifiers. No test can run them, so no test covers its generated code in
   full.
+- The ledger's content package has 2 more, in the put function of the elements of a slice of
+  digests: the check of the room and the check of the length.
 - The two second encodes take 6.5 ns of the 11.8 ns of the canonical decode of `Opaque`.
 
 A declaration by the type, which the conformance suite checks, removes both.
@@ -323,15 +325,16 @@ A type declares `kanon.Exact` with one method, `ExactKanon`. It can declare it w
 
 A type that declares it keeps two guarantees:
 
-1. For every value other than its zero value, the append method returns no error and appends as
-   many bytes as `SizeKanon` returns.
+1. `SizeKanon` returns no negative value. The append method returns no error for a value other
+   than the zero value, and appends as many bytes as `SizeKanon` returns whenever it returns no
+   error.
 2. The decode method accepts a byte string only when the append method writes that byte string
    for the value that the decode method sets.
 
-The second guarantee makes the decode method its own canonical check. The first guarantee leaves
-the zero value out, since the zero digest of the core module has no encoding. The generation fails
-for a type with an `ExactKanon` method and without an append method, without `SizeKanon`, or with
-an `==` that does not compare every bit.
+The second guarantee makes the decode method its own canonical check. The first guarantee lets
+the append method fail for the zero value, since the zero digest of the core module has no
+encoding. The generation fails for a type with an `ExactKanon` method and without an append
+method, without `SizeKanon`, or with an `==` that does not compare every bit.
 
 The code of a field of an Exact type differs from the code of a field of another opaque type:
 
@@ -341,8 +344,8 @@ The code of a field of an Exact type differs from the code of a field of another
 | Canonical decode | The decode method, the presence rule, and a second encode compared with the input | The decode method and the presence rule in one statement, and no second encode |
 | Default decode | The decode method | No change |
 
-These rules apply to a field that the encoding leaves out at its zero value. In the positions that
-write the zero value, whose encode can fail, an Exact value encodes as another opaque value does:
+These rules apply to a field that the encoding leaves out at its zero value. The other positions
+write the zero value, whose append method can fail:
 
 - an element of a slice or an array
 - a key or a value of a map
@@ -350,18 +353,25 @@ write the zero value, whose encode can fail, an Exact value encodes as another o
 - a union member
 - the value of an interface
 
+In these positions the put function of an Exact type returns the error of the append method,
+which guarantee 1 allows for the zero value alone. It checks neither the room nor the length,
+which guarantee 1 rules out, and passes the encoding to `wire.MustExact`, which panics for a type
+that breaks the guarantee.
+
 Guarantee 2 applies to every byte string, so a canonical decode skips the second encode of an
 Exact value in every position. A struct encodes without an error path when none of its fields can
 fail, and an Exact field counts as a field that cannot fail.
 
-The declaration removes the 39 statements of the ledger's record package that its conformance
-suite cannot run:
+The declaration removes the statements of the ledger's evidence format that its conformance suite
+cannot run, 39 in the record package and 2 in the content package:
 
 - per field of a digest or an identifier: the error return after the put function, the three
   failure returns of the put function, and the error return of the second encode
 - per field of a digest: the presence check after the decode method, since no input decodes to
   the zero digest
 - per struct: the error return of `AppendBinary`
+- per put function of a digest in another position: the check of the room and the check of the
+  length
 
 The digest, the identifier and the instant of the core module keep both guarantees:
 
@@ -387,15 +397,17 @@ var (
 	// that it decodes to.
 	ErrNotCanonical = errors.New("kanon: input is not the canonical encoding")
 	// ErrExact marks the panic of an encode that meets a value of an Exact
-	// type whose append method fails, or appends another number of bytes than
-	// its SizeKanon returns.
+	// type that breaks its guarantee: an append method that appends another
+	// number of bytes than SizeKanon returns, or that fails for the value of
+	// a field, which is never the zero value.
 	ErrExact = errors.New("kanon: a type that declares ExactKanon breaks its guarantee")
 )
 
 // Exact is implemented by a type that encodes itself through an append
 // method, is a Sizer, has an == that compares every bit, and keeps two
-// guarantees. For every value other than its zero value, the append method
-// returns no error and appends SizeKanon bytes. The decode method accepts a
+// guarantees. SizeKanon returns no negative value, and the append method
+// returns no error for a value other than its zero value and appends
+// SizeKanon bytes whenever it returns no error. The decode method accepts a
 // byte string only when the append method writes that byte string for the
 // value that the decode method sets. The generated code writes a field of
 // such a type without an error path and decodes it without a second encode,
@@ -448,10 +460,12 @@ func KeyOrderError(loc string, num, off int) error
 func NegativeZeroError(loc string, num, off int) error
 func EncodingError(loc string, num, off int) error
 
-// MustExact checks enc, the encoding that the append method of a value of an
-// Exact type returned with err, for a value whose SizeKanon is n. It panics
-// with a *kanon.EncodeError that names loc and num and wraps kanon.ErrExact
-// and err, when err is not nil or enc does not have n bytes.
+// MustExact checks enc, the encoding that the append method of an Exact type
+// returned with err for a value whose SizeKanon is n. The put function of a
+// field passes the error, since a field never writes the zero value. The put
+// function of any other position returns the error itself and passes nil.
+// MustExact panics with a *kanon.EncodeError that names loc and num and wraps
+// kanon.ErrExact and err, when err is not nil or enc does not have n bytes.
 func MustExact(enc []byte, err error, n int, loc string, num int)
 
 // ExactError returns the error of the canonical decode of a field of an Exact
@@ -604,6 +618,23 @@ func _head_exactputCryptoDigest(buf []byte, x *crypto.Digest, loc string, num in
 }
 ```
 
+The put function of an element of the field `Digests` of `Index`, a `[]crypto.Digest`, returns
+the error of the append method, which the zero digest returns, and passes the encoding of every
+other digest to `wire.MustExact`:
+
+```go
+func _index_putCryptoDigest(buf []byte, x *crypto.Digest, loc string, num int) (int, error) {
+	n := x.SizeKanon()
+	i := len(buf) - n
+	enc, err := x.AppendBinary(buf[i:i:len(buf)])
+	if err != nil {
+		return 0, wire.MarshalError(err, loc, num)
+	}
+	wire.MustExact(enc, nil, n, loc, num)
+	return n, nil
+}
+```
+
 The canonical decode of the field checks the decode method and the presence rule in one
 statement, after the length of the value:
 
@@ -730,8 +761,8 @@ The package of an Exact type checks the declaration itself:
 ```go
 // ExactChecks returns the checks of T, a type that declares kanon.Exact,
 // over the values that the value tables and its decode method give it. The
-// append method and SizeKanon keep guarantee 1 for every such value other
-// than the zero value. The decode method keeps guarantee 2 for the encoding
+// append method and SizeKanon keep guarantee 1 for the zero value and for
+// every such value. The decode method keeps guarantee 2 for the encoding
 // of every such value, every prefix of it, every change of one of its bytes,
 // the encoding with one more byte, and a byte string of every length up to
 // the size of T in memory. For a type that does not encode itself through
@@ -914,15 +945,21 @@ canonical decode keeps its second encode.
 - A canonical decode encodes every opaque value that is not Exact again, and every opaque map key
   twice more for its order. It allocates for a type without an append method and for an encoding
   longer than 128 bytes. The decode of `Opaque` takes 113% more time.
-- A type that breaks guarantee 1 of `kanon.Exact` panics the encode of every struct with a field
-  of it. The conformance suite finds the breach only for the values that it builds.
+- A type that breaks guarantee 1 of `kanon.Exact` panics the encode of a struct that contains a
+  value of it: for an error of the append method in a field, and for a length other than
+  `SizeKanon` in any position. The conformance suite finds the breach only for the values that it
+  builds.
+- For an Exact type whose zero value encodes, such as `id.ID` and `clock.Instant`, the error
+  return of the put function in a position that writes the zero value cannot run, and neither can
+  the error returns that pass its error on. A declaration that the zero value encodes too would
+  remove them, and `crypto.Digest` could not make it. This proposal has no such declaration.
 - `wire.MustExact` is the one panic of the library code, which otherwise returns every error. The
   lint configuration exempts its file from the rule that forbids `panic`.
 - A canonical decode relies on guarantee 2 for an Exact value. A type that breaks it lets another
   encoding of its value through. The conformance suite checks the guarantee on the values and
   probes that it builds, not on every input.
-- The generator writes the code of a field of an opaque type in two forms, one for Exact types
-  and one for the others, and its tests cover both.
+- The generator writes the put functions of an opaque type and the canonical decode of its field
+  in two forms, one for Exact types and one for the others, and its tests cover both.
 - The public API of kanon grows by an interface, an error, two functions of the wire package and
   two functions of kanontest. Each Exact type of the core module adds a marker method and a test.
 - Views and indexes of a canonical type check no canonical rule, so a reader that reads through
@@ -955,5 +992,6 @@ canonical decode keeps its second encode.
 | The decode of a time, run 2026-09-30 | `go test -run '^$' -bench 'BenchmarkTime/(Canonical)?Time/' -benchtime=200ms -count=8 ./wire/` |
 | The canonical decode of `Opaque` without its second encodes, run 2026-10-01 | the generated code of `Opaque` with `-canonical`, the same code with its two second encodes removed, and the code without `-canonical`, one test binary each, run in alternation 8 times with `-test.run '^$' -test.bench '^BenchmarkKanonOpaque$/^DecodeKanon$' -test.benchtime=200ms`, compared with `benchstat` |
 | The statements of the ledger's record package that its conformance suite cannot run, 2026-10-01 | `go test -coverprofile` of `evidence/format/record` in the ledger repository, generated by this design with values of opaque types from their decode method: 39 blocks in `head`, `link`, `manifest`, `precondition` and `unit` |
+| The statements of the ledger's content package that its conformance suite cannot run, 2026-10-01 | the coverage of `evidence/format/content/index.kanon.go` in the ledger repository, generated by kanon `f6f835e`: lines 484 and 492 of `_index_putCryptoDigest` |
 | The count of decode functions and lines in the code files of the fixtures, 2026-09-30 | a `go/parser` walk of `internal/fixture/**/*.kanon.go` |
 | The encode and decode methods of `crypto.Digest`, `id.ID` and `clock.Instant` | `go.thesmos.sh/core` at `9caa95a`: `crypto/digest.go:107` and `:137`, `id/id.go:106` and `id/binary.go:17` and `:62`, `clock/instant.go:97`, `:133` and `:155` |

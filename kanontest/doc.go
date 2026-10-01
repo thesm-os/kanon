@@ -165,13 +165,15 @@
 // the value of any other type that encodes itself. The reference decoder
 // encodes it again, so the decode checks of a struct with a field of such a
 // type fail for a type whose decode method accepts bytes that its append
-// method does not write. A type whose append method fails for a value other
-// than the zero value panics the generated encode of such a field.
-// [RunExact] checks both guarantees of kanon.Exact on the type itself:
+// method does not write. A type whose append method fails for the value of
+// a field, or appends another length than SizeKanon, panics the generated
+// encode. [RunExact] checks both guarantees of kanon.Exact on the type
+// itself:
 //
-//   - For every value of the value tables and every value that the decode
-//     method decodes, other than the zero value, the append method returns
-//     no error and appends as many bytes as SizeKanon returns.
+//   - For the zero value, every value of the value tables and every value
+//     that the decode method decodes, SizeKanon returns no negative value,
+//     and the append method appends as many bytes as SizeKanon returns
+//     without an error. The append method can fail for the zero value.
 //   - The decode method decodes the encoding of every value of the value
 //     tables, every prefix of it, every change of one of its bytes, the
 //     encoding with one more byte, and a byte string of every length up to

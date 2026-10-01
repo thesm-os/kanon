@@ -155,7 +155,7 @@ An encode returns a `*kanon.EncodeError` in six cases:
 - The encoding of a type that declares `SizeKanon` has another length than `SizeKanon` returns, and the error wraps `kanon.ErrSize`.
 - The `ValidateKanon` method of a type rejects a value.
 
-A field of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
+A value of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
 
 ## Field numbers
 
@@ -222,10 +222,11 @@ Such a type can also declare these methods, which make its encode cheaper:
 
 A type that declares `kanon.Exact` keeps two guarantees:
 
-- For every value other than the zero value, the append method returns no error and appends `SizeKanon` bytes.
+- `SizeKanon` returns no negative value. The append method returns no error for a value other than the zero value, and appends `SizeKanon` bytes whenever it returns no error.
 - The decode method accepts only the bytes that the append method writes for the decoded value.
 
-A field value that breaks the first guarantee panics the encode.
+In a slice, a map, a pointer, a union or an interface, kanon writes the zero value too, and the error of its append method fails the encode.
+An append method that fails for a field, or that appends another length than `SizeKanon`, panics the encode.
 Check both guarantees in a test of the package that declares the type:
 
 ```go

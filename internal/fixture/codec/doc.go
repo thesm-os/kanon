@@ -21,8 +21,9 @@
 // digests and identifiers of go.thesmos.sh/core have, so that the
 // conformance suite builds its values through UnmarshalBinary, and its first
 // byte selects each way in which its encode fails. [Serial] has unexported
-// fields alone too, and declares kanon.Exact, so that a field of it encodes
-// without an error path, and its test runs kanontest.RunExact on it. The
+// fields alone too, and no encoding for its zero value, as the core digest
+// has none. It declares kanon.Exact, so that a field of it encodes without
+// an error path, and its test runs kanontest.RunExact on it. The
 // encoding of each type fails for a value in every way that the generated
 // code handles, and the decoding for malformed data, so that the generated
 // tests run the error branches of the code that calls them. [Codecs] has a

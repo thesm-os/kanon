@@ -58,10 +58,10 @@ var (
 	// ErrSize marks a value of a [Sizer] whose encode method returns another
 	// length than its SizeKanon, which sized the room of the value.
 	ErrSize = errors.New("kanon: encoding length differs from SizeKanon")
-	// ErrExact marks a field value of an [Exact] type whose append method
-	// fails, or appends another length than its SizeKanon, which the
-	// guarantees of Exact exclude. The encode panics with an [*EncodeError]
-	// that wraps it.
+	// ErrExact marks a value of an [Exact] type that breaks the guarantees of
+	// Exact: an append method that appends another length than SizeKanon, or
+	// that fails for the value of a field, which is never the zero value. The
+	// encode panics with an [*EncodeError] that wraps it.
 	ErrExact = errors.New("kanon: a type that declares ExactKanon breaks its guarantee")
 )
 

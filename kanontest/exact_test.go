@@ -18,7 +18,9 @@ import (
 // Names of the checks of kanontest.ExactChecks.
 const (
 	exactTypeCheck   = "ExactKanon/marks a type with an append method whose == compares every bit"
-	exactAppendCheck = "ExactKanon/appends SizeKanon bytes without an error for a value other than the zero value"
+	exactSizeCheck   = "ExactKanon/sizes every value at 0 bytes or more"
+	exactAppendCheck = "ExactKanon/appends SizeKanon bytes whenever the append method returns no error"
+	exactErrorCheck  = "ExactKanon/appends every value but the zero value without an error"
 	exactDecodeCheck = "ExactKanon/decodes only the bytes that the append method writes for the decoded value"
 )
 
@@ -111,8 +113,13 @@ func (d *digest) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// SizeKanon returns digestLength.
-func (digest) SizeKanon() int { return digestLength }
+// SizeKanon returns digestLength, and 0 for the zero digest.
+func (d digest) SizeKanon() int {
+	if !d.set {
+		return 0
+	}
+	return digestLength
+}
 
 // ExactKanon marks digest as a kanon.Exact type.
 func (digest) ExactKanon() {}
@@ -242,6 +249,62 @@ func (padded) SizeKanon() int { return wordLength }
 
 // ExactKanon marks padded as a kanon.Exact type.
 func (padded) ExactKanon() {}
+
+// sunken is a digest whose SizeKanon returns -1 for the zero value, which
+// breaks the first guarantee.
+type sunken struct {
+	d digest
+}
+
+// AppendBinary appends the encoding of the digest of s to b, as the digest
+// appends it.
+func (s sunken) AppendBinary(b []byte) ([]byte, error) {
+	return s.d.AppendBinary(b)
+}
+
+// UnmarshalBinary sets the digest of s to data, as the digest decodes it.
+func (s *sunken) UnmarshalBinary(data []byte) error {
+	return s.d.UnmarshalBinary(data)
+}
+
+// SizeKanon returns -1 for the zero sunken, and the SizeKanon of its digest
+// otherwise.
+func (s sunken) SizeKanon() int {
+	if s == (sunken{}) {
+		return -1
+	}
+	return s.d.SizeKanon()
+}
+
+// ExactKanon marks sunken as a kanon.Exact type.
+func (sunken) ExactKanon() {}
+
+// hushed is a word whose SizeKanon returns 0 for the zero word, whose
+// append method appends two bytes, which breaks the first guarantee.
+type hushed uint16
+
+// AppendBinary appends the two big-endian bytes of w to b.
+func (w hushed) AppendBinary(b []byte) ([]byte, error) {
+	return binary.BigEndian.AppendUint16(b, uint16(w)), nil
+}
+
+// UnmarshalBinary sets w as [readWord] reads it.
+func (w *hushed) UnmarshalBinary(data []byte) error {
+	x, err := readWord(data)
+	*w = hushed(x)
+	return err
+}
+
+// SizeKanon returns 0 for the zero word, and wordLength otherwise.
+func (w hushed) SizeKanon() int {
+	if w == 0 {
+		return 0
+	}
+	return wordLength
+}
+
+// ExactKanon marks hushed as a kanon.Exact type.
+func (hushed) ExactKanon() {}
 
 // stretch is eight bytes behind an unexported field, which appends its first
 // two. Its decode method decodes two bytes, and eight, which no encoding
@@ -404,8 +467,8 @@ func TestExact(t *testing.T) {
 			for _, c := range checks {
 				names = append(names, c.Name)
 			}
-			assert.Equal(t, names, []string{exactAppendCheck, exactDecodeCheck},
-				"ExactChecks returns the append check and the decode check")
+			assert.Equal(t, names, []string{exactSizeCheck, exactAppendCheck, exactErrorCheck, exactDecodeCheck},
+				"ExactChecks returns the size, append, error and decode checks")
 		})
 		t.Run("returns one check for a type without an append method", func(t *testing.T) {
 			t.Parallel()
@@ -449,28 +512,43 @@ func TestExact(t *testing.T) {
 				want:  "kanontest: kanontest_test.fn: ",
 			},
 			{
-				name:  "fails for an append method that fails for a value other than the zero value",
-				check: exactAppendCheck,
-				run:   rejectsExact[brittle],
-				want:  "value 6 of the value tables: the append method appends SizeKanon bytes",
+				name:  "fails for a SizeKanon below 0 for the zero value",
+				check: exactSizeCheck,
+				run:   rejectsExact[sunken],
+				want:  "the zero value: SizeKanon returns no negative value\ngot:  -1",
 			},
 			{
-				name:  "fails for an append method that fails for a value that the decode method alone gives",
+				name:  "fails for a zero value that appends another length than its SizeKanon",
 				check: exactAppendCheck,
-				run:   rejectsExact[gapped],
-				want:  "the value that the decode method decodes from 0200: the append method appends SizeKanon bytes",
+				run:   rejectsExact[hushed],
+				want: "the zero value: the append method appends SizeKanon bytes to its buffer\ngot:  aaaa0000\n" +
+					"want: aaaa and 0 bytes after it",
 			},
 			{
 				name:  "fails for an append method that changes its buffer",
 				check: exactAppendCheck,
 				run:   rejectsExact[overwriting],
-				want:  "got:  00aa0001, error <nil>",
+				want:  "the zero value: the append method appends SizeKanon bytes to its buffer\ngot:  00aa0000",
 			},
 			{
 				name:  "fails for a SizeKanon that differs from the length of the encoding",
 				check: exactAppendCheck,
 				run:   rejectsExact[oversized],
-				want:  "want: aaaa and 3 bytes after it, error <nil>",
+				want:  "want: aaaa and 3 bytes after it",
+			},
+			{
+				name:  "fails for an append method that fails for a value other than the zero value",
+				check: exactErrorCheck,
+				run:   rejectsExact[brittle],
+				want: "value 6 of the value tables: the append method encodes a value other than the zero value " +
+					"without an error\ngot:  error kanontest_test: the word is math.MaxUint16",
+			},
+			{
+				name:  "fails for an append method that fails for a value that the decode method alone gives",
+				check: exactErrorCheck,
+				run:   rejectsExact[gapped],
+				want: "the value that the decode method decodes from 0200: the append method encodes a value other " +
+					"than the zero value without an error",
 			},
 			{
 				name:  "fails for a decode method that accepts bytes that the append method does not write",

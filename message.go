@@ -200,23 +200,28 @@ type Sizer interface {
 // Exact is the method set of a [Sizer] that states two guarantees of its
 // methods. It encodes itself through an append method, AppendBinary or
 // AppendText, and == compares every bit of it, so that a field leaves out
-// its zero value. For every value other than its zero value, the append
-// method returns no error and appends SizeKanon bytes. The decode method of
-// its family accepts a byte string only when the append method writes that
-// byte string for the value that the decode method sets. The encode of the
-// zero value can fail.
+// its zero value. The guarantees:
+//
+//   - SizeKanon returns no negative value. The append method returns no
+//     error for a value other than the zero value, and appends SizeKanon
+//     bytes whenever it returns no error. The append method can fail for
+//     the zero value.
+//   - The decode method of its family accepts a byte string only when the
+//     append method writes that byte string for the value that the decode
+//     method sets.
 //
 // # Encoding
 //
 // The generated code writes a field of an Exact type without an error path,
-// and a canonical decode does not encode a decoded value again. A field
-// value whose append method fails, or appends another length than its
-// SizeKanon, panics the encode with an [*EncodeError] that wraps [ErrExact].
-// A value in any other position, such as an element or a union member,
-// which the encoding writes at the zero value too, encodes as the value of
-// a Sizer does. The generation fails for a type that declares ExactKanon
-// without an append method, without SizeKanon, or with an == that does not
-// compare every bit.
+// and a canonical decode does not encode a decoded value again. A value in
+// any other position, such as an element or a union member, which the
+// encoding writes at the zero value too, returns the error of the append
+// method, and the generated code checks neither the room nor the length of
+// its encoding. An append method that fails for the value of a field, or
+// that appends another length than SizeKanon in any position, panics the
+// encode with an [*EncodeError] that wraps [ErrExact]. The generation fails
+// for a type that declares ExactKanon without an append method, without
+// SizeKanon, or with an == that does not compare every bit.
 //
 // [go.thesmos.sh/kanon/kanontest.RunExact] checks both guarantees, in the
 // package that declares the type.

@@ -74,8 +74,8 @@ For a change to the wire format, to the generated API or to the options of the g
 
 - Return an error where library code could panic. Only the kanon command writes output,
   through an `io.Writer`. `forbidigo` rejects `panic` and `fmt.Print*`.
-- `wire.MustExact` is the one panic. The encode of a field of a `kanon.Exact` type has no error
-  path, so a type that breaks the guarantee of `kanon.Exact` panics the encode.
+- `wire.MustExact` is the one panic. The generated code checks the guarantee of a `kanon.Exact`
+  type without an error path, so a type that breaks the guarantee panics the encode.
 - Give every declaration a doc comment that states its contract, exported or not.
 - Start an error message with the name of its package.
 - Write the generated files, which end in `.kanon.go` and `.kanon_test.go`, with

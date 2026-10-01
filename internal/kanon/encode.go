@@ -432,8 +432,8 @@ func (e *emitter) putSized(v *value) {
 
 // exactPutHelper writes the put function of a field of v, a type that
 // declares kanon.Exact, which the encoding writes only at a value other than
-// the zero value: it sizes the value that x points at with SizeKanon, appends
-// its encoding into that room in place, and returns its length. kanon.Exact
+// the zero value: it appends the value that x points at, as
+// [emitter.exactAppend] appends it, and returns its length. kanon.Exact
 // guarantees that the append method does not fail and appends SizeKanon bytes
 // for such a value, so the function has no error path, and wire.MustExact
 // panics for a type that breaks the guarantee.
@@ -443,21 +443,49 @@ func (e *emitter) exactPutHelper(name string, v *value) {
 		"the end of buf, which has room for its SizeKanon, and returns its length. " + typ + " declares " +
 		"kanon.Exact, so the encoding does not fail, and a value that breaks the guarantee panics.")
 	e.line("func %s(buf []byte, x *%s, loc string, num int) int {", name, typ)
-	e.line("n := x.%s()", sizeKanonName)
-	e.line("i := len(buf) - n")
-	e.line("enc, err := x.%s(buf[i:i:len(buf)])", v.self.appender)
+	e.exactAppend(v)
 	e.line("%sMustExact(enc, err, n, loc, num)", e.wire())
 	e.line("return n")
 	e.line("}")
 	e.line("")
 }
 
+// putExact writes the statements of the put function of v, a type that
+// declares kanon.Exact, in a position that writes the zero value: an element,
+// a map key or value, the target of a pointer, a union member or the value of
+// an interface. They append the value that x points at, as
+// [emitter.exactAppend] appends it, return the error of the append method,
+// which kanon.Exact allows for the zero value alone, and pass the encoding to
+// wire.MustExact, which panics for another length than SizeKanon. kanon.Exact
+// rules out a SizeKanon below 0 and an encoding of another length, so the
+// statements check neither the room nor the length.
+func (e *emitter) putExact(v *value) {
+	e.exactAppend(v)
+	e.line("if err != nil {")
+	e.line("return 0, %sMarshalError(err, loc, num)", e.wire())
+	e.line("}")
+	e.line("%sMustExact(enc, nil, n, loc, num)", e.wire())
+	e.line("return n, nil")
+}
+
+// exactAppend writes the statements of the put functions of v, a type that
+// declares kanon.Exact, that size the value that x points at with SizeKanon
+// as n, and append its encoding through the append method into that room at
+// the end of buf, in place, as enc with the error err.
+func (e *emitter) exactAppend(v *value) {
+	e.line("n := x.%s()", sizeKanonName)
+	e.line("i := len(buf) - n")
+	e.line("enc, err := x.%s(buf[i:i:len(buf)])", v.self.appender)
+}
+
 // putHelper writes the put function of the values of v: the function that
 // writes the encoding of an inline struct or of a value of a type that
 // encodes itself without its length, and of a slice, an array, a map, a
 // pointer or an interface with it, into the end of buf, and returns the
-// length that it wrote. The put function of a slice, an array, a map, a
-// pointer or an interface also returns an error when [emitter.putFails]
+// length that it wrote. The put function of a type that declares kanon.Exact
+// writes the statements of [emitter.putExact], and of any other kanon.Sizer
+// those of [emitter.putSized]. The put function of a slice, an array, a map,
+// a pointer or an interface also returns an error when [emitter.putFails]
 // reports that it can fail.
 func (e *emitter) putHelper(name string, v *value) {
 	typ := e.p.typ(v.typ)
@@ -477,6 +505,16 @@ func (e *emitter) putHelper(name string, v *value) {
 			e.line("func %s(buf []byte, m *%s) int {", name, typ)
 		}
 		e.encodeBody(m, m.fails)
+		return
+	}
+	if v.kind == kindBinary && v.self.exact {
+		e.doc(text + "the " + typ + " that x points at" + room + " The room is the length that the SizeKanon " +
+			"of x returns. It fails when x fails to encode itself, which kanon.Exact allows for the zero " + typ +
+			" alone, and panics for an encoding of another length.")
+		e.line("func %s(buf []byte, x *%s, loc string, num int) (int, error) {", name, typ)
+		e.putExact(v)
+		e.line("}")
+		e.line("")
 		return
 	}
 	if v.kind == kindBinary && v.self.sizer {

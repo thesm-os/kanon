@@ -62,7 +62,7 @@
 // that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
 // [ErrSize], the error of a type that encodes itself, or the error of
 // ValidateKanon. An encode panics with a [*EncodeError] that wraps
-// [ErrExact] for a field of an [Exact] type that breaks its guarantee.
+// [ErrExact] for a value of an [Exact] type that breaks its guarantee.
 // errors.Is and errors.As classify both.
 //
 // # Versions

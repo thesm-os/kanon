@@ -28,7 +28,8 @@ type (
 // decode checks. Digests encodes the zero Digest, which a field leaves out,
 // so that its encode fails. A Gauge field is present when its encoding has
 // bytes, since == does not compare every bit of a Gauge. A Serial field
-// decodes without a second encode.
+// decodes without a second encode, and Serials encodes the zero Serial, so
+// that the put function of an element of a kanon.Exact type fails.
 type Scalars struct {
 	Bool       bool
 	Flag       Flag
@@ -66,4 +67,5 @@ type Scalars struct {
 	Digests    []Digest
 	Gauge      Gauge
 	Serial     codec.Serial
+	Serials    []codec.Serial
 }
