@@ -16,7 +16,7 @@ A `go:generate` directive names the types:
 - The generated code does not use reflection.
 - kanon encodes every type that `encoding/gob` and `encoding/json` encode: slices and maps nested to any depth, maps with any comparable key type, struct keys included, arrays, pointers, complex numbers, `time.Time`, and interfaces with a list of their concrete types.
 - A type with binary, gob or text methods, such as `MarshalBinary` and `UnmarshalBinary`, encodes through them.
-- A named type that is not a struct can encode as its underlying type instead, with a check of its values that kanon calls on every encode and decode.
+- A named type that is not a struct can encode as its underlying type instead, with an optional check of its values that kanon calls on every encode and decode.
 - Equal values encode to identical bytes, because map keys are sorted and absent fields are left out.
 - Each field encodes under a number that the generated file records, so a struct can gain and lose fields between an encode and a decode.
 - An encode into a buffer with spare capacity does not allocate.
@@ -488,6 +488,8 @@ for _, r := range records { // r.off and r.n locate one encoding in batch
 The batch then allocates one slab.
 The offset in an error is the offset in `batch`.
 Package `batch` decodes this way: `batch.Parse` copies a batch into one slab, and `Batch.Decode` passes the offset of each message.
+`batch.ParseAlias` uses the buffer of the batch itself as the slab and does not allocate.
+The records and the decoded strings then alias that buffer, which must not change while they are in use.
 
 ### Hazards
 

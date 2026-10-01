@@ -18,14 +18,15 @@
 // signature func() error on a value receiver, whose error the ValidateKanon
 // method of each type that is not a struct returns. Without -validate, that
 // method returns nil, and the code that kanon generates for a struct does
-// not call it.
+// not call it. -canonical makes the decode of each struct type accept only
+// the canonical encoding of a value, the bytes that its encode writes.
 //
 // kanon writes a file only when its content changes, so that an unchanged
 // codec keeps its modification time.
 //
 // Usage:
 //
-//	kanon -type=T[,T...] [-views] [-validate=method] [file]
+//	kanon -type=T[,T...] [-views] [-validate=method] [-canonical] [file]
 //	kanon inspect [-frames | -batch] [-hex] [-json] [file]
 //	kanon -version
 //
