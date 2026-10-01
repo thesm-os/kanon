@@ -26,6 +26,7 @@ var kanonSpecCodecs = kanontest.Spec[Codecs]{
 		{Name: "Clip", Number: 12},
 		{Name: "Sum", Number: 13},
 		{Name: "Serial", Number: 14},
+		{Name: "Ident", Number: 15},
 	},
 }
 
@@ -56,6 +57,7 @@ var kanonSpecAppenders = kanontest.Spec[Appenders]{
 		{Name: "Clip", Number: 7},
 		{Name: "Sum", Number: 8},
 		{Name: "Serial", Number: 9},
+		{Name: "Ident", Number: 10},
 	},
 }
 

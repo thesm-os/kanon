@@ -179,7 +179,7 @@
 // method does not write. A type whose append method fails for the value of
 // a field, or appends another length than SizeKanon, panics the generated
 // encode. [RunExact] checks both guarantees of kanon.Exact on the type
-// itself:
+// itself, and the AppendKanon of a kanon.Appender:
 //
 //   - For the zero value, every value of the value tables and every value
 //     that the decode method decodes, SizeKanon returns no negative value,
@@ -190,6 +190,9 @@
 //     encoding with one more byte, and a byte string of every length up to
 //     the size of the type in memory. For every input that it accepts, the
 //     append method writes the input for the decoded value.
+//   - For a kanon.Appender, AppendKanon appends the bytes that the append
+//     method appends, which returns no error, for every one of those
+//     values, the zero value included.
 //
 // # Allocations
 //

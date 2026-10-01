@@ -23,7 +23,10 @@
 // byte selects each way in which its encode fails. [Serial] has unexported
 // fields alone too, and no encoding for its zero value, as the core digest
 // has none. It declares kanon.Exact, so that a field of it encodes without
-// an error path, and its test runs kanontest.RunExact on it. The
+// an error path, and its test runs kanontest.RunExact on it. [Ident] is a
+// kanon.Appender whose zero value encodes as no bytes, as the core
+// identifiers do, and [Idents] has it in every position, so that its encode
+// has no error path. The
 // encoding of each type fails for a value in every way that the generated
 // code handles, and the decoding for malformed data, so that the generated
 // tests run the error branches of the code that calls them. [Codecs] has a

@@ -31,6 +31,10 @@ const (
 	sizeT      = "func (T) SizeKanon() int { return 1 }\n\n"
 	exactT     = "func (T) ExactKanon() {}\n\n"
 	validateT  = "func (T) ValidateKanon() error { return nil }\n\n"
+	// appendKanonT is the method of kanon.Appender, and erringKanonT the
+	// method under its name with the error result of AppendBinary.
+	appendKanonT = "func (t T) AppendKanon(b []byte) []byte { return append(b, 0) }\n\n"
+	erringKanonT = "func (t T) AppendKanon(b []byte) ([]byte, error) { return append(b, 0), nil }\n\n"
 )
 
 func TestClassify(t *testing.T) {
@@ -132,6 +136,22 @@ func TestClassify(t *testing.T) {
 				},
 				want: "kanon: a.go:14:2: A.T: example.com/m.T declares ExactKanon, and == does not compare every bit " +
 					"of it",
+			},
+			{
+				name: "returns an error for a type that declares AppendKanon without ExactKanon",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" + appendT + unmarshalT + sizeT + appendKanonT + structA("T T"),
+				},
+				want: "kanon: a.go:14:2: A.T: example.com/m.T declares AppendKanon, and does not declare ExactKanon",
+			},
+			{
+				name: "returns an error for an AppendKanon with another signature",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" + appendT + unmarshalT + sizeT + exactT + erringKanonT +
+						structA("T T"),
+				},
+				want: "kanon: a.go:16:2: A.T: example.com/m.T.AppendKanon has the signature func(b []byte) ([]byte, " +
+					"error): declare it as func([]byte) []byte",
 			},
 		}
 		// hiddenPart is the reason of the errors for the types that contain

@@ -111,7 +111,7 @@ A declaration by the type, which the conformance suite checks, removes both.
 | Component | Change |
 |---|---|
 | The generator | The `-canonical` flag. The decode of each canonical type applies the rules of this document, and the generation fails for the cases that the directive section lists. A field of an Exact type encodes without error handling and decodes without a second encode |
-| `kanon` | `ErrNotCanonical`, `Exact`, `ErrExact`, one sentence in the contract of `DecodeKanon`, and `MaxVersion` of 2 |
+| `kanon` | `ErrNotCanonical`, `Exact`, `Appender`, `ErrExact`, one sentence in the contract of `DecodeKanon`, and `MaxVersion` of 2 |
 | `kanon/wire` | `CanonicalTime`, nine error constructors that wrap `ErrNotCanonical`, `MustExact` and `ExactError` |
 | `kanontest` | `Spec.Canonical`, the canonical rules in the reference decoder, the round-trip check, new probe families, values of opaque types from their decode method, `ExactChecks` and `RunExact` |
 | `Options`, `wire.Nested`, `wire.Time`, views, indexes, `frame`, `batch` and `kanon inspect` | No change |
@@ -358,6 +358,16 @@ which guarantee 1 allows for the zero value alone. It checks neither the room no
 which guarantee 1 rules out, and passes the encoding to `wire.MustExact`, which panics for a type
 that breaks the guarantee.
 
+An Exact type whose append method fails for no value, its zero value included, declares
+`kanon.Appender` with a second method, `AppendKanon(dst []byte) []byte`. It appends the bytes of
+the append method and has no error result, so the compiler rules out the error that guarantee 1
+allows. The put function of such a type calls `AppendKanon` in every position and passes the
+encoding to `wire.MustExact` for its length, without an error path. A field of the type writes
+through the same put function. A slice, an array, a pointer, a map value or a union member of
+the type cannot fail, and neither can a struct whose other fields cannot fail. The generation
+fails for a type with an `AppendKanon` method and without `ExactKanon`, and for an `AppendKanon`
+of another signature.
+
 Guarantee 2 applies to every byte string, so a canonical decode skips the second encode of an
 Exact value in every position. A struct encodes without an error path when none of its fields can
 fail, and an Exact field counts as a field that cannot fail.
@@ -373,6 +383,11 @@ cannot run, 39 in the record package and 2 in the content package:
 - per put function of a digest in another position: the check of the room and the check of the
   length
 
+`AppendKanon` on the identifier and the instant removes 16 more, in the protection package of
+the same format: the error return after each element of a slice of identifiers, in the put
+functions of those slices, in the encodes of the structs that contain them, and in their
+`AppendBinary`.
+
 The digest, the identifier and the instant of the core module keep both guarantees:
 
 - `crypto.Digest` decodes 32, 48 or 64 bytes to a value whose append method writes those bytes,
@@ -380,10 +395,11 @@ The digest, the identifier and the instant of the core module keep both guarante
 - `id.ID` decodes 16, 20 or 32 bytes the same way, and the empty input to its zero value, whose
   encoding is empty. Its append method never fails.
 - `clock.Instant` decodes 16 bytes to its three fields and appends them in the same order. Its
-  `SizeKanon` returns 16 for every value.
+  `SizeKanon` returns 16 for every value, and its append method never fails.
 
-Each of the three adds `ExactKanon` and a test that runs `kanontest.RunExact`. The core module
-already depends on kanon for the codec of its signatures.
+Each of the three adds `ExactKanon` and a test that runs `kanontest.RunExact`. The identifier
+and the instant also add `AppendKanon`, and the digest does not, since it has no encoding for
+the zero digest. The core module already depends on kanon for the codec of its signatures.
 
 ### The runtime
 
@@ -416,6 +432,19 @@ type Exact interface {
 	Sizer
 	// ExactKanon marks the type. No code calls it.
 	ExactKanon()
+}
+
+// Appender is implemented by an Exact type whose append method returns no
+// error for any value, its zero value included. AppendKanon appends the
+// bytes of the append method without an error result. The generated code
+// writes a value of such a type through AppendKanon in every position
+// without an error path, and kanontest checks that AppendKanon appends the
+// bytes of the append method.
+type Appender interface {
+	Exact
+	// AppendKanon appends the encoding of the receiver to dst and returns the
+	// extended slice.
+	AppendKanon(dst []byte) []byte
 }
 
 // The generator versions that the runtime supports.

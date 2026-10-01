@@ -161,19 +161,25 @@ func (e *emitter) encodeBody(m *target, withErr bool) {
 
 // putField writes the statements that write the field f of m, a field that
 // is not a union member, before buf[i] when it is present, as
-// [emitter.sizeField] states, and move i to its first byte.
+// [emitter.sizeField] states, and move i to its first byte. A field of a
+// kanon.Exact type writes through the put function of a field, and a field
+// of a kanon.Appender through the put function of its type, which writes
+// every position of it without an error.
 func (e *emitter) putField(m *target, f *field) {
 	x, v, loc, num := "m."+f.name, f.val, fieldLoc(m, f), strconv.Itoa(f.num)
 	switch v.kind {
 	case kindStruct, kindBinary:
 		if zeroAbsent(v) {
 			e.line("if %s {", e.present(v, x))
-			if v.fails {
+			switch {
+			case v.fails:
 				e.line("w, err := %s", e.contentCall(v, x, loc, num))
 				e.line("if err != nil {")
 				e.line("return 0, err")
 				e.line("}")
-			} else {
+			case v.self.appendsKanon:
+				e.line("w := %s", e.contentCall(v, x, loc, num))
+			default:
 				e.line("w := %s(buf[:i], %s, %s, %s)", e.fn(opExactPut, v), addr(x), loc, num)
 			}
 			e.line("i -= w")
@@ -329,16 +335,54 @@ func (e *emitter) putScoped(v *value, x string) {
 
 // putCall writes the statements that write arg, a slice, an array, a map, a
 // pointer or an interface of v, with the put function of v, before buf[i],
-// and return the error of a value whose encoding fails.
+// and return the error of a value whose encoding fails. The call passes loc
+// and num to a put function that takes them, as [emitter.located] reports.
 func (e *emitter) putCall(v *value, arg, loc, num string) {
 	name := e.fn(e.keyOp(opPut, v), v)
 	if !e.putFails(v) {
-		e.line("i -= %s(buf[:i], %s)", name, arg)
+		if e.located(v) {
+			e.line("i -= %s(buf[:i], %s, %s, %s)", name, arg, loc, num)
+		} else {
+			e.line("i -= %s(buf[:i], %s)", name, arg)
+		}
 		return
 	}
 	e.line("w, err := %s(buf[:i], %s, %s, %s)", name, arg, loc, num)
 	e.check()
 	e.line("i -= w")
+}
+
+// located reports whether the put function of v, a slice, an array, a map, a
+// pointer or an interface, takes loc and num, the location of the field that
+// it writes: it can fail, as [emitter.putFails] reports, or it writes a
+// kanon.Appender, as [appenderIn] reports, whose put function names the
+// location in the panic of an encoding of another length.
+func (e *emitter) located(v *value) bool {
+	return e.putFails(v) || appenderIn(v, make(map[*value]bool))
+}
+
+// appenderIn reports whether the put function of v writes a value of a
+// kanon.Appender: v is one, or a slice, an array, a pointer or a map whose
+// elements, targets, keys or values contain one. The walk does not enter a
+// struct, whose encode passes literal locations to the put functions of its
+// fields, nor an interface, whose put function takes the location for a
+// type that its list does not name. seen marks the values visited, so that a
+// type that contains itself ends the walk.
+func appenderIn(v *value, seen map[*value]bool) bool {
+	if seen[v] {
+		return false
+	}
+	seen[v] = true
+	switch v.kind {
+	case kindBinary:
+		return v.self.appendsKanon
+	case kindSlice, kindArray, kindPointer:
+		return appenderIn(v.elem, seen)
+	case kindMap:
+		return appenderIn(v.key, seen) || appenderIn(v.elem, seen)
+	default:
+		return false
+	}
 }
 
 // putFails reports whether the put function of v, a slice, an array, a map,
@@ -468,6 +512,21 @@ func (e *emitter) putExact(v *value) {
 	e.line("return n, nil")
 }
 
+// putAppender writes the statements of the put function of a kanon.Appender
+// in every position: they size the value that x points at with SizeKanon as
+// n, append its encoding through AppendKanon into that room at the end of
+// buf, in place, and pass the encoding to wire.MustExact, which panics for
+// another length than SizeKanon. AppendKanon returns no error, and
+// kanon.Exact rules out a SizeKanon below 0, so the statements have no error
+// path and check no room.
+func (e *emitter) putAppender() {
+	e.line("n := x.%s()", sizeKanonName)
+	e.line("i := len(buf) - n")
+	e.line("enc := x.%s(buf[i:i:len(buf)])", appendKanonName)
+	e.line("%sMustExact(enc, nil, n, loc, num)", e.wire())
+	e.line("return n")
+}
+
 // exactAppend writes the statements of the put functions of v, a type that
 // declares kanon.Exact, that size the value that x points at with SizeKanon
 // as n, and append its encoding through the append method into that room at
@@ -482,8 +541,9 @@ func (e *emitter) exactAppend(v *value) {
 // writes the encoding of an inline struct or of a value of a type that
 // encodes itself without its length, and of a slice, an array, a map, a
 // pointer or an interface with it, into the end of buf, and returns the
-// length that it wrote. The put function of a type that declares kanon.Exact
-// writes the statements of [emitter.putExact], and of any other kanon.Sizer
+// length that it wrote. The put function of a kanon.Appender writes the
+// statements of [emitter.putAppender], of any other type that declares
+// kanon.Exact those of [emitter.putExact], and of any other kanon.Sizer
 // those of [emitter.putSized]. The put function of a slice, an array, a map,
 // a pointer or an interface also returns an error when [emitter.putFails]
 // reports that it can fail.
@@ -505,6 +565,16 @@ func (e *emitter) putHelper(name string, v *value) {
 			e.line("func %s(buf []byte, m *%s) int {", name, typ)
 		}
 		e.encodeBody(m, m.fails)
+		return
+	}
+	if v.kind == kindBinary && v.self.appendsKanon {
+		e.doc(text + "the " + typ + " that x points at" + room + " The room is the length that the SizeKanon " +
+			"of x returns. " + typ + " is a kanon.Appender, whose AppendKanon does not fail, and an encoding of " +
+			"another length panics.")
+		e.line("func %s(buf []byte, x *%s, loc string, num int) int {", name, typ)
+		e.putAppender()
+		e.line("}")
+		e.line("")
 		return
 	}
 	if v.kind == kindBinary && v.self.exact {
@@ -549,6 +619,10 @@ func (e *emitter) putHelper(name string, v *value) {
 		}
 		e.doc(text + "x, a " + typ + keyed + room + failure + ", which loc and num locate.")
 		e.line("func %s(buf []byte, x %s, loc string, num int) (int, error) {", name, param(v, typ))
+	} else if e.located(v) {
+		e.doc(text + "x, a " + typ + keyed + room + " loc and num locate the panic of a kanon.Appender in x " +
+			"that appends another length than its SizeKanon.")
+		e.line("func %s(buf []byte, x %s, loc string, num int) int {", name, param(v, typ))
 	} else {
 		e.doc(text + "x, a " + typ + keyed + room)
 		e.line("func %s(buf []byte, x %s) int {", name, param(v, typ))

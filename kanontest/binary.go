@@ -123,6 +123,22 @@ func sizeKanon(x reflect.Value) int {
 	return s.SizeKanon()
 }
 
+// appendsKanon reports whether the pointer to t, a kanon.Exact type, is a
+// kanon.Appender, whose AppendKanon the generated code calls in place of the
+// append method of its family.
+func appendsKanon(t reflect.Type) bool {
+	return reflect.PointerTo(t).Implements(reflect.TypeFor[kanon.Appender]())
+}
+
+// appendKanon appends the encoding of x, a value of a kanon.Appender, to b
+// through AppendKanon, and returns the extended slice.
+func appendKanon(x reflect.Value, b []byte) []byte {
+	p := reflect.New(x.Type())
+	p.Elem().Set(x)
+	a, _ := reflect.TypeAssert[kanon.Appender](p)
+	return a.AppendKanon(b)
+}
+
 // encodeSelf returns the encoding of x, a value of a type that encodes
 // itself, as the generated code writes it, and its error: the encoding that
 // [marshal] returns and the error of the encode method, errNegative for a

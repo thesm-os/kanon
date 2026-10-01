@@ -86,9 +86,11 @@
 // index type, <T>Index, which IndexKanon of the view fills from one scan.
 //
 // A type that encodes itself and declares SizeKanon() int, a kanon.Sizer, is
-// sized with that method and appended into its room in place. The presence
-// of a value of a type that declares IsZero() bool, and whose == compares
-// every bit, is tested with that method in place of ==.
+// sized with that method and appended into its room in place. A kanon.Exact
+// type that declares AppendKanon([]byte) []byte, a kanon.Appender, is
+// appended through that method in every position, without an error path.
+// The presence of a value of a type that declares IsZero() bool, and whose
+// == compares every bit, is tested with that method in place of ==.
 //
 // An encode writes backward from the end of its buffer, in ascending field
 // number, so that the length of a nested value is known when its prefix is

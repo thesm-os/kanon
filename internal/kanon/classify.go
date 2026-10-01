@@ -105,13 +105,12 @@ type classifier struct {
 //
 // classify fails for a type that kanon does not encode: a function, a
 // channel and an unsafe pointer; for a type that the generated code cannot
-// name, as [nameable] states; for an ExactKanon that [classifier.exactable]
-// rejects; for a ValidateKanon that [validatorOf]
+// name, as [nameable] states; for an ExactKanon or an AppendKanon that
+// [classifier.exactable] rejects; for a ValidateKanon that [validatorOf]
 // rejects; for a kanon.Validator whose ValidateKanon the code calls and
 // whose only value is its zero value, as [value.zeroOnly] reports, since its
 // encoding is a constant that the generated code writes and reads without
-// the value; for an interface
-// without a list; and for an inline struct whose
+// the value; for an interface without a list; and for an inline struct whose
 // fields fail the analysis. It also fails when fixed applies to no integer
 // of the tree, when the tree has no interface for list, and when a type of
 // list fits no interface of the tree.
@@ -186,7 +185,7 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			v.validate = !c.trivial(named)
 			v.fails = v.validate
 		} else if self, ok := selfCodecOf(named); ok {
-			v.kind, v.self, v.fails = kindBinary, self, true
+			v.kind, v.self, v.fails = kindBinary, self, !self.appendsKanon
 			return v, nil
 		}
 		if !isStruct(named) {
@@ -286,12 +285,22 @@ func (c classifier) validator(t *types.Named) (bool, error) {
 // encodes itself through an append method, as [classifier.binaryType]
 // reports and [selfCodecOf] names the method, it has SizeKanon, and ==
 // compares every bit of it, as [bitwiseType] reports, so that a field leaves
-// out its zero value.
+// out its zero value. It also fails for a type that declares AppendKanon,
+// the method of kanon.Appender, without ExactKanon or with another signature
+// than func([]byte) []byte.
 func (c classifier) exactable(t *types.Named) error {
+	name := types.TypeString(t, nil)
+	appends := methodsOf(t).signatureOf(appendKanonName)
 	if !exactType(t) {
+		if appends != nil {
+			return fmt.Errorf("kanon: %s declares %s, and does not declare %s", name, appendKanonName, exactKanonName)
+		}
 		return nil
 	}
-	name := types.TypeString(t, nil)
+	if appends != nil && !types.Identical(appends, signature([]types.Type{byteSlice()}, []types.Type{byteSlice()})) {
+		return fmt.Errorf("kanon: %s.%s has the signature %s: declare it as func([]byte) []byte",
+			name, appendKanonName, types.TypeString(appends, nil))
+	}
 	self, _ := selfCodecOf(t)
 	if !c.binaryType(t) || self.appender == "" {
 		return fmt.Errorf("kanon: %s declares %s, and does not encode itself through AppendBinary or AppendText",

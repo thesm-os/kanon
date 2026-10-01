@@ -22,6 +22,7 @@ type Codecs struct {
 	Clip    Clip
 	Sum     Sum
 	Serial  Serial
+	Ident   Ident
 }
 
 // Appenders has a field of each type of the package with an append method,
@@ -38,4 +39,5 @@ type Appenders struct {
 	Clip   Clip
 	Sum    Sum
 	Serial Serial
+	Ident  Ident
 }

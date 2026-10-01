@@ -219,6 +219,7 @@ Such a type can also declare these methods, which make its encode cheaper:
 - `SizeKanon() int` returns the length of that encoding. kanon sizes the value with it instead of encoding it twice, and appends the encoding into its buffer in place.
 - `IsZero() bool` reports whether the value is the zero value, which kanon leaves out of a field. kanon calls it instead of comparing the whole value with `==`, so it must report true for the zero value alone.
 - `ExactKanon()` declares `kanon.Exact` for a type with an append method, `SizeKanon` and an `==` that compares every bit. kanon then writes a field of the type without error handling, and a canonical decode does not encode its values again.
+- `AppendKanon(dst []byte) []byte` declares `kanon.Appender` for a `kanon.Exact` type whose append method never fails, its zero value included. It appends the bytes of the append method without an error result, and kanon writes the type without error handling in every position.
 
 A type that declares `kanon.Exact` keeps two guarantees:
 
@@ -226,8 +227,9 @@ A type that declares `kanon.Exact` keeps two guarantees:
 - The decode method accepts only the bytes that the append method writes for the decoded value.
 
 In a slice, a map, a pointer, a union or an interface, kanon writes the zero value too, and the error of its append method fails the encode.
+A `kanon.Appender` has no such error, so a struct whose other fields cannot fail encodes without one.
 An append method that fails for a field, or that appends another length than `SizeKanon`, panics the encode.
-Check both guarantees in a test of the package that declares the type:
+Check both guarantees, and the bytes that `AppendKanon` appends, in a test of the package that declares the type:
 
 ```go
 func TestDigest(t *testing.T) {

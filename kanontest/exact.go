@@ -34,6 +34,9 @@ const (
 	exactErrorCheck = "ExactKanon/appends every value but the zero value without an error"
 	// exactDecodeCheck names the check of the second guarantee.
 	exactDecodeCheck = "ExactKanon/decodes only the bytes that the append method writes for the decoded value"
+	// exactAppenderCheck names the check of a kanon.Appender that AppendKanon
+	// appends the bytes of the append method of its family.
+	exactAppenderCheck = "AppendKanon/appends the bytes that the append method appends for every value"
 )
 
 // exactSuite is the conformance suite of a type that declares kanon.Exact:
@@ -156,6 +159,20 @@ func (es *exactSuite) succeed(tb assert.TB) {
 	}
 }
 
+// appender checks that AppendKanon, of a kanon.Appender, appends to a buffer
+// of two guard bytes what the append method of its family appends to it
+// without an error, for every value of es, the zero value included.
+func (es *exactSuite) appender(tb assert.TB) {
+	tb.Helper()
+	for _, x := range es.all() {
+		want, err := appendTo(x.v, []byte{guard, guard})
+		if got := appendKanon(x.v, []byte{guard, guard}); err != nil || !bytes.Equal(got, want) {
+			tb.Fatalf("%s: AppendKanon appends the bytes that the append method appends\ngot:  %x\nwant: %x, "+
+				"error %v", x, got, want, err)
+		}
+	}
+}
+
 // decode checks the second guarantee of kanon.Exact: for each input that
 // the decode method accepts, the append method writes the input for the
 // value that the decode method sets.
@@ -185,25 +202,33 @@ func (es *exactSuite) decode(tb assert.TB) {
 //     prefix of it, every change of one of its bytes and the encoding with
 //     one more byte, and a byte string of every length up to the size of T
 //     in memory.
+//   - For a kanon.Appender, AppendKanon appends the bytes that the append
+//     method appends, which returns no error, for every value, the zero
+//     value included.
 //
 // For a type that kanon does not encode, and for a type that does not meet
 // the requirements of kanon.Exact that the generator checks, ExactChecks
 // returns one check, which fails with the reason: T encodes itself through
 // AppendBinary or AppendText, and == compares every bit of it.
 func ExactChecks[T kanon.Exact]() []Check {
-	es, err := newExactSuite(reflect.TypeFor[T]())
+	typ := reflect.TypeFor[T]()
+	es, err := newExactSuite(typ)
 	if err != nil {
 		return []Check{{Name: exactTypeCheck, Run: func(tb assert.TB) {
 			tb.Helper()
 			assert.NoError(tb, err, "the type meets the requirements of kanon.Exact")
 		}}}
 	}
-	return []Check{
+	checks := []Check{
 		{Name: exactSizeCheck, Run: es.size},
 		{Name: exactAppendCheck, Run: es.append},
 		{Name: exactErrorCheck, Run: es.succeed},
 		{Name: exactDecodeCheck, Run: es.decode},
 	}
+	if appendsKanon(typ) {
+		checks = append(checks, Check{Name: exactAppenderCheck, Run: es.appender})
+	}
+	return checks
 }
 
 // RunExact runs the checks of T that [ExactChecks] returns, each as a

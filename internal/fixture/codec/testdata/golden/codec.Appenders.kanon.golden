@@ -1,12 +1,12 @@
 the zero value: 
-table sample 0: 0a04000000011a023fff22800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a04deadbeef3201004208deadbeefdeadbeef4a04deadbeef
-table sample 1: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef4a0400000000
-table sample 2: 0a04000000801a02000122ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a04deadbeef3201004204010203044a0461616161
-table sample 3: 0a04000040001201421a02012c2a04deadbeef3201004208deadbeefdeadbeef4a086262626262626262
-table sample 4: 0a04002000002a04deadbeef3201004208deadbeefdeadbeef4a080102030405060708
-table sample 5: 0a04100000001a02000122056b616e6f6e2a04deadbeef320100420801020304050607084a086363636363636363
+table sample 0: 0a04000000011a023fff22800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a04deadbeef3201004208deadbeefdeadbeef4a04deadbeef5208000000000000007f
+table sample 1: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef4a040000000052080000000000000080
+table sample 2: 0a04000000801a02000122ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a04deadbeef3201004204010203044a046161616152080000000800000000
+table sample 3: 0a04000040001201421a02012c2a04deadbeef3201004208deadbeefdeadbeef4a08626262626262626252080100000000000000
+table sample 4: 0a04002000002a04deadbeef3201004208deadbeefdeadbeef4a08010203040506070852088000000000000000
+table sample 5: 0a04100000001a02000122056b616e6f6e2a04deadbeef320100420801020304050607084a0863636363636363635208ffffffffffffffff
 table sample 6: 1a02007f2207c3a9e29c93cf892a0461616161320100420863636363636363634a04ffffffff
-table sample 7: 1201411a020080227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a04deadbeef3201004208deadbeefdeadbeef4a08deadbeefdeadbeef
+table sample 7: 1201411a020080227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a04deadbeef3201004208deadbeefdeadbeef4a08deadbeefdeadbeef52080000000000000001
 the sample of field Token: 0a0400000001
 the sample of field Grade: 120141
 the sample of field Stamp: 1a02007f
@@ -16,6 +16,7 @@ the sample of field Hash: 320100
 the sample of field Clip: 
 the sample of field Sum: 4208deadbeefdeadbeef
 the sample of field Serial: 4a08deadbeefdeadbeef
+the sample of field Ident: 52080000000000000001
 table sample 0 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 0 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 0 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -30,7 +31,7 @@ table sample 0 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 0 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 0 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 0 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 0 that fails at value 14: 0a04000000011a023fff22800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a04deadbeef3201004208deadbeefdeadbeef
+table sample 0 that fails at value 14: 0a04000000011a023fff22800162626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262622a04deadbeef3201004208deadbeefdeadbeef5208000000000000007f
 table sample 1 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 1 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 1 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -45,7 +46,7 @@ table sample 1 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 1 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 1 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 1 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 1 that fails at value 14: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef
+table sample 1 that fails at value 14: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef52080000000000000080
 table sample 2 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 2 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 2 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -60,7 +61,7 @@ table sample 2 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 2 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 2 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 2 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 2 that fails at value 14: 0a04000000801a02000122ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a04deadbeef320100420401020304
+table sample 2 that fails at value 14: 0a04000000801a02000122ac026363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363632a04deadbeef32010042040102030452080000000800000000
 table sample 3 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 3 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 3 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -75,7 +76,7 @@ table sample 3 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 3 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 3 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 3 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 3 that fails at value 14: 0a04000040001201421a02012c2a04deadbeef3201004208deadbeefdeadbeef
+table sample 3 that fails at value 14: 0a04000040001201421a02012c2a04deadbeef3201004208deadbeefdeadbeef52080100000000000000
 table sample 4 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 4 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 4 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -90,7 +91,7 @@ table sample 4 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 4 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 4 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 4 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 4 that fails at value 14: 0a04002000002a04deadbeef3201004208deadbeefdeadbeef
+table sample 4 that fails at value 14: 0a04002000002a04deadbeef3201004208deadbeefdeadbeef52088000000000000000
 table sample 5 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 5 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 5 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -105,7 +106,7 @@ table sample 5 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 5 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 5 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 5 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 5 that fails at value 14: 0a04100000001a02000122056b616e6f6e2a04deadbeef32010042080102030405060708
+table sample 5 that fails at value 14: 0a04100000001a02000122056b616e6f6e2a04deadbeef320100420801020304050607085208ffffffffffffffff
 table sample 6 that fails at value 0: fails: kanon: Appenders.Token (field 1): codec: token is revoked
 table sample 6 that fails at value 1: fails: kanon: Appenders.Grade (field 2): codec: grade is after F
 table sample 6 that fails at value 2: fails: kanon: Appenders.Stamp (field 3): codec: stamp is sealed
@@ -135,19 +136,19 @@ table sample 7 that fails at value 10: fails: kanon: Appenders.Clip (field 7): e
 table sample 7 that fails at value 11: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
 table sample 7 that fails at value 12: fails: kanon: Appenders.Sum (field 8): codec: a sum that begins with ff has no encoding
 table sample 7 that fails at value 13: fails: kanon: Appenders.Sum (field 8): encoding length differs from SizeKanon
-table sample 7 that fails at value 14: 1201411a020080227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a04deadbeef3201004208deadbeefdeadbeef
-wide sample 0: 0a04000000011201421a020004220277342a04773500003207773800000000003a0277374204773877384a087739773977397739
-wide sample 1: 0a04000000021201431a020005220277352a0477360000320877390000000000003a027738420877397739773977394a0477313077
-the key sample: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef4a0400000000
-DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 2302 probes, digest 174f525d29bcad34
-DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 742 probes, digest 1c595b38fc2e6afc
+table sample 7 that fails at value 14: 1201411a020080227f616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161612a04deadbeef3201004208deadbeefdeadbeef52080000000000000001
+wide sample 0: 0a04000000011201421a020004220277342a04773500003207773800000000003a0277374204773877384a0877397739773977395208000000000000000a
+wide sample 1: 0a04000000021201431a020005220277352a0477360000320877390000000000003a027738420877397739773977394a04773130775208000000000000000b
+the key sample: 0a040000007f1a0240002201002a04deadbeef3201004204deadbeef4a040000000052080000000000000080
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 2670 probes, digest 656daeaad16eb90d
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 806 probes, digest 129955809ad733af
 DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
-DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 2355 probes, digest 8c421dd11aa2356b
-DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 123 probes, digest 74eaa13e16d340d7
-DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 41 probes, digest 32acc263bc802165
-DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 285 probes, digest 245c3d5e50c987c0
-DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 29 probes, digest c3eb0ce37cb5c657
-DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 2dd7ca9dfa461336
-DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 29 probes, digest 68b0eede26ae8ddb
-the samples that the encode allocation checks measure: 24 samples, digest 4a3f9163ac332689
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 2571 probes, digest e277488251911bdf
+DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 147 probes, digest bcab63e6f350d713
+DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 49 probes, digest be81dc28096d823f
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 335 probes, digest 345b512f94cfd3f1
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 30 probes, digest 6569cfcaab8ee8a7
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 53810d73d1d7a4f4
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 30 probes, digest ad3c4ffe8c64c34c
+the samples that the encode allocation checks measure: 25 samples, digest 260229b03f94b449
 the samples that the decode allocation check measures: 0 samples, digest cbf29ce484222325

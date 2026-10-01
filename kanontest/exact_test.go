@@ -22,6 +22,9 @@ const (
 	exactAppendCheck = "ExactKanon/appends SizeKanon bytes whenever the append method returns no error"
 	exactErrorCheck  = "ExactKanon/appends every value but the zero value without an error"
 	exactDecodeCheck = "ExactKanon/decodes only the bytes that the append method writes for the decoded value"
+	// exactAppenderCheck names the check of the AppendKanon of a
+	// kanon.Appender.
+	exactAppenderCheck = "AppendKanon/appends the bytes that the append method appends for every value"
 )
 
 // Lengths of the encodings of the kanon.Exact types of these tests.
@@ -442,6 +445,75 @@ func (fn) SizeKanon() int { return 0 }
 // ExactKanon marks fn as a kanon.Exact type.
 func (fn) ExactKanon() {}
 
+// tag is a word that is a kanon.Appender: AppendKanon appends the two
+// big-endian bytes that its append method appends.
+type tag uint16
+
+// AppendBinary appends the two big-endian bytes of w to b.
+func (w tag) AppendBinary(b []byte) ([]byte, error) {
+	return w.AppendKanon(b), nil
+}
+
+// AppendKanon appends the two big-endian bytes of w to b.
+func (w tag) AppendKanon(b []byte) []byte {
+	return binary.BigEndian.AppendUint16(b, uint16(w))
+}
+
+// UnmarshalBinary sets w as [readWord] reads it.
+func (w *tag) UnmarshalBinary(data []byte) error {
+	x, err := readWord(data)
+	*w = tag(x)
+	return err
+}
+
+// SizeKanon returns wordLength.
+func (tag) SizeKanon() int { return wordLength }
+
+// ExactKanon marks tag as a kanon.Exact type.
+func (tag) ExactKanon() {}
+
+// skewed is a word whose AppendKanon appends its two bytes in the other
+// order than its append method, which breaks the rule of a kanon.Appender.
+type skewed uint16
+
+// AppendBinary appends the two big-endian bytes of w to b.
+func (w skewed) AppendBinary(b []byte) ([]byte, error) {
+	return binary.BigEndian.AppendUint16(b, uint16(w)), nil
+}
+
+// AppendKanon appends the two little-endian bytes of w to b.
+func (w skewed) AppendKanon(b []byte) []byte {
+	return binary.LittleEndian.AppendUint16(b, uint16(w))
+}
+
+// UnmarshalBinary sets w as [readWord] reads it.
+func (w *skewed) UnmarshalBinary(data []byte) error {
+	x, err := readWord(data)
+	*w = skewed(x)
+	return err
+}
+
+// SizeKanon returns wordLength.
+func (skewed) SizeKanon() int { return wordLength }
+
+// ExactKanon marks skewed as a kanon.Exact type.
+func (skewed) ExactKanon() {}
+
+// pledged is a digest that declares AppendKanon, whose append method fails
+// for the zero digest, which breaks the rule of a kanon.Appender.
+type pledged struct {
+	digest
+}
+
+// AppendKanon appends the four bytes of p to b, and nothing for the zero
+// pledged.
+func (p pledged) AppendKanon(b []byte) []byte {
+	if !p.set {
+		return b
+	}
+	return append(b, p.b[:]...)
+}
+
 // rejectsExact runs the check of kanontest.ExactChecks for T named name, and
 // fails t unless the check fails with a message that contains want.
 func rejectsExact[T kanon.Exact](t *testing.T, name, want string) {
@@ -475,6 +547,30 @@ func TestExact(t *testing.T) {
 			checks := kanontest.ExactChecks[marshaled]()
 			assert.Length(t, checks, 1, "ExactChecks returns the check of the type alone")
 			assert.Equal(t, checks[0].Name, exactTypeCheck, "ExactChecks names the check of the type")
+		})
+		t.Run("returns the check of AppendKanon for a kanon.Appender", func(t *testing.T) {
+			t.Parallel()
+			checks := kanontest.ExactChecks[tag]()
+			names := make([]string, 0, len(checks))
+			for _, c := range checks {
+				names = append(names, c.Name)
+			}
+			assert.Equal(t, names,
+				[]string{exactSizeCheck, exactAppendCheck, exactErrorCheck, exactDecodeCheck, exactAppenderCheck},
+				"ExactChecks returns the checks of kanon.Exact and the check of AppendKanon")
+		})
+	})
+	t.Run("AppendKanon", func(t *testing.T) {
+		t.Parallel()
+		t.Run("fails for an AppendKanon that appends other bytes than the append method", func(t *testing.T) {
+			t.Parallel()
+			rejectsExact[skewed](t, exactAppenderCheck, "value 1 of the value tables: AppendKanon appends the bytes "+
+				"that the append method appends\ngot:  aaaa0100\nwant: aaaa0001, error <nil>")
+		})
+		t.Run("fails for a type whose append method fails for the zero value", func(t *testing.T) {
+			t.Parallel()
+			rejectsExact[pledged](t, exactAppenderCheck, "the zero value: AppendKanon appends the bytes that the "+
+				"append method appends\ngot:  aaaa\nwant: aaaa, error kanontest_test: the zero digest has no encoding")
 		})
 	})
 	t.Run("ExactKanon", func(t *testing.T) {
@@ -585,6 +681,10 @@ func TestExact(t *testing.T) {
 		t.Run("passes a type whose append method fails for the zero value", func(t *testing.T) {
 			t.Parallel()
 			kanontest.RunExact[digest](t)
+		})
+		t.Run("passes a kanon.Appender", func(t *testing.T) {
+			t.Parallel()
+			kanontest.RunExact[tag](t)
 		})
 	})
 }

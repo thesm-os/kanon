@@ -227,11 +227,12 @@ type Sizer interface {
 // any other position, such as an element or a union member, which the
 // encoding writes at the zero value too, returns the error of the append
 // method, and the generated code checks neither the room nor the length of
-// its encoding. An append method that fails for the value of a field, or
-// that appends another length than SizeKanon in any position, panics the
-// encode with an [*EncodeError] that wraps [ErrExact]. The generation fails
-// for a type that declares ExactKanon without an append method, without
-// SizeKanon, or with an == that does not compare every bit.
+// its encoding. An [Appender] has no error path in any position. An append
+// method that fails for the value of a field, or that appends another length
+// than SizeKanon in any position, panics the encode with an [*EncodeError]
+// that wraps [ErrExact]. The generation fails for a type that declares
+// ExactKanon without an append method, without SizeKanon, or with an == that
+// does not compare every bit.
 //
 // [go.thesmos.sh/kanon/kanontest.RunExact] checks both guarantees, in the
 // package that declares the type.
@@ -239,6 +240,31 @@ type Exact interface {
 	Sizer
 	// ExactKanon marks the type. No code calls it.
 	ExactKanon()
+}
+
+// Appender is the method set of an [Exact] type whose append method returns
+// no error for any value, its zero value included. AppendKanon appends the
+// bytes that the append method of the family of the type appends, which are
+// SizeKanon bytes, and has no error result.
+//
+// # Encoding
+//
+// The generated code writes a value of an Appender through AppendKanon in
+// every position, the zero value of an element included, without an error
+// path, so a struct whose other fields cannot fail encodes without an error.
+// The encode panics with an [*EncodeError] that wraps [ErrExact] for an
+// AppendKanon that appends another length than SizeKanon. The generation
+// fails for a type that declares AppendKanon without ExactKanon, and for an
+// AppendKanon of another signature.
+//
+// [go.thesmos.sh/kanon/kanontest.RunExact] checks that AppendKanon appends
+// the bytes of the append method of the family, for every value that it
+// checks.
+type Appender interface {
+	Exact
+	// AppendKanon appends the encoding of the receiver to dst and returns the
+	// extended slice.
+	AppendKanon(dst []byte) []byte
 }
 
 // Options set the slab and the nesting limit of a decode, and with the zero

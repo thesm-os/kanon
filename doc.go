@@ -30,7 +30,9 @@
 // method does not fail for a value other than its zero value, and that its
 // decode method accepts only the bytes that its append method writes. The
 // generated code writes a field of such a type without an error path, and a
-// canonical decode does not encode its values again.
+// canonical decode does not encode its values again. An [Appender], an Exact
+// type whose AppendKanon returns no error, is written without an error path
+// in every position.
 //
 // # Decoding without a copy
 //

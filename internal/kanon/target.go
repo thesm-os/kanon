@@ -67,8 +67,9 @@ type target struct {
 	tree bool
 	// fails reports that the encoding can fail, as [classifier.mayFail]
 	// reports: the struct contains a type that encodes itself outside a field
-	// of a kanon.Exact type, a kanon.Validator, an interface, or a map whose
-	// keys can have a NaN component or share a projection.
+	// of a kanon.Exact type and is no kanon.Appender, a kanon.Validator, an
+	// interface, or a map whose keys can have a NaN component or share a
+	// projection.
 	fails bool
 }
 
