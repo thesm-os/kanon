@@ -139,8 +139,8 @@ func (m *Empty) mergeKanon(data []byte, slab string, off, depth int) error {
 // Reset clears every field of m, the fields that the encoding leaves out
 // included. An encoded pointer or interface becomes nil. An encoded slice or
 // map becomes empty and keeps its storage for a decode to reuse, with every
-// element in the capacity of a slice reset, so that no decoded data stays
-// reachable through m.
+// element in the capacity of a slice reset, so that no decoded content remains
+// in m or in the storage that it keeps.
 func (m *Empty) Reset() {
 	if m == nil {
 		return
@@ -309,8 +309,8 @@ func (m *Hollow) mergeKanon(data []byte, slab string, off, depth int) error {
 // Reset clears every field of m, the fields that the encoding leaves out
 // included. An encoded pointer or interface becomes nil. An encoded slice or
 // map becomes empty and keeps its storage for a decode to reuse, with every
-// element in the capacity of a slice reset, so that no decoded data stays
-// reachable through m.
+// element in the capacity of a slice reset, so that no decoded content remains
+// in m or in the storage that it keeps.
 func (m *Hollow) Reset() {
 	if m == nil {
 		return
@@ -596,8 +596,8 @@ func (m *Holder) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 // Reset clears every field of m, the fields that the encoding leaves out
 // included. An encoded pointer or interface becomes nil. An encoded slice or
 // map becomes empty and keeps its storage for a decode to reuse, with every
-// element in the capacity of a slice reset, so that no decoded data stays
-// reachable through m.
+// element in the capacity of a slice reset, so that no decoded content remains
+// in m or in the storage that it keeps.
 func (m *Holder) Reset() {
 	if m == nil {
 		return

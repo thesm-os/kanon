@@ -13,8 +13,8 @@ import (
 func (e *emitter) resetMethod(m *target) {
 	e.doc("Reset clears every field of m, the fields that the encoding leaves out included. An encoded pointer " +
 		"or interface becomes nil. An encoded slice or map becomes empty and keeps its storage for a decode to " +
-		"reuse, with every element in the capacity of a slice reset, so that no decoded data stays reachable " +
-		"through m.")
+		"reuse, with every element in the capacity of a slice reset, so that no decoded content remains in m " +
+		"or in the storage that it keeps.")
 	e.line("func (m *%s) Reset() {", e.p.typ(m.typ))
 	e.line("if m == nil {")
 	e.line("return")

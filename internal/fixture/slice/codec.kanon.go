@@ -306,8 +306,8 @@ func (m *Codecs) mergeKanon(data []byte, slab string, off, depth int) error {
 // Reset clears every field of m, the fields that the encoding leaves out
 // included. An encoded pointer or interface becomes nil. An encoded slice or
 // map becomes empty and keeps its storage for a decode to reuse, with every
-// element in the capacity of a slice reset, so that no decoded data stays
-// reachable through m.
+// element in the capacity of a slice reset, so that no decoded content remains
+// in m or in the storage that it keeps.
 func (m *Codecs) Reset() {
 	if m == nil {
 		return
