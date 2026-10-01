@@ -33,7 +33,8 @@ type File struct {
 //     that have no kanon codec, which it encodes as their own codec would,
 //     and a view type per struct type when opts.Views is set. It declares
 //     the ValidateKanon method of kanon.Validator on each named type that is
-//     not a struct, which calls the method that opts.Validate names.
+//     not a struct, which calls the method that opts.Validate names, or
+//     returns nil when opts.Validate is empty.
 //   - <base>.kanon_test.go runs the conformance suite of package kanontest
 //     on each type.
 //
@@ -183,6 +184,7 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 		nested:      p.nested,
 		generated:   p.generated,
 		validated:   p.validated,
+		trivial:     p.trivial,
 		canonicalOf: p.canonical,
 		canonical:   opts.Canonical,
 		pkg:         p.types,

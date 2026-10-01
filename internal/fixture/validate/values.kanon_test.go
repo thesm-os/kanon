@@ -38,6 +38,7 @@ var kanonSpecValues = kanontest.Spec[Values]{
 		{Name: "Any", Number: 22, Types: []kanontest.ConcreteType{{Type: reflect.TypeFor[Level](), Number: 1}, {Type: reflect.TypeFor[Tags](), Number: 2}}},
 		{Name: "Checked", Number: 23, Types: []kanontest.ConcreteType{{Type: reflect.TypeFor[Grade](), Number: 1}}},
 		{Name: "Fixed", Number: 24, Fixed: true},
+		{Name: "Era", Number: 26},
 	},
 	View: ValuesView(nil),
 }

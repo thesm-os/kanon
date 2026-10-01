@@ -107,6 +107,15 @@ const (
 	pkgClause = "package m\n\n"
 )
 
+// Sources of a named type N that the kanon directive of its file names: with
+// -validate, which names the method valid, and without -validate, so that the
+// ValidateKanon that kanon generates for N returns nil.
+const (
+	checkedN = "//go:generate go tool kanon -type=N -validate=valid\n\n// N is a number.\ntype N int32\n\n" +
+		"// valid returns nil.\nfunc (n N) valid() error { return nil }\n"
+	plainN = "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n"
+)
+
 // Permissions of the files, the directories and the executables that the
 // tests write.
 const (
@@ -295,9 +304,9 @@ func TestGenerate(t *testing.T) {
 		}{
 			{
 				name: "writes a ValidateKanon call for a field of a type that a directive of the package names " +
-					"before its code file exists",
+					"with -validate before its code file exists",
 				files: map[string]string{
-					"b.go": "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n",
+					"b.go": checkedN,
 					source: structA("F N"),
 				},
 				field: "F",
@@ -305,10 +314,39 @@ func TestGenerate(t *testing.T) {
 			},
 			{
 				name: "writes a ValidateKanon call for a field of a type that a directive of another package names " +
-					"before its code file exists",
+					"with -validate before its code file exists",
 				files: map[string]string{
-					"dep/dep.go": "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n",
+					"dep/dep.go": checkedN,
 					source:       "import \"example.com/m/dep\"\n\n" + structA("F dep.N"),
+				},
+				field: "F",
+				want:  true,
+			},
+			{
+				name: "writes no ValidateKanon call for a field of a type that a directive of the package names " +
+					"without -validate",
+				files: map[string]string{
+					"b.go": plainN,
+					source: structA("F N"),
+				},
+				field: "F",
+			},
+			{
+				name: "writes no ValidateKanon call for a field of a type that a directive of another package names " +
+					"without -validate",
+				files: map[string]string{
+					"dep/dep.go": plainN,
+					source:       "import \"example.com/m/dep\"\n\n" + structA("F dep.N"),
+				},
+				field: "F",
+			},
+			{
+				name: "writes a ValidateKanon call for a field of a type of another package that declares the method " +
+					"itself",
+				files: map[string]string{
+					"dep/dep.go": "// N is a number.\ntype N int32\n\n// ValidateKanon returns nil.\n" +
+						"func (N) ValidateKanon() error { return nil }\n",
+					source: "import \"example.com/m/dep\"\n\n" + structA("F dep.N"),
 				},
 				field: "F",
 				want:  true,

@@ -253,6 +253,9 @@ func (f Fixed64) valid() error {
 
 kanon generates `ValidateKanon() error`, which calls `valid`, and calls it on every value that it encodes or decodes.
 The encode or the decode of a value that it rejects fails.
+Without `-validate`, the generated `ValidateKanon` returns nil, and the code of a struct encodes and decodes a field of the type without calling it.
+kanon reads the directive of the type when it generates the code of the struct.
+If a dependency adds `-validate` to the directive of such a type, run `go generate` again after you upgrade it, so that your code calls the method.
 Adding `ValidateKanon` to a type with binary, gob or text methods, or removing it, changes the encoding of every field of the type.
 A check of the field numbers does not detect that change.
 

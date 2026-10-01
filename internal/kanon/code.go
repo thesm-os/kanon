@@ -44,6 +44,7 @@ func codeFile(u *unit) ([]byte, error) {
 			nested:    u.pkg.nested,
 			generated: u.pkg.generated,
 			validated: u.pkg.validated,
+			trivial:   u.pkg.trivial,
 			pkg:       u.pkg.types,
 			fset:      u.pkg.fset,
 			inlines:   u.inlines,

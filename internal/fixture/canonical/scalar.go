@@ -29,7 +29,9 @@ type (
 // so that its encode fails. A Gauge field is present when its encoding has
 // bytes, since == does not compare every bit of a Gauge. A Serial field
 // decodes without a second encode, and Serials encodes the zero Serial, so
-// that the put function of an element of a kanon.Exact type fails.
+// that the put function of an element of a kanon.Exact type fails. Era is a
+// kanon.Validator of another package whose directive has no -validate, which
+// the code writes and reads without a call of its ValidateKanon.
 type Scalars struct {
 	Bool       bool
 	Flag       Flag
@@ -68,4 +70,5 @@ type Scalars struct {
 	Gauge      Gauge
 	Serial     codec.Serial
 	Serials    []codec.Serial
+	Era        validate.Era
 }

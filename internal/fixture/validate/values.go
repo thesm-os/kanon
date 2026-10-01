@@ -30,7 +30,8 @@ type Valid interface {
 // of each position that the encode writes and the decode reads. Flag is a
 // member of the union, which the encode writes at both of its values: a
 // field of a bool is present at true alone, so that the encode of a Flag
-// field would either fail for every value that it writes or for none.
+// field would either fail for every value that it writes or for none. The
+// code writes and reads Era without the call.
 type Values struct {
 	Level   Level
 	Amount  Amount
@@ -58,4 +59,5 @@ type Values struct {
 	Any     any   `kanon:",types=Level|Tags"`
 	Checked Valid `kanon:",types=Grade"`
 	Fixed   Tick  `kanon:",fixed"`
+	Era     Era
 }

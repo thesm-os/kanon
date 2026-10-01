@@ -28,6 +28,10 @@ Some of these types admit only part of their underlying type. `Fixed64` excludes
 `math.MinInt64`, which its binary methods reject. An encoding as the underlying type has to
 keep that check on both the encode and the decode.
 
+Other types, such as `Epoch`, admit every value of their underlying type. A call of a check that
+accepts every value adds to each field of such a type an error return that runs for no value.
+A struct whose other fields cannot fail then returns an error from its encode all the same.
+
 `-type` named struct types only. The package of such a type could not generate a kanon encoding
 for it. Every consumer encoded the type through its opaque methods.
 
@@ -37,6 +41,11 @@ We will encode a named type other than a struct that has `ValidateKanon() error`
 receiver as its underlying type, ahead of its binary, gob and text methods, and call the method
 on every value that the generated code encodes or decodes, because one method gives every
 underlying kind the encoding of that kind while it keeps the domain of the type.
+
+We will not call the method of a type whose kanon directive has no `-validate`, because the
+generated method of such a type returns nil for every value. The generator reads that directive
+when it generates the code of a struct, from the package that it generates or from a
+dependency.
 
 ## Alternatives Considered
 
@@ -81,6 +90,16 @@ opt-in, and it does not check a decoded value.
 Rejected because the records lose the domain types and their checks, and the Go types stop
 being the schema.
 
+### A marker method on a type whose check accepts every value
+
+The generated `ValidateKanon` of a type without `-validate` comes with a marker method, as
+`ExactKanon` marks a `kanon.Exact` type. The code of a struct skips the call for a type with
+the marker and asserts the marker at compile time, so that the build of a consumer breaks when
+a dependency adds `-validate`. Rejected because it adds a generated method to every such type
+and an assertion to every consumer. A consumer generates its code again after it upgrades a
+dependency, and its conformance suite fails for a value of the value tables that a new check
+rejects.
+
 ### The kanon.Message method set on the type
 
 Rejected because its `AppendBinary`, `MarshalBinary` and `UnmarshalBinary` collide with the
@@ -98,6 +117,9 @@ binary methods that the type keeps.
 - `-type` generates the method in the package of the type, and `-validate` names the method
   that it calls. `kanontest.RunValue` checks that the method accepts a value exactly when the
   type's own encode method accepts it, and pins the encoding of each value in a golden file.
+- A field of a type whose directive has no `-validate`, such as `epoch.Epoch`, encodes and
+  decodes without an error path, and a struct whose other fields cannot fail encodes without
+  one.
 
 **Negative:**
 
@@ -111,10 +133,15 @@ binary methods that the type keeps.
 - The generator type-checks a package without its generated files, so a generated
   `ValidateKanon` does not make a type of the same package fit an interface that lists the
   method.
+- The code of a struct reads the directives of the types of its fields when it is generated.
+  A dependency that adds `-validate` to the directive of such a type takes effect in a
+  consumer only after the consumer generates its code again. The conformance suite of the
+  consumer fails only for a value of the value tables that the new method rejects.
 
 **Neutral:**
 
 - The generator rejects the method on a struct type, on a pointer receiver and with another
-  signature, and on a type whose only value is its zero value.
+  signature. Where the generated code calls the method, it also rejects a type whose only
+  value is its zero value.
 - A named interface type whose method set has the method encodes as any other interface.
 - The wire format does not change. The type takes the wire format of its underlying type.

@@ -16,7 +16,9 @@
 // -views also declares a view type per struct type, whose methods read one
 // field of an encoding without decoding it. -validate names a method of
 // signature func() error on a value receiver, whose error the ValidateKanon
-// method of each type that is not a struct returns.
+// method of each type that is not a struct returns. Without -validate, that
+// method returns nil, and the code that kanon generates for a struct does
+// not call it.
 //
 // kanon writes a file only when its content changes, so that an unchanged
 // codec keeps its modification time.

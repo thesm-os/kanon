@@ -4,7 +4,7 @@ title: Generated Go codecs, their runtime and their public interface
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-09-29
+updated: 2026-10-01
 discussion: none
 supersedes: none
 superseded-by: none
@@ -61,9 +61,9 @@ one copy per generated file.
 - `-views` also generates the view types of the Views section, one per struct type.
 - `-validate=name` names a method `func (T) name() error` that each type of `-type` other
   than a struct declares on a value receiver. The method can be unexported. The generated
-  `ValidateKanon` returns its error, and without the flag it returns nil. Generation fails
-  when such a type lacks the method or declares `ValidateKanon` itself, and when `-validate`
-  is set and `-type` names only struct types.
+  `ValidateKanon` returns its error. Without the flag it returns nil, and the generated code of
+  a struct does not call it. Generation fails when such a type lacks the method or declares
+  `ValidateKanon` itself, and when `-validate` is set and `-type` names only struct types.
 - With `KANON_CHECK=<revision>`, kanon checks the field numbers against the generated files at
   that git revision and writes nothing.
 - The exit status is 0 on success, 1 when generation or the check fails, and 2 on a usage
@@ -177,12 +177,17 @@ The generator encodes every type that gob and json encode:
   methods. A `-type` directive of its package generates the method, and a method written by
   hand works alike. The generated code calls the method on every value of the type that it
   encodes or decodes, except a zero value that the encoding leaves out, and fails with its
-  error. The tag option `fixed`, the order of map keys and the view methods treat the type as
-  its underlying type. The generator rejects the method on a struct type, on a pointer
-  receiver and with another signature, and on a type whose only value is its zero value,
-  since a constant encoding has no value to check. A named interface type whose method set
-  has the method encodes as any other interface. The wire format lists adding or removing the
-  method on a type with binary, gob or text methods as incompatible in both directions.
+  error. A type whose directive has no `-validate` is the exception. Its generated method
+  returns nil for every value, so the code of a struct writes and reads its values without the
+  call and without an error path for them. The generator reads that directive from the source
+  of the type's package, in the package that it generates or in a dependency. The tag option
+  `fixed`, the order of map keys and the view methods treat the type as its underlying type.
+  The generator rejects the method on a struct type, on a pointer receiver and with another
+  signature. Where the generated code calls the method, it also rejects a type whose only value
+  is its zero value, since a constant encoding has no value to check. A named interface type
+  whose method set has the method encodes as any other interface. The wire format lists adding
+  or removing the method on a type with binary, gob or text methods as incompatible in both
+  directions.
 - Interfaces with a `types` list, inside maps, slices, arrays, pointers and unions included.
 - Generic struct instantiations, which share the field numbers of their generic type.
 
@@ -301,6 +306,8 @@ type Cloner[T any] interface {
 // field that a view method reads, and fails the encode, the decode or the
 // view with its error. A view method returns the zero value for a field that
 // the encoding leaves out. SizeKanon, Reset and CloneKanon do not call it.
+// The generated code does not call the ValidateKanon of a type whose kanon
+// directive has no -validate, which returns nil for every value.
 type Validator interface {
 	// ValidateKanon returns nil for a value that kanon encodes and decodes,
 	// and the reason that it rejects any other value.
@@ -560,7 +567,8 @@ after its `ValidateKanon` accepts the value: a byte slice aliases the view, and 
 copy of the bytes, which allocates. An error of `ValidateKanon` is the cause of the
 `*DecodeError` at the offset of the value. A field that the encoding does not contain returns
 the zero value without a call of `ValidateKanon`, as an opaque field returns it without a call
-of its decode method.
+of its decode method. A field of a type whose directive has no `-validate` returns its value
+without the call.
 
 A view checks the tags and lengths of the encoding and the wire format of the field that a
 method reads. It does not check the rest of the schema, so a caller that needs a full check
@@ -621,8 +629,12 @@ encode. The index check compares the error of `IndexKanon` with the first error,
 offset, of the reference scans of the fields that the view reads, and each method of the index
 with the reference view of its field.
 
-The reference encoder and decoder call the `ValidateKanon` of a `kanon.Validator` as the
-generated code does. A sample counts such a value as one that can fail to encode.
+The reference encoder and decoder call the `ValidateKanon` of every `kanon.Validator`. A
+sample counts such a value as one that can fail to encode. The reference also calls the method
+of a type whose directive has no `-validate`, which the generated code skips. When a
+dependency adds `-validate` to such a directive, the code that a consumer generated before
+fails the checks of the encode, the decode, the views and the golden file for a value of the
+value tables that the new method rejects.
 `kanontest.RunValue[T kanon.Validator]` checks the method of each type other than a struct
 that a `-type` flag names, over the value tables of its underlying type:
 
@@ -710,6 +722,11 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
   the encoding of every field of the type. The field numbers stay the same, so the check mode
   passes. The golden files of the conformance suite fail.
 - The view method of a string field of a `kanon.Validator` allocates a copy of the string.
+- The generated code of a struct reads the directives of the types of its fields when it is
+  generated. A dependency that adds `-validate` to the directive of such a type takes effect in
+  a consumer only after the consumer generates its code again. Until then the consumer writes
+  and reads the values of the type without the check, and its conformance suite fails only for
+  a value of the value tables that the new method rejects.
 
 ## Unresolved and future work
 

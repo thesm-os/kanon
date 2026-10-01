@@ -48,6 +48,11 @@ type classifier struct {
 	// a named type that is not a struct: a -type flag of its package names
 	// it. Such a type is a kanon.Validator before its code file exists.
 	validated func(*types.Named) bool
+	// trivial reports whether the ValidateKanon method that kanon generates
+	// for a named type returns nil for every value: the directive that names
+	// the type has no -validate. The code writes and reads a value of such a
+	// type without the call.
+	trivial func(*types.Named) bool
 	// canonicalOf reports whether the kanon directive that names a nested
 	// struct has the -canonical flag, so that its decode accepts only its
 	// canonical encoding.
@@ -89,7 +94,8 @@ type classifier struct {
 //
 // A named type resolves in this order: a nested struct; time.Time; a
 // kanon.Validator, as [classifier.validator] finds it, which resolves to its
-// underlying type ahead of its methods and validates its values; a type
+// underlying type ahead of its methods and validates its values, unless its
+// generated ValidateKanon returns nil, as c.trivial reports; a type
 // that encodes itself through a family of methods, as [selfCodecOf] finds
 // it; and last, its underlying type, so that a time.Duration encodes as the
 // int64 it is. A struct type that resolves to its underlying type is an
@@ -101,9 +107,10 @@ type classifier struct {
 // channel and an unsafe pointer; for a type that the generated code cannot
 // name, as [nameable] states; for an ExactKanon that [classifier.exactable]
 // rejects; for a ValidateKanon that [validatorOf]
-// rejects; for a kanon.Validator whose only value is its zero value, as
-// [value.zeroOnly] reports, since its encoding is a constant that the
-// generated code writes and reads without the value; for an interface
+// rejects; for a kanon.Validator whose ValidateKanon the code calls and
+// whose only value is its zero value, as [value.zeroOnly] reports, since its
+// encoding is a constant that the generated code writes and reads without
+// the value; for an interface
 // without a list; and for an inline struct whose
 // fields fail the analysis. It also fails when fixed applies to no integer
 // of the tree, when the tree has no interface for list, and when a type of
@@ -176,7 +183,8 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 			return v, nil
 		}
 		if validates {
-			v.validate, v.fails = true, true
+			v.validate = !c.trivial(named)
+			v.fails = v.validate
 		} else if self, ok := selfCodecOf(named); ok {
 			v.kind, v.self, v.fails = kindBinary, self, true
 			return v, nil
@@ -304,6 +312,14 @@ func (c classifier) exactable(t *types.Named) error {
 func (c classifier) validates(t *types.Named) bool {
 	ok, _ := c.validator(t)
 	return ok
+}
+
+// checks reports whether the code calls the ValidateKanon method of the
+// named type t on its values: t is a kanon.Validator, as
+// [classifier.validates] reports, other than a type whose generated method
+// returns nil, as c.trivial reports.
+func (c classifier) checks(t *types.Named) bool {
+	return c.validates(t) && !c.trivial(t)
 }
 
 // id returns the id of a value of type t in a tree with the options o: the

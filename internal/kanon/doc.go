@@ -33,11 +33,15 @@
 // A named type that is not a struct is a kanon.Validator when a -type flag
 // of its package names it, or when it has ValidateKanon on a value receiver.
 // It encodes as its underlying type, ahead of its binary, gob and text
-// methods, and the generated code calls ValidateKanon on each value of the
-// type that it encodes or decodes. The analysis rejects ValidateKanon on a
+// methods. The generated code calls ValidateKanon on each value of the type
+// that it encodes or decodes, unless a directive without -validate names the
+// type, whose ValidateKanon then returns nil for every value. The analysis
+// reads that directive from the source of the package of the type, in the
+// package that it generates or in a dependency. It rejects ValidateKanon on a
 // struct type, on a pointer receiver or with another signature, and on a
-// type whose only value is its zero value. A named interface type whose
-// method set has ValidateKanon encodes as any other interface.
+// type whose only value is its zero value when the generated code calls the
+// method. A named interface type whose method set has ValidateKanon encodes
+// as any other interface.
 //
 // # Field numbers
 //

@@ -106,9 +106,8 @@ type pkg struct {
 	// deps maps the import path of each dependency to its go list entry.
 	deps map[string]listed
 	// remote caches, per import path of a dependency, the type names that
-	// its kanon directives name, each mapped to the -canonical flag of its
-	// directive.
-	remote map[string]map[string]bool
+	// its kanon directives name, each mapped to the options of its directive.
+	remote map[string]map[string]Options
 	// dir is the directory of the package, as go list reports it.
 	dir string
 }
@@ -163,7 +162,7 @@ func load(dir string) (*pkg, error) {
 		directives: make(map[string]Options),
 		listed:     make(map[string]string),
 		deps:       deps,
-		remote:     make(map[string]map[string]bool),
+		remote:     make(map[string]map[string]Options),
 		dir:        target.Dir,
 	}
 	syntax := make([]*ast.File, 0, len(target.GoFiles))

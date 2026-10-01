@@ -51,23 +51,23 @@ func familyWord(self selfCodec) string {
 
 // validateMethod writes the ValidateKanon method of vt: a call of the method
 // that vt.check names, or nil when vt accepts every value. Its docblock
-// states the encoding that the method selects.
+// states the encoding that the method selects, and whether the generated
+// code calls the method, which it skips for a method that returns nil.
 func (e *emitter) validateMethod(vt *valueType) {
 	typ := e.p.typ(vt.typ)
 	under := types.TypeString(vt.typ.Underlying(), e.cls.relative)
-	doc := validateKanonName + " returns nil, since every value of " + typ + " is valid."
-	if vt.check != "" {
-		doc = validateKanonName + " returns the error of x." + vt.check + "."
-	}
-	doc += " kanon encodes a value of " + typ + " as a value of its underlying type " + under
+	encodes := " kanon encodes a value of " + typ + " as a value of its underlying type " + under
 	if vt.family != "" {
-		doc += ", ahead of the " + vt.family + " methods of " + typ + ","
+		encodes += ", ahead of the " + vt.family + " methods of " + typ + ","
 	}
-	e.doc(doc + " and calls " + validateKanonName + " on every value of " + typ + " that it encodes or decodes.")
 	if vt.check == "" {
+		e.doc(validateKanonName + " returns nil, since every value of " + typ + " is valid." + encodes +
+			" and does not call " + validateKanonName + " on a value of " + typ + " that it encodes or decodes.")
 		e.line("func (%s) %s() error {", typ, validateKanonName)
 		e.line("return nil")
 	} else {
+		e.doc(validateKanonName + " returns the error of x." + vt.check + "." + encodes + " and calls " +
+			validateKanonName + " on every value of " + typ + " that it encodes or decodes.")
 		e.line("func (x %s) %s() error {", typ, validateKanonName)
 		e.line("return x.%s()", vt.check)
 	}

@@ -127,24 +127,44 @@ func (p *pkg) remoteListed(importPath, name string) bool {
 // has the -canonical flag, in p or in a dependency. A type that no directive
 // names, such as a struct whose codec is written by hand, is not canonical.
 func (p *pkg) canonical(t *types.Named) bool {
+	return p.directiveOf(t).Canonical
+}
+
+// trivial reports whether the ValidateKanon method that kanon generates for
+// the named type t returns nil for every value: a kanon directive names t, a
+// type that is not a struct, as [pkg.validated] reports, in p or in a
+// dependency, and the directive has no -validate. The generated code of a
+// struct then writes and reads a value of t without the call. It reads the
+// directive at generation time, so a consumer regenerates its code when a
+// dependency adds -validate.
+func (p *pkg) trivial(t *types.Named) bool {
+	return p.validated(t) && p.directiveOf(t).Validate == ""
+}
+
+// directiveOf returns the options of the kanon directive that names the
+// named type t, in p or in a dependency, and the zero Options when no
+// directive names t. t is a type of a package, such as a nested struct, as
+// [pkg.nested] reports, or a type that a directive names, as [pkg.directed]
+// reports, and not a predeclared type such as error.
+func (p *pkg) directiveOf(t *types.Named) Options {
 	obj := t.Obj()
 	if obj.Pkg() == p.types {
-		return p.directives[p.listed[obj.Name()]].Canonical
+		return p.directives[p.listed[obj.Name()]]
 	}
-	return obj.Pkg() != nil && p.remoteDirectives(obj.Pkg().Path())[obj.Name()]
+	return p.remoteDirectives(obj.Pkg().Path())[obj.Name()]
 }
 
 // remoteDirectives returns the type names that the kanon directives of the
 // dependency with the import path importPath name, each mapped to the
-// -canonical flag of its directive. It parses the Go files of the dependency
-// on the first call and caches the names. A file that does not parse and a
+// options of its directive. It parses the Go files of the dependency on the
+// first call and caches the names. A file that does not parse and a
 // directive whose flags do not parse name nothing: the build and the
 // generation of the dependency report them.
-func (p *pkg) remoteDirectives(importPath string) map[string]bool {
+func (p *pkg) remoteDirectives(importPath string) map[string]Options {
 	if names, ok := p.remote[importPath]; ok {
 		return names
 	}
-	names := make(map[string]bool)
+	names := make(map[string]Options)
 	dep := p.deps[importPath]
 	fset := token.NewFileSet()
 	for _, file := range dep.GoFiles {
@@ -163,7 +183,7 @@ func (p *pkg) remoteDirectives(importPath string) map[string]bool {
 					continue
 				}
 				for _, t := range opts.Types {
-					names[t] = opts.Canonical
+					names[t] = opts
 				}
 			}
 		}

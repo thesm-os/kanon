@@ -14,7 +14,9 @@
 // bool, [Weight], a float32, [Wave], a complex64, and [Phase], a complex128,
 // through their methods valid. Each of them rejects a value, so that the
 // encode and the decode of every field of them fail for a value. [Grade]
-// declares its ValidateKanon by hand.
+// declares its ValidateKanon by hand. The directive of era.go names [Era], a
+// uint64 with binary methods, without -validate, so that its ValidateKanon
+// returns nil and the code of a struct writes and reads it without the call.
 // [Values] has fields of them in every position that a codec encodes:
 // fields, a pointer, a slice, an array, the keys and values of a map, a
 // union, an interface and the tag option fixed, with a view type. Its Flag

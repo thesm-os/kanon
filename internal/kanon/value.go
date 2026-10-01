@@ -44,12 +44,15 @@ type value struct {
 	// self names the methods through which a kindBinary value encodes itself.
 	self selfCodec
 	// fails reports that encoding the value can fail: it is or contains a
-	// kindBinary value, a kanon.Validator or an interface. The value of a
-	// field that [exactField] reports cannot fail.
+	// kindBinary value, a kanon.Validator whose ValidateKanon the generated
+	// code calls, or an interface. The value of a field that [exactField]
+	// reports cannot fail.
 	fails bool
 	// validate reports that the value is of a kanon.Validator, a named type
-	// that is not a struct and encodes as its underlying type: the generated
-	// code calls its ValidateKanon on every value that it writes or reads.
+	// that is not a struct and encodes as its underlying type, and that the
+	// generated code calls its ValidateKanon on every value that it writes or
+	// reads, as [classifier.checks] reports. It is false for a type whose
+	// generated ValidateKanon returns nil for every value.
 	validate bool
 	// indirect reports that a kindStruct value refers to memory outside
 	// itself: a pointer, a slice, a map or an interface among its encoded

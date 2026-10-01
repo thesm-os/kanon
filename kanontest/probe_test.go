@@ -122,6 +122,7 @@ var valuesSpec = kanontest.Spec[validate.Values]{
 			{Type: reflect.TypeFor[validate.Grade](), Number: 1},
 		}},
 		{Name: "Fixed", Number: 24, Fixed: true},
+		{Name: "Era", Number: 26},
 	},
 }
 

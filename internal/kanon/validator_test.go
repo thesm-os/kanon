@@ -31,6 +31,23 @@ func TestValidator(t *testing.T) {
 			assert.Contains(t, files[codeName], "func (N) ValidateKanon() error {\n\treturn nil\n}\n",
 				"the method accepts every value of N")
 		})
+		t.Run("encodes a struct with a field of a type without -validate without an error", func(t *testing.T) {
+			t.Parallel()
+			src := "type N int32\n\n" + structA("F N")
+			files, err := generate(t, module(t, map[string]string{source: src}), source, "A,N")
+			assert.NoError(t, err, "Generate generates the struct and the named type")
+			appends := pickDeclarations(t, source, files[codeName], func(d declaration) bool {
+				return d.key == "A."+appendBinary
+			})
+			assert.Contains(t, appends["A."+appendBinary], "\tm.encodeKanon(out)\n",
+				"AppendBinary of A calls the encode of the struct without an error check")
+		})
+		t.Run("generates a field of a type without -validate whose only value is its zero value", func(t *testing.T) {
+			t.Parallel()
+			src := "type E [0]byte\n\n" + structA("E []E")
+			_, err := generate(t, module(t, map[string]string{source: src}), source, "A,E")
+			assert.NoError(t, err, "Generate generates the struct and the named type")
+		})
 		failures := []struct {
 			name     string
 			src      string

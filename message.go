@@ -145,9 +145,10 @@ type Cloner[T any] interface {
 // the encoding of every field of the type, which the wire format lists as
 // incompatible in both directions. kanon treats a named
 // interface type whose method set has ValidateKanon as any other interface,
-// and encodes the value of the interface by its concrete type. kanon
-// rejects a Validator whose only value is its zero value, such as an array
-// of no elements, whose encoding is a constant.
+// and encodes the value of the interface by its concrete type. When the
+// generated code calls ValidateKanon, kanon rejects a Validator whose only
+// value is its zero value, such as an array of no elements, whose encoding
+// is a constant.
 //
 // # Validation
 //
@@ -158,6 +159,14 @@ type Cloner[T any] interface {
 // view method calls it on the value of a field that the encoding contains,
 // and returns the zero value for a field that the encoding leaves out.
 // SizeKanon, Reset and CloneKanon do not call it.
+//
+// The generated code does not call the ValidateKanon of a type whose kanon
+// directive has no -validate, since that method returns nil for every value.
+// A field of such a type encodes without an error path. The generator reads
+// the directive from the source of the package of the type when it
+// generates the code of a struct. A module must generate its code again
+// after it upgrades a dependency whose directive adds -validate, since code
+// generated before does not call the method.
 //
 // # Allocation contract
 //

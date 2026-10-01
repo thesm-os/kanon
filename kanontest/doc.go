@@ -146,13 +146,19 @@
 // # Validators
 //
 // The reference encoder and decoder call the ValidateKanon method of a
-// kanon.Validator on each value of the type that they encode or decode, as
-// the generated code calls it. A sample counts such a value as one that can
-// fail to encode: the sample that fails at it takes a value that the method
-// rejects, and every other sample a value that the method accepts. A probe
-// writes each such value of a field, one at a time, as a value that the
-// method rejects, which a decode, a view and an index return the error of
-// the method for.
+// kanon.Validator on each value of the type that they encode or decode. A
+// sample counts such a value as one that can fail to encode: the sample that
+// fails at it takes a value that the method rejects, and every other sample
+// a value that the method accepts. A probe writes each such value of a
+// field, one at a time, as a value that the method rejects, which a decode,
+// a view and an index return the error of the method for.
+//
+// The generated code does not call the method of a type whose directive has
+// no -validate, since that method returns nil for every value. The reference
+// encoder and decoder call it on such a type too. When the directive adds
+// -validate, the checks of code generated before fail for a value of the
+// value tables that the method rejects.
+//
 // [RunValue] checks the method itself: it allocates nothing for a value that
 // it accepts, it accepts a value exactly when the encode method of the
 // binary, gob or text family of the type accepts it, and the golden file of

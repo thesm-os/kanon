@@ -47,7 +47,8 @@ func (c classifier) holdsInterface(t types.Type) bool {
 
 // mayFail reports whether encoding a value of type t can fail: t is or
 // contains a type that encodes itself, whose encode method returns an
-// error, a kanon.Validator, whose ValidateKanon returns one, an interface,
+// error, a kanon.Validator whose ValidateKanon the code calls, as
+// [classifier.checks] reports, which returns one, an interface,
 // which can store a type that its list does not name, or a map whose keys
 // can have a NaN component or share a projection, as [classifier.floats]
 // and [classifier.ambiguous] report. A struct fails as
@@ -59,7 +60,7 @@ func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 		case *types.Interface:
 			return true, false
 		case *types.Named:
-			return c.binaryType(t) || c.validates(t), true
+			return c.binaryType(t) || c.checks(t), true
 		case *types.Map:
 			return c.floats(t.Key()) || c.ambiguous(t.Key()), true
 		case *types.Struct:
