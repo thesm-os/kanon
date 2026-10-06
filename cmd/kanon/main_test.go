@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 
 	"go.thesmos.sh/kanon/internal/version"
 )
@@ -127,15 +129,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// module writes a module of one package, whose source file declares A, into
-// a new directory, and returns the path of the source file.
-func module(t *testing.T) string {
+// module writes a module of one package, whose source file declares A, and
+// the entries of extra into a new directory of the test's own with
+// files.Workspace, and returns the path of the source file.
+func module(t *testing.T, extra files.Tree) string {
 	t.Helper()
-	dir := t.TempDir()
-	assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte(goMod), sourceMode), "the go.mod writes")
-	path := filepath.Join(dir, sourceName)
-	assert.NoError(t, os.WriteFile(path, []byte(source), sourceMode), "the source file writes")
-	return path
+	tree := files.Tree{modName: files.Text(goMod), sourceName: files.Text(source)}
+	maps.Copy(tree, extra)
+	return filepath.Join(files.Workspace(t, tree), sourceName)
 }
 
 // invoke runs run with the arguments args, the environment vars, a map from
@@ -318,24 +319,23 @@ func TestKanon(t *testing.T) {
 		}
 		t.Run("returns exitFail for a type that the package does not declare", func(t *testing.T) {
 			t.Parallel()
-			code, _, stderr := invoke([]string{missingFlag, module(t)}, nil, "")
+			code, _, stderr := invoke([]string{missingFlag, module(t, nil)}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.Equal(t, stderr, "kanon: -type names Missing, which package m does not declare\n",
 				"run writes the error of the generation")
 		})
 		t.Run("writes the generated files beside the file that GOFILE names", func(t *testing.T) {
 			t.Parallel()
-			path := module(t)
+			path := module(t, nil)
 			code, _, stderr := invoke([]string{typeFlag}, map[string]string{fileEnv: path}, "")
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 			for _, name := range []string{codeName, testName} {
-				_, err := os.Stat(filepath.Join(filepath.Dir(path), name))
-				assert.NoError(t, err, "run writes "+name)
+				files.IsFile(t, filepath.Join(filepath.Dir(path), name), "run writes "+name)
 			}
 		})
 		t.Run("leaves a generated file whose content does not change", func(t *testing.T) {
 			t.Parallel()
-			path := module(t)
+			path := module(t, nil)
 			generated(t, path)
 			codePath := filepath.Join(filepath.Dir(path), codeName)
 			assert.NoError(t, os.Chtimes(codePath, past, past), "the code file takes an earlier modification time")
@@ -346,9 +346,8 @@ func TestKanon(t *testing.T) {
 		})
 		t.Run("returns exitFail when a generated file is a directory", func(t *testing.T) {
 			t.Parallel()
-			path := module(t)
+			path := module(t, files.Tree{testName: files.Dir()})
 			test := filepath.Join(filepath.Dir(path), testName)
-			assert.NoError(t, os.Mkdir(test, dirMode), "a directory takes the name of the test file")
 			code, _, stderr := invoke([]string{typeFlag, path}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: read "+test+": ", "run writes the error of the read")
@@ -358,9 +357,8 @@ func TestKanon(t *testing.T) {
 			if os.Geteuid() == 0 {
 				t.Skip("the superuser writes a read-only file")
 			}
-			path := module(t)
+			path := module(t, files.Tree{testName: files.Text("").WithMode(readOnlyMode)})
 			test := filepath.Join(filepath.Dir(path), testName)
-			assert.NoError(t, os.WriteFile(test, nil, readOnlyMode), "a read-only test file writes")
 			code, _, stderr := invoke([]string{typeFlag, path}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: write "+test+": ", "run writes the error of the write")
@@ -381,14 +379,14 @@ func TestKanonEnv(t *testing.T) {
 	}
 	t.Run("run", func(t *testing.T) {
 		t.Run("returns exitOK for the numbers that the base revision records", func(t *testing.T) {
-			path := module(t)
+			path := module(t, nil)
 			generated(t, path)
 			commit(t, filepath.Dir(path))
 			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: headRevision}, "")
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 		})
 		t.Run("returns exitFail for a field that the source renumbers", func(t *testing.T) {
-			path := module(t)
+			path := module(t, nil)
 			generated(t, path)
 			commit(t, filepath.Dir(path))
 			assert.NoError(t, os.Remove(filepath.Join(filepath.Dir(path), codeName)), "the code file removes")
@@ -399,7 +397,7 @@ func TestKanonEnv(t *testing.T) {
 				"run writes the rule that the number breaks")
 		})
 		t.Run("returns exitOK for a directory that the revision does not have", func(t *testing.T) {
-			path := module(t)
+			path := module(t, nil)
 			dir := filepath.Dir(path)
 			commit(t, dir)
 			sub := filepath.Join(dir, subName)
@@ -411,14 +409,14 @@ func TestKanonEnv(t *testing.T) {
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 		})
 		t.Run("returns exitFail for a revision that git does not know", func(t *testing.T) {
-			path := module(t)
+			path := module(t, nil)
 			commit(t, filepath.Dir(path))
 			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: unknownRevision}, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: git ls-tree: ", "run writes the git command that fails")
 		})
 		t.Run("returns exitFail for a code file that git show does not find", func(t *testing.T) {
-			path := module(t)
+			path := module(t, nil)
 			generated(t, path)
 			commit(t, filepath.Dir(path))
 			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: treeRevision}, "")

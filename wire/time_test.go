@@ -212,7 +212,8 @@ func TestTime(t *testing.T) {
 			_, local := time.Unix(1, 0).In(time.Local).Zone()
 			got, err := wire.Time(timeWithZone(int64(local)), timeLoc, timeNumber, timeOff)
 			assert.NoError(t, err, "Time decodes a zone")
-			assert.True(t, got.Location() == time.Local, "a time at the local offset decodes in time.Local")
+			assert.Equal(t, got.Location(), time.Local, "a time at the local offset decodes in time.Local",
+				assert.ByIdentity())
 		})
 		t.Run("returns a fixed zone for another offset", func(t *testing.T) {
 			t.Parallel()
@@ -228,7 +229,7 @@ func TestTime(t *testing.T) {
 			first, err := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
 			assert.NoError(t, err, "Time decodes a zone")
 			second, _ := wire.Time(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
-			assert.True(t, first.Location() == second.Location(), "the two decodes share the zone")
+			assert.Equal(t, first.Location(), second.Location(), "the two decodes share the zone", assert.ByIdentity())
 			_, offset := first.Zone()
 			assert.Equal(t, offset, quartersWest, "the zone has the decoded offset")
 		})
@@ -237,7 +238,7 @@ func TestTime(t *testing.T) {
 			first, err := wire.Time(timeWithZone(quartersWest+1), timeLoc, timeNumber, timeOff)
 			assert.NoError(t, err, "Time decodes a zone")
 			second, _ := wire.Time(timeWithZone(quartersWest+1), timeLoc, timeNumber, timeOff)
-			assert.False(t, first.Location() == second.Location(), "each decode creates its zone")
+			assert.NotEqual(t, first.Location(), second.Location(), "each decode creates its zone", assert.ByIdentity())
 		})
 		t.Run("decodes the offsets at the bounds of an int32", func(t *testing.T) {
 			t.Parallel()
@@ -352,7 +353,7 @@ func TestTime(t *testing.T) {
 			first, err := wire.CanonicalTime(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
 			assert.NoError(t, err, "CanonicalTime decodes a zone")
 			second, _ := wire.CanonicalTime(timeWithZone(quartersWest), timeLoc, timeNumber, timeOff)
-			assert.True(t, first.Location() == second.Location(), "the two decodes share the zone")
+			assert.Equal(t, first.Location(), second.Location(), "the two decodes share the zone", assert.ByIdentity())
 		})
 		located := func(cause error, off int, detail string) *kanon.DecodeError {
 			return &kanon.DecodeError{

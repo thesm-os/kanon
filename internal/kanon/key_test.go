@@ -4,7 +4,6 @@
 package kanon_test
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -40,12 +39,11 @@ func TestKey(t *testing.T) {
 		t.Run("returns an error for a key type with a kanon codec that is not a struct", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{
+				modName:      runtimeMod,
 				"options.go": "// Options takes the place of the options of the runtime.\ntype Options struct{}\n",
 				"sub/a.go": "import kanon \"go.thesmos.sh/kanon\"\n\ntype K int32\n" + kanonMethods("K") +
 					structA("M map[K]string"),
 			})
-			assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte(runtimeMod), fileMode),
-				"the go.mod of the runtime path writes")
 			_, err := generate(t, filepath.Join(dir, "sub"), source, "A")
 			assert.HasError(t, err, "Generate fails for the key type")
 			assert.Equal(t, err.Error(), "kanon: a.go:20:2: A.M: map key type go.thesmos.sh/kanon/sub.K has kanon "+

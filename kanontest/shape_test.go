@@ -4,12 +4,12 @@
 package kanontest_test
 
 import (
-	"os"
 	"reflect"
 	"testing"
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 
 	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/external"
@@ -269,11 +269,7 @@ func TestShape(t *testing.T) {
 			t.Parallel()
 			holds(t, kanontest.Spec[nested.WithDeclared]{Fields: fields("In")}, goldenCheck)
 			holds(t, kanontest.Spec[nested.WithReordered]{Fields: fields("In")}, goldenCheck)
-			declared, err := os.ReadFile(declaredGolden)
-			assert.NoError(t, err, "the golden file of WithDeclared reads")
-			reordered, err := os.ReadFile(reorderedGolden)
-			assert.NoError(t, err, "the golden file of WithReordered reads")
-			assert.Equal(t, string(reordered), string(declared),
+			assert.Equal(t, files.Read(t, reorderedGolden), files.Read(t, declaredGolden),
 				"the samples of WithReordered encode as the samples of WithDeclared")
 		})
 		t.Run("fails for a field that the struct type does not declare", func(t *testing.T) {

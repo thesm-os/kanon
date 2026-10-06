@@ -4,7 +4,6 @@
 package kanon_test
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -388,12 +387,11 @@ func TestCanonical(t *testing.T) {
 		t.Run("returns an error for a struct type whose kanon codec is written by hand", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{
+				modName:      runtimeMod,
 				"options.go": "// Options takes the place of the options of the runtime.\ntype Options struct{}\n",
 				"sub/a.go": "import kanon \"go.thesmos.sh/kanon\"\n\ntype T struct {\n\tX int32\n}\n" +
 					kanonMethods("T") + structA("T T"),
 			})
-			assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte(runtimeMod), fileMode),
-				"the go.mod of the runtime path writes")
 			_, err := generateCanonical(t, filepath.Join(dir, "sub"), "A")
 			assert.HasError(t, err, "Generate fails")
 			assert.Contains(t, err.Error(), "go.thesmos.sh/kanon/sub.T has a kanon codec written by hand, which a "+

@@ -143,13 +143,15 @@ type unpinned struct{ view.Item }
 
 // missesGolden runs check, which name names, and fails t unless the check
 // fails once, with the record that golden.MatchAt reports for a golden file
-// that does not exist.
+// that does not exist: a record that states want, and whose want is nil.
 func missesGolden(t *testing.T, name string, check func(assert.TB)) {
 	t.Helper()
 	failures := assert.Rejects(t, name, check)
 	assert.Length(t, failures, 1, "the check fails once")
 	assert.Equal(t, failures[0].Assertion, goldenAssertion, "the check fails at the comparison with its golden file")
-	assert.Nil(t, failures[0].Detail[wantDetail], "the comparison reads no golden file")
+	want, stated := failures[0].Want()
+	assert.True(t, stated, "the record of the comparison states want")
+	assert.Nil(t, want, "the comparison reads no golden file")
 }
 
 func TestCheck(t *testing.T) {

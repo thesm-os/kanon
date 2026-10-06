@@ -7,11 +7,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 )
 
 // Suffixes of the two files that kanon generates.
@@ -176,7 +178,7 @@ func goldenDeclarations(t *testing.T, suffix string, pick func(declaration) bool
 				continue
 			}
 			got := pickDeclarations(t, g.file, string(f.Src), pick)
-			assert.Equal(t, got, pickDeclarations(t, g.file, golden(t, g.dir, f.Name), pick),
+			assert.Equal(t, got, pickDeclarations(t, g.file, files.Read(t, filepath.Join(g.dir, f.Name)), pick),
 				g.dir+f.Name+": Generate writes the declarations that go generate wrote")
 			picked += len(got)
 		}

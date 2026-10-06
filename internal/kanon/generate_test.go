@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 
 	"go.thesmos.sh/kanon/internal/kanon"
 )
@@ -116,45 +117,35 @@ const (
 	plainN = "//go:generate go tool kanon -type=N\n\n// N is a number.\ntype N int32\n"
 )
 
-// Permissions of the files, the directories and the executables that the
-// tests write.
-const (
-	fileMode = 0o644
-	dirMode  = 0o755
-	execMode = 0o755
-)
-
-// module writes a module into a new directory, with its go.mod and the Go
-// files of files, which maps the slash-separated path of each file to its
-// content after the package clause, and returns the directory. A file at
-// the root of the module belongs to package m, and a file in a directory to
-// the package that the directory names.
-func module(t *testing.T, files map[string]string) string {
+// module writes a module into a new directory of the test's own with
+// files.Workspace, and returns the directory. sources maps the
+// slash-separated path of each file to its content. A Go file gets the
+// package clause of its directory before its content: package m at the root
+// of the module, and the name of its directory below the root. Every other
+// file keeps its content, and a go.mod in sources takes the place of goMod.
+func module(t *testing.T, sources map[string]string) string {
 	t.Helper()
-	dir := t.TempDir()
-	write := func(name, content string) {
-		path := filepath.Join(dir, filepath.FromSlash(name))
-		assert.NoError(t, os.MkdirAll(filepath.Dir(path), dirMode), name+": the directory of the file writes")
-		assert.NoError(t, os.WriteFile(path, []byte(content), fileMode), name+": the file of the module writes")
-	}
-	write(modName, goMod)
-	for name, content := range files {
-		clause := pkgClause
-		if pkg := path.Dir(name); pkg != "." {
-			clause = "package " + path.Base(pkg) + "\n\n"
+	tree := files.Tree{modName: files.Text(goMod)}
+	for name, content := range sources {
+		if strings.HasSuffix(name, goSuffix) {
+			clause := pkgClause
+			if pkg := path.Dir(name); pkg != "." {
+				clause = "package " + path.Base(pkg) + "\n\n"
+			}
+			content = clause + content
 		}
-		write(name, clause+content)
+		tree[name] = files.Text(content)
 	}
-	return dir
+	return files.Workspace(t, tree)
 }
 
 // generate returns the files that Generate returns for the struct types
 // that types names, from file in dir, by name, and the error of Generate.
 func generate(t *testing.T, dir, file, types string) (map[string]string, error) {
 	t.Helper()
-	files, err := kanon.Generate(dir, file, kanon.Options{Types: strings.Split(types, ",")})
-	out := make(map[string]string, len(files))
-	for _, f := range files {
+	generated, err := kanon.Generate(dir, file, kanon.Options{Types: strings.Split(types, ",")})
+	out := make(map[string]string, len(generated))
+	for _, f := range generated {
 		out[f.Name] = string(f.Src)
 	}
 	return out, err
@@ -176,15 +167,6 @@ func structA(fields ...string) string {
 	return "type A struct {\n\t" + strings.Join(fields, "\n\t") + "\n}\n"
 }
 
-// golden returns the content of the file name that go generate wrote into
-// dir, which Generate reproduces.
-func golden(t *testing.T, dir, name string) string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, name))
-	assert.NoError(t, err, filepath.Join(dir, name)+": the generated file reads")
-	return string(b)
-}
-
 func TestGenerate(t *testing.T) {
 	t.Parallel()
 	t.Run("Generate", func(t *testing.T) {
@@ -196,16 +178,16 @@ func TestGenerate(t *testing.T) {
 			t.Run("writes the files that go generate wrote for "+filepath.ToSlash(rel), func(t *testing.T) {
 				t.Parallel()
 				for _, f := range g.files {
-					assert.Equal(t, string(f.Src), golden(t, g.dir, f.Name),
+					assert.Equal(t, string(f.Src), files.Read(t, filepath.Join(g.dir, f.Name)),
 						f.Name+": Generate writes the file that go generate wrote")
 				}
 			})
 		}
 		t.Run("names the helpers after the file name, with an underscore for each other character", func(t *testing.T) {
 			t.Parallel()
-			files, err := generate(t, module(t, map[string]string{"a-b.go": sliceA}), "a-b.go", "A")
+			got, err := generate(t, module(t, map[string]string{"a-b.go": sliceA}), "a-b.go", "A")
 			assert.NoError(t, err, "Generate generates the struct type")
-			assert.Contains(t, files["a-b.kanon.go"], "func _a_b_sizeSliceInt32(", "the helper has the prefix _a_b_")
+			assert.Contains(t, got["a-b.kanon.go"], "func _a_b_sizeSliceInt32(", "the helper has the prefix _a_b_")
 		})
 		failures := []struct {
 			name     string
@@ -363,9 +345,9 @@ func TestGenerate(t *testing.T) {
 		for _, tt := range directed {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				files, err := generate(t, module(t, tt.files), source, "A")
+				got, err := generate(t, module(t, tt.files), source, "A")
 				assert.NoError(t, err, "Generate encodes the field")
-				assert.Equal(t, strings.Contains(files[codeName], "m."+tt.field+".ValidateKanon()"), tt.want,
+				assert.Equal(t, strings.Contains(got[codeName], "m."+tt.field+".ValidateKanon()"), tt.want,
 					"the encode calls ValidateKanon on the value of the field")
 			})
 		}

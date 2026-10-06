@@ -31,23 +31,17 @@ const (
 
 // Assertions and detail keys of the failure records that the tests read:
 //
-//   - propertyAssertion, the record of a property, whose detail states the
-//     failure of its counterexample under failureDetail;
-//   - noErrorAssertion, the record of NoError, whose detail states the error
-//     under gotDetail;
-//   - goldenAssertion, the record of golden.MatchAt, whose detail states the
-//     content of the golden file under wantDetail, nil for a file that does
-//     not exist;
-//   - gotDetail, wantDetail and prefixDetail, the values of an assertion that
-//     compares them.
+//   - noErrorAssertion, the record of NoError, whose got is the error;
+//   - goldenAssertion, the record of golden.MatchAt, whose want is the
+//     content of the golden file, nil for a file that does not exist;
+//   - gotDetail, wantDetail and prefixDetail, the keys of the values of an
+//     assertion that compares them, which a table of cases names.
 const (
-	propertyAssertion = "prop-for-all"
-	noErrorAssertion  = "err-absent"
-	goldenAssertion   = "golden-match-at"
-	failureDetail     = "failure"
-	gotDetail         = "got"
-	wantDetail        = "want"
-	prefixDetail      = "prefix"
+	noErrorAssertion = "err-absent"
+	goldenAssertion  = "golden-match-at"
+	gotDetail        = "got"
+	wantDetail       = "want"
+	prefixDetail     = "prefix"
 )
 
 // itemSpec describes view.Item, a struct of a string and a uint32.
@@ -169,11 +163,11 @@ func rejectedFor(t *testing.T, name string, check func(assert.TB), want string) 
 // failure. The reason of the record of a property is the reason of the
 // failure of its counterexample.
 func reason(f assert.Failure) string {
-	if f.Assertion == propertyAssertion {
-		inner, _ := f.Detail[failureDetail].(assert.Failure)
+	if inner, ok := f.CaseFailure(); ok {
 		return reason(inner)
 	}
-	if err, ok := f.Detail[gotDetail].(error); ok && f.Assertion == noErrorAssertion {
+	got, _ := f.Got()
+	if err, ok := got.(error); ok && f.Assertion == noErrorAssertion {
 		return f.Contract + ": " + err.Error()
 	}
 	return f.Contract

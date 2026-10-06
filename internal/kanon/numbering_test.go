@@ -4,13 +4,12 @@
 package kanon_test
 
 import (
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 )
 
 // numbersMark begins the line of a code file that records the numbers of a
@@ -139,9 +138,9 @@ func TestNumbering(t *testing.T) {
 		for _, tt := range numbers {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				files, err := generate(t, module(t, tt.files), source, tt.types)
+				got, err := generate(t, module(t, tt.files), source, tt.types)
 				assert.NoError(t, err, "Generate numbers the fields")
-				assert.Equal(t, numbersLines(files[codeName]), tt.want, "the code file records the numbers")
+				assert.Equal(t, numbersLines(got[codeName]), tt.want, "the code file records the numbers")
 			})
 		}
 		failures := []struct {
@@ -280,12 +279,11 @@ func TestNumbering(t *testing.T) {
 		}
 		t.Run("returns an error for a code file that does not read", func(t *testing.T) {
 			t.Parallel()
-			dir := module(t, map[string]string{source: structXY})
-			assert.NoError(
-				t,
-				os.Mkdir(filepath.Join(dir, codeName), dirMode),
-				"a directory takes the name of the code file",
-			)
+			dir := files.Workspace(t, files.Tree{
+				modName:  files.Text(goMod),
+				source:   files.Text(pkgClause + structXY),
+				codeName: files.Dir(),
+			})
 			_, err := generate(t, dir, source, "A")
 			assert.HasError(t, err, "Generate fails for a code file that does not read")
 			assert.HasPrefix(t, err.Error(), "kanon: read the numbers of ", "Generate states why the numbering fails")

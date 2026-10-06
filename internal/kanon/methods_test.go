@@ -4,7 +4,6 @@
 package kanon_test
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -46,12 +45,11 @@ func TestMethods(t *testing.T) {
 		t.Run("encodes a struct that declares the kanon methods through its methods", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{
+				modName:      runtimeMod,
 				"options.go": "// Options takes the place of the options of the runtime.\ntype Options struct{}\n",
 				"sub/a.go": "import kanon \"go.thesmos.sh/kanon\"\n\ntype T struct {\n\tX int32\n}\n" +
 					kanonMethods("T") + structA("T T"),
 			})
-			assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte(runtimeMod), fileMode),
-				"the go.mod of the runtime path writes")
 			files, err := generate(t, filepath.Join(dir, "sub"), source, "A")
 			assert.NoError(t, err, "Generate encodes the struct")
 			assert.Equal(t, numbersLines(files[codeName]), []string{"//kanon:numbers A T=1"},

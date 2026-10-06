@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 )
 
 // Environment of the fake go command, which TestMain runs in place of the
@@ -98,14 +98,11 @@ func TestLoadEnv(t *testing.T) {
 	assert.NoError(t, err, "the PATH has the go command")
 	self, err := os.Executable()
 	assert.NoError(t, err, "the test binary has a path")
-	bin, err := os.ReadFile(self)
-	assert.NoError(t, err, "the test binary reads")
 	name := goCommand
 	if runtime.GOOS == windows {
 		name += exeSuffix
 	}
-	dir := t.TempDir()
-	assert.NoError(t, os.WriteFile(filepath.Join(dir, name), bin, execMode), "the fake go command writes")
+	dir := files.Workspace(t, files.Tree{name: files.Executable(files.Read(t, self))})
 	t.Setenv("PATH", dir)
 	t.Setenv(realGo, goPath)
 	t.Run("Generate", func(t *testing.T) {
@@ -117,11 +114,11 @@ func TestLoadEnv(t *testing.T) {
 		})
 		t.Run("returns the error of the go list of the dependencies", func(t *testing.T) {
 			t.Setenv(fakeGoMode, fakeDeps)
-			files := map[string]string{
+			sources := map[string]string{
 				"sub/sub.go": "// T is a struct type.\ntype T struct {\n\tX int32\n}\n",
 				source:       subImport + structA("T sub.T"),
 			}
-			mod := module(t, files)
+			mod := module(t, sources)
 			_, err := generate(t, mod, source, "A")
 			assert.HasError(t, err, "Generate fails for the dependencies")
 			assert.HasPrefix(t, err.Error(), "kanon: go list in "+mod+": ", "Generate states the command that fails")
@@ -130,15 +127,13 @@ func TestLoadEnv(t *testing.T) {
 		})
 		t.Run("ignores a file of a dependency that does not parse", func(t *testing.T) {
 			t.Setenv(fakeGoMode, fakeFile)
-			files := map[string]string{
+			sources := map[string]string{
 				"dep/dep.go": "//go:generate go tool kanon -type=T\n\n// T is a struct type with a kanon codec.\n" +
 					"type T struct {\n\tX int32\n}\n",
-				source: "import \"example.com/m/dep\"\n\n" + structA("T dep.T"),
+				"dep/" + depFile: "{",
+				source:           "import \"example.com/m/dep\"\n\n" + structA("T dep.T"),
 			}
-			mod := module(t, files)
-			assert.NoError(t, os.WriteFile(filepath.Join(mod, "dep", depFile), []byte("{"), fileMode),
-				"the file that does not parse writes")
-			got, err := generate(t, mod, source, "A")
+			got, err := generate(t, module(t, sources), source, "A")
 			assert.NoError(t, err, "Generate reads the directive of the dependency")
 			assert.Contains(t, got[codeName], "m.T.SizeKanon()", "the field encodes through the codec of T")
 		})
@@ -151,9 +146,7 @@ func TestLoad(t *testing.T) {
 		t.Parallel()
 		t.Run("returns the error of go list for a go.mod that does not parse", func(t *testing.T) {
 			t.Parallel()
-			dir := module(t, map[string]string{source: structXY})
-			assert.NoError(t, os.WriteFile(filepath.Join(dir, modName), []byte("bogus\n"), fileMode),
-				"the go.mod writes")
+			dir := module(t, map[string]string{modName: "bogus\n", source: structXY})
 			_, err := generate(t, dir, source, "A")
 			assert.HasError(t, err, "Generate fails for the go.mod")
 			assert.HasPrefix(t, err.Error(), "kanon: go list in "+dir+": ", "Generate states the command that fails")

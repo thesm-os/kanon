@@ -568,11 +568,13 @@ func TestExact(t *testing.T) {
 		t.Parallel()
 		t.Run("fails for an AppendKanon that appends other bytes than the append method", func(t *testing.T) {
 			t.Parallel()
-			got := rejectsExact[skewed](t, exactAppenderCheck, "value 1 of the value tables: AppendKanon appends the "+
+			f := rejectsExact[skewed](t, exactAppenderCheck, "value 1 of the value tables: AppendKanon appends the "+
 				"bytes that the append method appends")
-			assert.Equal[any](t, got.Detail[gotDetail], []byte{guardByte, guardByte, 1, 0},
+			got, _ := f.Got()
+			assert.Equal[any](t, got, []byte{guardByte, guardByte, 1, 0},
 				"the failure states the bytes that AppendKanon appends")
-			assert.Equal[any](t, got.Detail[wantDetail], []byte{guardByte, guardByte, 0, 1},
+			want, _ := f.Want()
+			assert.Equal[any](t, want, []byte{guardByte, guardByte, 0, 1},
 				"the failure states the bytes that the append method appends")
 		})
 		t.Run("fails for a type whose append method fails for the zero value", func(t *testing.T) {

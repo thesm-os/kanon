@@ -7,13 +7,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/iotest"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 
 	"go.thesmos.sh/kanon/internal/inspect"
 )
@@ -42,8 +42,8 @@ const (
 	structText = "1: {\"x\"}\n2: 14  # zigzag 7\n"
 )
 
-// fileMode is the permission of the input files of the tests.
-const fileMode = 0o644
+// inputName is the name of the input file that a test writes.
+const inputName = "input"
 
 // errRead is the error of a standard input that fails.
 var errRead = errors.New("inspect_test: the read fails")
@@ -55,14 +55,6 @@ func command(args []string, stdin io.Reader) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	code := inspect.Command(args, stdin, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
-}
-
-// inputFile writes data to a new file and returns its path.
-func inputFile(t *testing.T, data []byte) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "input")
-	assert.NoError(t, os.WriteFile(path, data, fileMode), "the input file writes")
-	return path
 }
 
 func TestCommand(t *testing.T) {
@@ -181,8 +173,8 @@ func TestCommand(t *testing.T) {
 		}
 		t.Run("reads the file that its argument names", func(t *testing.T) {
 			t.Parallel()
-			path := inputFile(t, unhex(t, structHex))
-			code, stdout, stderr := command([]string{path}, strings.NewReader(""))
+			dir := files.Workspace(t, files.Tree{inputName: files.Bytes(unhex(t, structHex))})
+			code, stdout, stderr := command([]string{filepath.Join(dir, inputName)}, strings.NewReader(""))
 			assert.Equal(t, code, exitOK, "Command returns exitOK: "+stderr)
 			assert.Equal(t, stdout, structText, "Command writes the fields of the file")
 		})
