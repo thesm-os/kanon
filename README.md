@@ -22,7 +22,7 @@ A `go:generate` directive names the types:
 - An encode into a buffer with spare capacity does not allocate.
 - A decode into a value that decoded before allocates one copy of its input when the type contains a string, and nothing when you pass a slab. `kanon.Message` lists the values that allocate in either case.
 - A decode error contains the struct type, the field, the field number and the offset of the malformed input.
-- kanon writes a conformance test per type. The test compares the codec with a reference encoder and decoder and checks the allocation contract. A fuzz target runs the decoder on arbitrary input.
+- kanon writes a conformance test per type. The test compares the codec with a reference encoder and decoder on fixed samples and on generated values, and checks the allocation contract. A fuzz target runs the comparison on the values and inputs that the fuzzer searches, arbitrary input included.
 
 ## Install
 
@@ -77,6 +77,11 @@ Commit the generated files and `testdata/golden` with `order.go`:
 
 - `order.kanon.go` records the field numbers. Regeneration reads them, and deleting the file loses them.
 - The golden files pin the encoding of every sample. A change that alters an encoding fails the tests until you run the command with `-update` again.
+
+The suite also checks generated values, which `go.dokimi.dev/assert/prop` draws from a new seed on each run.
+A generated case that fails is shrunk to the smallest case that fails the same check, and stored in `testdata/prop` beside `testdata/golden`.
+Every later run tries a stored case first, until you delete its file.
+Set `DOKIMI_ASSERT_PROP_PROFILE=ci` in CI, so that each run takes its seed from the property and a failure belongs to the commit under test.
 
 ## Encode and decode
 

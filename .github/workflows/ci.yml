@@ -12,6 +12,12 @@ concurrency:
 permissions:
   contents: read
 
+# The properties of the conformance suite take their seeds from their
+# contracts under the ci profile, so that a failed job belongs to the commit
+# under test. A local run draws new seeds.
+env:
+  DOKIMI_ASSERT_PROP_PROFILE: ci
+
 jobs:
   # Build, vet and the race tests run on every supported OS. The other
   # jobs check properties of the source that do not depend on the

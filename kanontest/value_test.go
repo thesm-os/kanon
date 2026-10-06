@@ -18,9 +18,11 @@ import (
 
 // Names of the checks of kanontest.ValueChecks.
 const (
-	valueTypeCheck   = "ValidateKanon/validates a named type that is not a struct"
-	valueAllocsCheck = "ValidateKanon/allocates nothing for a value that it accepts"
-	valueDomainCheck = "ValidateKanon/accepts a value exactly when the encode method of the type accepts it"
+	valueTypeCheck     = "ValidateKanon/validates a named type that is not a struct"
+	valueAllocsCheck   = "ValidateKanon/allocates nothing for a value that it accepts"
+	valueDomainCheck   = "ValidateKanon/accepts a value exactly when the encode method of the type accepts it"
+	valuePropertyCheck = "ValidateKanon/accepts a generated value exactly when the encode method of the type " +
+		"accepts it"
 	valueGoldenCheck = "ValidateKanon/matches the golden file of the values"
 )
 
@@ -144,14 +146,21 @@ func (funcValue) ValidateKanon() error { return nil }
 // fails t unless the check fails with a message that contains want.
 func rejectsValue[T kanon.Validator](t *testing.T, name, want string) {
 	t.Helper()
+	got := assert.Rejects(t, name, valueCheck[T](t, name).Run)
+	assert.Contains(t, got, want, name+" fails for the reason that it states")
+}
+
+// valueCheck returns the check of kanontest.ValueChecks for T named name,
+// and fails t when no check has that name.
+func valueCheck[T kanon.Validator](t *testing.T, name string) kanontest.Check {
+	t.Helper()
 	for _, c := range kanontest.ValueChecks[T]() {
 		if c.Name == name {
-			got := assert.Rejects(t, name, c.Run)
-			assert.Contains(t, got, want, name+" fails for the reason that it states")
-			return
+			return c
 		}
 	}
 	t.Fatalf("no check is named %q", name)
+	return kanontest.Check{}
 }
 
 func TestValue(t *testing.T) {
@@ -167,6 +176,16 @@ func TestValue(t *testing.T) {
 			}
 			assert.Equal(t, names, []string{valueAllocsCheck, valueGoldenCheck},
 				"ValueChecks returns the allocation check and the golden check")
+		})
+		t.Run("returns the domain check and the property for a type with binary methods", func(t *testing.T) {
+			t.Parallel()
+			checks := kanontest.ValueChecks[strict]()
+			names := make([]string, 0, len(checks))
+			for _, c := range checks {
+				names = append(names, c.Name)
+			}
+			assert.Equal(t, names, []string{valueAllocsCheck, valueDomainCheck, valuePropertyCheck, valueGoldenCheck},
+				"ValueChecks returns the domain check and the property between the allocation and golden checks")
 		})
 		t.Run("returns one check for a struct type", func(t *testing.T) {
 			t.Parallel()
@@ -219,6 +238,24 @@ func TestValue(t *testing.T) {
 				run:   rejectsValue[lossy],
 				want:  "the decode method of the type returns the value",
 			},
+			{
+				name:  "fails for a method that accepts a generated value that the encode method of the type rejects",
+				check: valuePropertyCheck,
+				run:   rejectsValue[lax],
+				want:  "ValidateKanon accepts it exactly when the encode method of the type does",
+			},
+			{
+				name:  "fails for a type whose decode method rejects the encoding of a generated value",
+				check: valuePropertyCheck,
+				run:   rejectsValue[undecodable],
+				want:  "the decode method of the type decodes its encoding",
+			},
+			{
+				name:  "fails for a type whose decode method returns another generated value",
+				check: valuePropertyCheck,
+				run:   rejectsValue[lossy],
+				want:  "the decode method of the type returns the value",
+			},
 		}
 		for _, tt := range rejections {
 			t.Run(tt.name, func(t *testing.T) {
@@ -231,7 +268,9 @@ func TestValue(t *testing.T) {
 			if golden.ShouldUpdate() {
 				t.Skip("the -update flag writes the golden file that the check compares")
 			}
-			rejectsValue[unpinnedValue](t, valueGoldenCheck, "the golden file does not exist")
+			r := assert.NewRecorder()
+			valueCheck[unpinnedValue](t, valueGoldenCheck).Run(r)
+			missesGolden(t, r)
 		})
 	})
 }

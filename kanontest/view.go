@@ -43,12 +43,13 @@ func indexError(l *layout, fields []*field, data []byte) error {
 
 // views checks each method of the view type of T against the reference view
 // of the field that the method names, as [suite.viewResult] checks it, for
-// every input that [suite.viewInputs] returns. IndexKanon names no field,
-// and [suite.indexes] checks it.
-func (s *suite[T, P]) views(tb assert.TB) {
+// every input of inputs. The table checks pass the inputs that
+// [suite.viewInputs] returns. IndexKanon names no field, and
+// [suite.indexes] checks it.
+func (s *suite[T, P]) views(tb assert.TB, inputs [][]byte) {
 	tb.Helper()
 	fields := s.l.byName()
-	for _, data := range s.viewInputs() {
+	for _, data := range inputs {
 		for m, method := range reflect.ValueOf(data).Convert(s.view).Methods() {
 			if m.Name != indexName {
 				s.viewResult(tb, fields, s.view, m.Name, data, method.Call(nil))
@@ -57,12 +58,13 @@ func (s *suite[T, P]) views(tb assert.TB) {
 	}
 }
 
-// indexes checks IndexKanon of the view type of T for every input that
-// [suite.viewInputs] returns: it returns the error of the reference index,
-// as [indexError] returns it, and without an error each method of
-// the index returns what the reference view of the field that it names
-// returns, as [suite.viewResult] checks it.
-func (s *suite[T, P]) indexes(tb assert.TB) {
+// indexes checks IndexKanon of the view type of T for every input of
+// inputs: it returns the error of the reference index, as [indexError]
+// returns it, and without an error each method of the index returns what
+// the reference view of the field that it names returns, as
+// [suite.viewResult] checks it. The table checks pass the inputs that
+// [suite.viewInputs] returns.
+func (s *suite[T, P]) indexes(tb assert.TB, inputs [][]byte) {
 	tb.Helper()
 	fields := s.l.byName()
 	var read []*field
@@ -71,7 +73,7 @@ func (s *suite[T, P]) indexes(tb assert.TB) {
 			read = append(read, f)
 		}
 	}
-	for _, data := range s.viewInputs() {
+	for _, data := range inputs {
 		out := reflect.ValueOf(data).Convert(s.view).MethodByName(indexName).Call(nil)
 		err, _ := reflect.TypeAssert[error](out[1])
 		if wantErr := indexError(s.l, read, data); !sameError(err, wantErr) {

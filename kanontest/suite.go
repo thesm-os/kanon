@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/prop"
 
 	"go.thesmos.sh/kanon"
 )
@@ -73,18 +74,21 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 			Serial: true,
 			Run:    s.decodeAllocs,
 		},
-		{Name: "SizeKanon/returns the length of the reference encoding", Run: s.size},
-		{Name: "MarshalBinary/returns the reference encoding", Run: s.marshal},
-		{Name: "MarshalBinary/returns the error of a value that fails to encode", Run: s.marshalError},
-		{Name: "AppendBinary/appends the reference encoding to the buffer", Run: s.append},
-		{Name: "EncodeKanon/writes the reference encoding into the end of the buffer", Run: s.encode},
-		{Name: "EncodeKanon/returns io.ErrShortBuffer for a buffer shorter than the encoding", Run: s.short},
+		{Name: "SizeKanon/returns the length of the reference encoding", Run: s.onAll(s.size)},
+		{Name: "MarshalBinary/returns the reference encoding", Run: s.onAll(s.marshal)},
+		{Name: "MarshalBinary/returns the error of a value that fails to encode", Run: s.onAll(s.marshalError)},
+		{Name: "AppendBinary/appends the reference encoding to the buffer", Run: s.onAll(s.append)},
+		{Name: "EncodeKanon/writes the reference encoding into the end of the buffer", Run: s.onAll(s.encode)},
+		{
+			Name: "EncodeKanon/returns io.ErrShortBuffer for a buffer shorter than the encoding",
+			Run:  s.onAll(s.short),
+		},
 		{Name: "SizeKanon/returns 0 for a nil receiver", Run: s.nilSize},
 		{Name: "EncodeKanon/writes nothing for a nil receiver", Run: s.nilEncode},
 		{Name: "AppendBinary/returns the buffer for a nil receiver", Run: s.nilAppend},
 		{
 			Name: "UnmarshalBinary/decodes the reference encoding of each sample as the reference decode",
-			Run:  s.unmarshal,
+			Run:  s.onAll(s.unmarshal),
 		},
 	}
 	for _, f := range s.families() {
@@ -94,22 +98,54 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 		checks = append(checks, Check{Name: roundTripCheck, Run: s.roundTrips})
 	}
 	if s.view != nil {
-		checks = append(checks, Check{Name: viewCheck, Run: s.views})
-		if _, ok := s.view.MethodByName(indexName); ok {
-			checks = append(checks, Check{Name: indexCheck, Run: s.indexes})
-		}
+		checks = append(checks, Check{Name: viewCheck, Run: func(tb assert.TB) {
+			tb.Helper()
+			s.views(tb, s.viewInputs())
+		}})
+	}
+	if s.index {
+		checks = append(checks, Check{Name: indexCheck, Run: func(tb assert.TB) {
+			tb.Helper()
+			s.indexes(tb, s.viewInputs())
+		}})
 	}
 	return append(checks,
-		Check{Name: "DecodeKanon/decodes into a receiver that decoded before as into a zero one", Run: s.reuse},
-		Check{Name: "MergeKanon/merges an encoding into a decoded value as the reference decode", Run: s.merge},
+		Check{
+			Name: "DecodeKanon/decodes into a receiver that decoded before as into a zero one",
+			Run: func(tb assert.TB) {
+				tb.Helper()
+				s.reuse(tb, s.all(), s.bulk)
+			},
+		},
+		Check{
+			Name: "MergeKanon/merges an encoding into a decoded value as the reference decode",
+			Run: func(tb assert.TB) {
+				tb.Helper()
+				s.merge(tb, s.tables)
+			},
+		},
 		Check{
 			Name: "MergeKanon/merges an encoding into a value that fails to encode as the reference decode",
 			Run:  s.mergeFailing,
 		},
-		Check{Name: "Reset/sets the receiver to the zero value", Run: s.reset},
-		Check{Name: "CloneKanon/returns a copy that shares no memory with the receiver", Run: s.clone},
+		Check{Name: "Reset/sets the receiver to the zero value", Run: func(tb assert.TB) {
+			tb.Helper()
+			s.nilReset(tb)
+			s.reset(tb, s.all())
+		}},
+		Check{Name: "CloneKanon/returns a copy that shares no memory with the receiver", Run: s.onAll(s.clone)},
+		Check{Name: propertyCheck, Run: s.property},
 		Check{Name: "MarshalBinary/matches the golden file of the samples and the probes", Run: s.golden},
 	)
+}
+
+// onAll returns the check that runs check on every sample of s, the bulk
+// samples included.
+func (s *suite[T, P]) onAll(check func(assert.TB, []sample[T])) func(assert.TB) {
+	return func(tb assert.TB) {
+		tb.Helper()
+		check(tb, s.all())
+	}
 }
 
 // Run runs the checks of the codec of T that spec describes, each as a
@@ -175,26 +211,20 @@ func Bench[T any, P Codec[T]](b *testing.B, spec Spec[T]) {
 	})
 }
 
-// Fuzz fuzzes DecodeKanon of the codec of T that spec describes, with the
-// reference encodings of the samples of the checks that encode, and those
-// encodings without their last byte, as the seeds. DecodeKanon decodes
-// every input as the reference decode: with the same error, or to the same
-// value. For a canonical Spec the reference decode also succeeds exactly
-// when the input round-trips through the reference encode. Fuzz skips a Spec
-// that does not describe T, which [Run] reports.
+// Fuzz fuzzes the codec of T that spec describes with the property of
+// [Checks], through prop.Fuzz. The bytes of each input decode into the
+// choices of one case of the property. The fuzzer then searches the values
+// of T and the probes of their encodings, of which arbitrary bytes are one
+// family. A failing input shrinks, and the store of the fuzz test keeps its
+// case, which go test without -fuzz runs again. Fuzz skips a Spec that does
+// not describe T, which [Run] reports.
 func Fuzz[T any, P Codec[T]](f *testing.F, spec Spec[T]) {
 	f.Helper()
 	s, err := newSuite[T, P](spec)
 	if err != nil {
 		f.Skip(err)
 	}
-	for _, x := range s.encodable() {
-		f.Add(x.enc)
-		f.Add(x.enc[:max(len(x.enc)-1, 0)])
-	}
-	f.Fuzz(func(t *testing.T, data []byte) {
-		s.fuzz(t, data)
-	})
+	prop.Fuzz(f, propertyContract, s.generated)
 }
 
 // bytesMetric is the unit of the length of an encoding that the benchmarks
@@ -227,6 +257,11 @@ type suite[T any, P Codec[T]] struct {
 	bench T
 	// view is the view type of T, and nil when the Spec names none.
 	view reflect.Type
+	// index reports that the view type has IndexKanon.
+	index bool
+	// cloner reports that P implements kanon.Cloner, which the clone check
+	// requires of the codec.
+	cloner bool
 }
 
 // sample is a value of T that the checks run on.
@@ -273,13 +308,16 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 	if err != nil {
 		return nil, err
 	}
-	r.prepare(l)
-	s := &suite[T, P]{r: r, l: l}
+	// The shapes of T start at T, as the inline struct of its layout.
+	r.prepare(&shape{typ: l.typ, kind: kindInline, layout: l})
+	_, cloner := any(P(nil)).(kanon.Cloner[T])
+	s := &suite[T, P]{r: r, l: l, cloner: cloner}
 	if spec.View != nil {
 		s.view = reflect.TypeOf(spec.View)
 		if s.view.Kind() != reflect.Slice || s.view.Elem() != reflect.TypeFor[byte]() {
 			return nil, fmt.Errorf("kanontest: the Spec names view type %v, which is not a byte slice", s.view)
 		}
+		_, s.index = s.view.MethodByName(indexName)
 	}
 	tables := max(drawCount, choices(l)*sliceLengths)
 	for i := range tables {
@@ -385,18 +423,6 @@ func (s *suite[T, P]) reference(p probe) (T, error) {
 	err := s.r.decode(s.l, v, p.data, slab, off, p.opts.Limit())
 	x, _ := reflect.TypeAssert[T](v)
 	return x, err
-}
-
-// fuzz checks the decode of data: DecodeKanon decodes it as the reference
-// decode, and for a canonical Spec the reference decode succeeds exactly
-// when data round-trips, as [suite.roundTrip] checks it.
-func (s *suite[T, P]) fuzz(t *testing.T, data []byte) {
-	t.Helper()
-	p := probe{name: "the input", data: data}
-	s.decode(t, p)
-	if s.r.canonical {
-		s.roundTrip(t, p)
-	}
 }
 
 // failingName returns the name of table sample i with its value j that can

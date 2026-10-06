@@ -4,7 +4,7 @@ title: Generated Go codecs, their runtime and their public interface
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-09-27
-updated: 2026-10-01
+updated: 2026-10-05
 discussion: none
 supersedes: none
 superseded-by: none
@@ -629,12 +629,36 @@ encode. The index check compares the error of `IndexKanon` with the first error,
 offset, of the reference scans of the fields that the view reads, and each method of the index
 with the reference view of its field.
 
+A property of `go.dokimi.dev/assert/prop` runs the same comparisons on generated values. Each
+case draws two values of the struct type and a probe, and checks the encode methods, the
+decode of each encoding, a decode into a receiver that decoded before, a merge, `Reset`,
+`CloneKanon`, the decode of the probe, and the view methods and `IndexKanon`. The builder of
+the samples builds each value from the choices of the case, so that the rules for unions,
+interfaces, Validators and map keys apply to generated values as they apply to the samples.
+The probe is one probe of a family that the decode checks derive from the two values, or
+arbitrary bytes. A generated value has these parts:
+
+| Part | Values |
+|---|---|
+| Integer | the range of its width, with `int`, `uint` and `uintptr` at 32 bits |
+| Float | -Inf to +Inf, NaN included |
+| String, byte slice | up to 255 arbitrary bytes, with nil apart from empty |
+| Time | the range of `time.Time`, in UTC or in a fixed zone |
+| Slice, map | nil, or up to 4 elements, three levels deep at most |
+| Value that can fail to encode | a failure with odds of 1 in 16 |
+
+prop shrinks a failing case to the smallest case that fails the same assertion, and the store
+of the test keeps the case for every later run. Each run draws a new seed unless the ci profile
+of prop derives it from the property. `kanontest.Fuzz` runs the property under `go test -fuzz`,
+which decodes the bytes of each input into the choices of one case.
+
 The reference encoder and decoder call the `ValidateKanon` of every `kanon.Validator`. A
 sample counts such a value as one that can fail to encode. The reference also calls the method
 of a type whose directive has no `-validate`, which the generated code skips. When a
 dependency adds `-validate` to such a directive, the code that a consumer generated before
 fails the checks of the encode, the decode, the views and the golden file for a value of the
-value tables that the new method rejects.
+value tables that the new method rejects, and the property for a generated value that the
+method rejects.
 `kanontest.RunValue[T kanon.Validator]` checks the method of each type other than a struct
 that a `-type` flag names, over the value tables of its underlying type:
 
@@ -642,7 +666,8 @@ that a `-type` flag names, over the value tables of its underlying type:
 - For a type with binary, gob or text methods, the method accepts a value exactly when the
   encode method of the type's family accepts it, and the decode method of the family decodes
   the encoding of each accepted value to the value. A directive without the `-validate` that
-  its type needs fails this check.
+  its type needs fails this check. A property checks the same on generated values of the
+  underlying type.
 - A golden file pins the encoding of each value that the method accepts, as field 1 of a
   struct, and the error of each value that it rejects.
 
@@ -711,7 +736,7 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
   and its index takes one `int` per field that the view reads.
 - `IsZero` must report true for the zero value alone. A type whose `IsZero` reports true for
   another value loses that value, and the conformance suite detects it only for the values
-  that it samples.
+  that it samples and the values that a run of its property generates.
 - The generated code trusts `SizeKanon` to size the encoding of a `kanon.Sizer`, so a
   `SizeKanon` that disagrees with the encode method fails every encode of such a value with
   `ErrSize`.
@@ -726,7 +751,8 @@ drifts, and it cannot express the types that only Go has, such as a struct key o
   generated. A dependency that adds `-validate` to the directive of such a type takes effect in
   a consumer only after the consumer generates its code again. Until then the consumer writes
   and reads the values of the type without the check, and its conformance suite fails only for
-  a value of the value tables that the new method rejects.
+  a value of the value tables that the new method rejects, or for a generated value that it
+  rejects in a run of the property.
 
 ## Unresolved and future work
 

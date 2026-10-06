@@ -67,10 +67,10 @@ func (s *suite[T, P]) golden(tb assert.TB) {
 }
 
 // size checks that SizeKanon returns the length of the reference encoding
-// of every sample that encodes.
-func (s *suite[T, P]) size(tb assert.TB) {
+// of every sample of xs that encodes.
+func (*suite[T, P]) size(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		v := x.value
 		assert.Equal(
 			tb,
@@ -82,10 +82,10 @@ func (s *suite[T, P]) size(tb assert.TB) {
 }
 
 // marshal checks that MarshalBinary returns the reference encoding of every
-// sample that encodes.
-func (s *suite[T, P]) marshal(tb assert.TB) {
+// sample of xs that encodes.
+func (*suite[T, P]) marshal(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		v := x.value
 		got, err := P(&v).MarshalBinary()
 		assert.NoError(tb, err, x.name+": MarshalBinary encodes a value whose fields encode")
@@ -94,11 +94,11 @@ func (s *suite[T, P]) marshal(tb assert.TB) {
 }
 
 // marshalError checks that MarshalBinary returns the error of the reference
-// encoding for every sample that fails to encode: the error of the value
-// that the generated code meets first.
-func (s *suite[T, P]) marshalError(tb assert.TB) {
+// encoding for every sample of xs that fails to encode: the error of the
+// value that the generated code meets first.
+func (*suite[T, P]) marshalError(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.failing() {
+	for _, x := range failures(xs) {
 		v := x.value
 		_, err := P(&v).MarshalBinary()
 		assert.Equal(tb, err, x.err, x.name+": MarshalBinary returns the error of the value that fails to encode")
@@ -106,10 +106,10 @@ func (s *suite[T, P]) marshalError(tb assert.TB) {
 }
 
 // append checks that AppendBinary appends the reference encoding of every
-// sample that encodes to the bytes of its buffer.
-func (s *suite[T, P]) append(tb assert.TB) {
+// sample of xs that encodes to the bytes of its buffer.
+func (*suite[T, P]) append(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		v := x.value
 		got, err := P(&v).AppendBinary([]byte{guard, guard})
 		assert.NoError(tb, err, x.name+": AppendBinary encodes a value whose fields encode")
@@ -119,11 +119,11 @@ func (s *suite[T, P]) append(tb assert.TB) {
 }
 
 // encode checks that EncodeKanon writes the reference encoding of every
-// sample that encodes into the end of a longer buffer, and returns its
+// sample of xs that encodes into the end of a longer buffer, and returns its
 // length.
-func (s *suite[T, P]) encode(tb assert.TB) {
+func (*suite[T, P]) encode(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		v := x.value
 		buf := bytes.Repeat([]byte{guard}, len(x.enc)+2)
 		n, err := P(&v).EncodeKanon(buf)
@@ -135,11 +135,11 @@ func (s *suite[T, P]) encode(tb assert.TB) {
 }
 
 // short checks that EncodeKanon writes nothing into a buffer one byte
-// shorter than the reference encoding of a sample, and returns
+// shorter than the reference encoding of a sample of xs, and returns
 // io.ErrShortBuffer.
-func (s *suite[T, P]) short(tb assert.TB) {
+func (*suite[T, P]) short(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		if len(x.enc) == 0 {
 			continue
 		}
@@ -183,11 +183,11 @@ func (*suite[T, P]) nilAppend(tb assert.TB) {
 }
 
 // unmarshal checks that UnmarshalBinary decodes the reference encoding of
-// every sample that encodes as the reference decode, and that the reference
-// encoding of a value that it decodes is that encoding.
-func (s *suite[T, P]) unmarshal(tb assert.TB) {
+// every sample of xs that encodes as the reference decode, and that the
+// reference encoding of a value that it decodes is that encoding.
+func (s *suite[T, P]) unmarshal(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		var got T
 		err := P(&got).UnmarshalBinary(x.enc)
 		want, wantErr := s.reference(probe{data: x.enc})
@@ -300,12 +300,13 @@ func (s *suite[T, P]) encodable() []sample[T] {
 	return encodes(s.all())
 }
 
-// failing returns the samples that fail to encode.
-func (s *suite[T, P]) failing() []sample[T] {
-	return slices.DeleteFunc(s.all(), func(x sample[T]) bool { return x.err == nil })
-}
-
 // encodes returns the samples of samples that encode, in their order.
 func encodes[T any](samples []sample[T]) []sample[T] {
 	return slices.DeleteFunc(slices.Clone(samples), func(x sample[T]) bool { return x.err != nil })
+}
+
+// failures returns the samples of samples that fail to encode, in their
+// order.
+func failures[T any](samples []sample[T]) []sample[T] {
+	return slices.DeleteFunc(slices.Clone(samples), func(x sample[T]) bool { return x.err == nil })
 }

@@ -14,6 +14,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/golden"
+	"go.dokimi.dev/assert/prop"
 
 	"go.thesmos.sh/kanon"
 	"go.thesmos.sh/kanon/wire"
@@ -30,9 +31,16 @@ const (
 	// valueDomainCheck names the check of the values that the method
 	// accepts against those that the encode method of the type accepts.
 	valueDomainCheck = "ValidateKanon/accepts a value exactly when the encode method of the type accepts it"
+	// valuePropertyCheck names the check of the domain on generated values.
+	valuePropertyCheck = "ValidateKanon/accepts a generated value exactly when the encode method of the type accepts it"
 	// valueGoldenCheck names the check of the golden file.
 	valueGoldenCheck = "ValidateKanon/matches the golden file of the values"
 )
+
+// valuePropertyContract is the contract of the record of the property of
+// [RunValue], which names its cases in the store of the test.
+const valuePropertyContract = "ValidateKanon accepts a generated value exactly when the encode method of the type " +
+	"accepts it"
 
 // valueField names the one field of the struct in which the golden file of
 // [RunValue] encodes each value.
@@ -60,6 +68,7 @@ func newValueSuite(t reflect.Type) (*valueSuite, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kanontest: %v: %w", t, err)
 	}
+	r.prepare(s)
 	vs := &valueSuite{r: r, s: s}
 	for i := range drawCount {
 		vs.values = append(vs.values, r.shaped(table(i), s, nesting))
@@ -67,24 +76,47 @@ func newValueSuite(t reflect.Type) (*valueSuite, error) {
 	return vs, nil
 }
 
-// domain checks that ValidateKanon accepts each value of vs exactly when the
-// encode method of the family of its type, which [marshal] calls, accepts
-// it, and that the decode method of the family decodes the encoding of each
-// accepted value back to the value, as their fingerprints compare.
+// domain checks each value of vs as [valueSuite.accepts] checks it.
 func (vs *valueSuite) domain(tb assert.TB) {
 	tb.Helper()
 	for i, v := range vs.values {
-		name := "value " + strconv.Itoa(i)
-		enc, err := marshal(v)
-		assert.Equal(tb, validate(v) == nil, err == nil,
-			name+": ValidateKanon accepts it exactly when the encode method of the type does")
-		if err != nil {
-			continue
-		}
-		back := reflect.New(vs.s.typ).Elem()
-		assert.NoError(tb, unmarshal(back, enc), name+": the decode method of the type decodes its encoding")
-		assert.Equal(tb, vs.print(back), vs.print(v), name+": the decode method of the type returns the value")
+		vs.accepts(tb, "value "+strconv.Itoa(i), v)
 	}
+}
+
+// property checks, on the cases of a run of prop.ForAll, the value of the
+// type of vs that each case draws, as [valueSuite.accepts] checks it. The
+// builder builds the value from a drawn source, as [resolver.shaped] builds
+// the values of the value tables, so that ValidateKanon meets the values
+// that it rejects as well.
+func (vs *valueSuite) property(tb assert.TB) {
+	tb.Helper()
+	prop.ForAll(tb, valuePropertyContract, func(c *prop.Case) {
+		x := c.Draw(prop.Composite(func(c *prop.Case) any {
+			return vs.r.shaped(drawn{c: c, path: firstValue}, vs.s, nesting).Interface()
+		}), firstValue)
+		v := reflect.New(vs.s.typ).Elem()
+		v.Set(reflect.ValueOf(x))
+		vs.accepts(c, generatedName+firstValue, v)
+	})
+}
+
+// accepts checks that ValidateKanon accepts v, a value of the type of vs
+// that name names, exactly when the encode method of the family of its
+// type, which [marshal] calls, accepts it, and that the decode method of the
+// family decodes the encoding of an accepted v back to v, as their
+// fingerprints compare.
+func (vs *valueSuite) accepts(tb assert.TB, name string, v reflect.Value) {
+	tb.Helper()
+	enc, err := marshal(v)
+	assert.Equal(tb, validate(v) == nil, err == nil,
+		name+": ValidateKanon accepts it exactly when the encode method of the type does")
+	if err != nil {
+		return
+	}
+	back := reflect.New(vs.s.typ).Elem()
+	assert.NoError(tb, unmarshal(back, enc), name+": the decode method of the type decodes its encoding")
+	assert.Equal(tb, vs.print(back), vs.print(v), name+": the decode method of the type returns the value")
 }
 
 // print returns the fingerprint of x, a value of the type of vs, as
@@ -125,7 +157,9 @@ func (vs *valueSuite) golden(tb assert.TB) {
 //     the allocation contract of kanon.Message relies on.
 //   - For a type with binary, gob or text methods, ValidateKanon accepts a
 //     value exactly when the encode method of the type accepts it, so that
-//     a directive without the -validate that the type needs fails.
+//     a directive without the -validate that the type needs fails. A
+//     property of go.dokimi.dev/assert/prop checks the same on generated
+//     values of the underlying type.
 //   - The golden file of T pins the encoding of each value that
 //     ValidateKanon accepts, as field 1 of a struct, and the error of each
 //     value that it rejects.
@@ -146,7 +180,10 @@ func ValueChecks[T kanon.Validator]() []Check {
 		valueAllocs[T](tb, vs)
 	}}}
 	if familyOf(typ) != 0 {
-		checks = append(checks, Check{Name: valueDomainCheck, Run: vs.domain})
+		checks = append(checks,
+			Check{Name: valueDomainCheck, Run: vs.domain},
+			Check{Name: valuePropertyCheck, Run: vs.property},
+		)
 	}
 	return append(checks, Check{Name: valueGoldenCheck, Run: vs.golden})
 }

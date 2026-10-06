@@ -87,8 +87,7 @@
 //   - each sample in a slab, at an offset.
 //
 // The golden file of T pins the number and a digest of the probes of each
-// family, and the encodings of the samples. [Fuzz] decodes its inputs with
-// both decoders as well.
+// family, and the encodings of the samples.
 //
 // # Canonical Specs
 //
@@ -117,8 +116,8 @@
 // A further check tests the reference decoder itself. The reference decode
 // of the encoding of each sample and of each probe succeeds exactly when the
 // input round-trips: the decode without the canonical rules succeeds, and
-// the reference encoding of the decoded value is the input. [Fuzz] runs the
-// same check on its inputs.
+// the reference encoding of the decoded value is the input. The property of
+// generated values runs the same check on its inputs.
 //
 // # Views
 //
@@ -134,6 +133,45 @@
 // It returns the first error, by offset, of the reference scans of the
 // fields that the view reads, and without an error each method of the index
 // returns what the reference view of its field returns.
+//
+// # Generated values
+//
+// One check of [Checks] runs a property of go.dokimi.dev/assert/prop with
+// prop.ForAll. Each case draws two values of T and a probe derived from
+// their encodings. It runs the assertions of the checks of the samples on
+// them, except the checks of a nil receiver, the allocation checks, the
+// golden file, and the merge into a sample that fails to encode. The
+// builder of the samples builds each value from the choices of the case,
+// with these values:
+//
+//   - Integers take the range of their width. An int, a uint and a uintptr
+//     take 32 bits, as in the samples.
+//   - Floats range from -Inf to +Inf, NaN included.
+//   - Strings and byte slices take up to 255 arbitrary bytes, and a nil
+//     byte slice differs from an empty one.
+//   - Times take the range of time.Time, in UTC or in a fixed zone.
+//   - Slices and maps take up to 4 elements or nil, three levels deep at
+//     most.
+//   - Each value that can fail to encode fails with odds of 1 in 16.
+//
+// The probe is one probe of a family that the decode checks derive from
+// the two values. A case draws the family and the probe, and the probe of
+// one family is arbitrary bytes. prop shrinks a failing case to the
+// smallest case that fails the same assertion. Its record states the values
+// of that case and its replay token. The store of the test keeps the case
+// in testdata/prop/<test name> beside testdata/golden, and every later run
+// of the test tries it first.
+//
+// Each run draws a new seed unless DOKIMI_ASSERT_PROP_SEED states one, or
+// DOKIMI_ASSERT_PROP_PROFILE=ci derives it from the property. Under
+// DOKIMI_ASSERT_PROP_PROFILE=campaign, the property searches for as many
+// seconds as DOKIMI_ASSERT_PROP_BUDGET states.
+//
+// [ValueChecks] returns a property of the domain check for a type with
+// binary, gob or text methods, whose cases draw values of the underlying
+// type. [Fuzz] runs the property of [Checks] under go test -fuzz with
+// prop.Fuzz, which decodes the bytes of each input into the choices of one
+// case.
 //
 // # Fields left out and unexported fields
 //
@@ -208,7 +246,8 @@
 //
 // # Dependency position
 //
-// kanontest imports go.thesmos.sh/kanon, go.thesmos.sh/kanon/wire,
-// go.dokimi.dev/assert and the standard library. The test files that kanon
-// generates import it, and the code files do not.
+// kanontest imports the standard library, go.thesmos.sh/kanon and
+// go.thesmos.sh/kanon/wire. It also imports go.dokimi.dev/assert with its
+// packages golden and prop. The test files that kanon generates import it,
+// and the code files do not.
 package kanontest

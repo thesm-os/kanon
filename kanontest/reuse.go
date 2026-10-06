@@ -14,43 +14,44 @@ import (
 )
 
 // reuse checks that DecodeKanon decodes the reference encoding of every
-// sample that encodes into a receiver that decoded before as into a zero
-// one: a receiver that decoded a bulk sample, whose maps have more entries
-// than a decode reuses, a receiver that decoded the first wide sample and
-// was reset, and a receiver that decoded the sample itself. Each receiver
-// has a value in every field that the encoding leaves out, as
-// [resolver.taint] sets them, and the decode clears them.
-func (s *suite[T, P]) reuse(tb assert.TB) {
+// sample of xs that encodes into a receiver that decoded before as into a
+// zero one: a receiver that decoded each sample of seeds, a receiver that
+// decoded the first of seeds and was reset, and a receiver that decoded the
+// sample itself. The table checks pass the bulk samples as seeds, whose maps
+// have more entries than a decode reuses. Each receiver has a value in every
+// field that the encoding leaves out, as [resolver.taint] sets them, and the
+// decode clears them.
+func (s *suite[T, P]) reuse(tb assert.TB, xs, seeds []sample[T]) {
 	tb.Helper()
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		want, wantErr := s.reference(probe{data: x.enc})
-		for _, seed := range slices.Concat(s.bulk, []sample[T]{x}) {
+		for _, seed := range slices.Concat(seeds, []sample[T]{x}) {
 			v := s.tainted(seed)
 			err := P(&v).DecodeKanon(x.enc, kanon.Options{})
 			s.same(tb, x.name+": DecodeKanon into a receiver that decoded "+seed.name, v, err, want, wantErr)
 			s.clears(tb, x.name+": DecodeKanon into a receiver that decoded "+seed.name, &v)
 		}
-		v := s.tainted(s.bulk[0])
+		v := s.tainted(seeds[0])
 		P(&v).Reset()
 		err := P(&v).DecodeKanon(x.enc, kanon.Options{})
 		s.same(tb, x.name+": DecodeKanon into a reset receiver", v, err, want, wantErr)
 	}
 }
 
-// merge checks that MergeKanon merges the reference encoding of every table
-// sample, in a slab between two slabGuard, into the decoded value of every
-// table sample that decodes, as the reference decode merges it. Both
+// merge checks that MergeKanon merges the reference encoding of every
+// sample of xs, in a slab between two slabGuard, into the decoded value of
+// every sample of xs that decodes, as the reference decode merges it. Both
 // receivers have a value in every field that the encoding leaves out, map
 // keys and values included, which the merge keeps where it keeps the struct
 // of the field. A map key with such a value is a key that no decode yields,
 // which the merge replaces with the decoded key of its projection.
-func (s *suite[T, P]) merge(tb assert.TB) {
+func (s *suite[T, P]) merge(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
-	for _, a := range s.tables {
+	for _, a := range xs {
 		if _, err := s.reference(probe{data: a.enc}); err != nil {
 			continue
 		}
-		for _, b := range s.tables {
+		for _, b := range xs {
 			slab := slabGuard + string(b.enc) + slabGuard
 			got := s.tainted(a)
 			gotErr := P(&got).MergeKanon(b.enc, kanon.Options{Slab: slab, Offset: len(slabGuard)})
@@ -86,15 +87,19 @@ func (s *suite[T, P]) mergeFailing(tb assert.TB) {
 	}
 }
 
-// reset checks that Reset of a nil receiver returns, and that Reset sets a
-// receiver that decoded a sample, with a value in every field that the
-// encoding leaves out, to the zero value.
-func (s *suite[T, P]) reset(tb assert.TB) {
+// nilReset checks that Reset of a nil receiver returns.
+func (*suite[T, P]) nilReset(tb assert.TB) {
 	tb.Helper()
 	var p P
 	p.Reset()
+}
+
+// reset checks that Reset sets a receiver that decoded a sample of xs, with
+// a value in every field that the encoding leaves out, to the zero value.
+func (s *suite[T, P]) reset(tb assert.TB, xs []sample[T]) {
+	tb.Helper()
 	zero := s.r.fingerprint(s.l, reflect.New(s.l.typ).Elem())
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		v := s.tainted(x)
 		P(&v).Reset()
 		assert.Equal(tb, s.r.fingerprint(s.l, reflect.ValueOf(&v).Elem()), zero,
@@ -103,24 +108,33 @@ func (s *suite[T, P]) reset(tb assert.TB) {
 	}
 }
 
-// clone checks that CloneKanon returns nil for a nil receiver, and a copy of
-// every sample and of the value that each sample that encodes decodes to,
-// with the fingerprint of the receiver. A sample with two map keys of one
-// projection is left out: its copy can have one key for them, since the copy
-// clears the fields that the encoding leaves out of a key and copies a key
-// of a type that encodes itself through its encoding. The copy of a decoded
-// value, whose fields that the encoding leaves out have values, has the zero
-// value in them. The copy keeps its fingerprint when the receiver decodes the
-// first wide sample into the memory that it keeps: the values that its
-// pointers point at, the arrays of its slices and its maps, so that the copy
-// shares none of them with the receiver.
-func (s *suite[T, P]) clone(tb assert.TB) {
+// clone checks that the codec implements kanon.Cloner, that CloneKanon
+// returns nil for a nil receiver, and that it copies the samples of xs, as
+// [suite.clones] checks them.
+func (s *suite[T, P]) clone(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
 	var p P
 	c, ok := any(p).(kanon.Cloner[T])
 	assert.True(tb, ok, "the codec implements kanon.Cloner")
 	assert.Nil(tb, c.CloneKanon(), "CloneKanon returns nil for a nil receiver")
-	for _, x := range s.all() {
+	s.clones(tb, xs)
+}
+
+// clones checks that CloneKanon, of a codec that implements kanon.Cloner,
+// returns a copy of every sample of xs and of the value that each sample
+// that encodes decodes to, with the fingerprint of the receiver. A sample
+// with two map keys of one projection is left out: its copy can have one
+// key for them, since the copy clears the fields that the encoding leaves
+// out of a key and copies a key of a type that encodes itself through its
+// encoding. The copy of a decoded value, whose fields that the encoding
+// leaves out have values, has the zero value in them. The copy keeps its
+// fingerprint when the receiver decodes the first wide sample into the
+// memory that it keeps: the values that its pointers point at, the arrays
+// of its slices and its maps, so that the copy shares none of them with the
+// receiver.
+func (s *suite[T, P]) clones(tb assert.TB, xs []sample[T]) {
+	tb.Helper()
+	for _, x := range xs {
 		if errors.Is(x.err, kanon.ErrAmbiguousKey) {
 			// The copy of two keys of one projection can be one key.
 			continue
@@ -128,7 +142,7 @@ func (s *suite[T, P]) clone(tb assert.TB) {
 		v := x.value
 		s.copies(tb, x.name, &v)
 	}
-	for _, x := range s.encodable() {
+	for _, x := range encodes(xs) {
 		d := s.tainted(x)
 		cp := s.copies(tb, x.name+", decoded,", &d)
 		s.clears(tb, x.name+": CloneKanon", cp)
@@ -194,11 +208,21 @@ func (r *resolver) taintField(x reflect.Value) {
 }
 
 // prepare fills the caches of r that the checks read while they run in
-// parallel, from the shapes that the fields of l reach: the loose layout of
-// every struct with a kanon codec among them, and the value of
-// [resolver.taintOf] for the type of every field that the encoding leaves
-// out of a struct among them.
-func (r *resolver) prepare(l *layout) {
+// parallel. It walks root and every shape under it, the encoded fields of
+// the structs that encode themselves included. The property of [Checks]
+// builds values while the other checks run, so that no check may fill a
+// cache. prepare fills them in two passes:
+//
+//   - the loose layout of every struct with a kanon codec and of every
+//     struct that encodes itself among the shapes, and the value of
+//     [resolver.taintOf] for the type of every field that the encoding
+//     leaves out of a struct with a layout among them;
+//   - then, with every value of taintOf in place, the ways to fail the keys
+//     of every map among the shapes, as [resolver.badKeys] finds them, and
+//     the lengths of every type among them that encodes itself, as
+//     [resolver.opaque] finds them.
+func (r *resolver) prepare(root *shape) {
+	var order []*shape
 	shapes := make(map[*shape]bool)
 	layouts := make(map[*layout]bool)
 	var walkLayout func(l *layout)
@@ -222,11 +246,20 @@ func (r *resolver) prepare(l *layout) {
 			return
 		}
 		shapes[s] = true
+		order = append(order, s)
 		switch s.kind {
 		case kindInline:
 			walkLayout(s.layout)
 		case kindStruct:
 			walkLayout(r.looseLayout(s.typ))
+		case kindBinary:
+			// The builder fills a struct that encodes itself through the fields
+			// of its loose layout, whose shapes the walk enters.
+			if s.typ.Kind() == reflect.Struct {
+				for _, f := range r.looseLayout(s.typ).fields {
+					walkShape(f.shape)
+				}
+			}
 		default:
 			walkShape(s.elem)
 			walkShape(s.key)
@@ -235,7 +268,17 @@ func (r *resolver) prepare(l *layout) {
 			}
 		}
 	}
-	walkLayout(l)
+	walkShape(root)
+	for _, s := range order {
+		switch s.kind {
+		case kindMap:
+			r.badKeys(s.key)
+		case kindBinary:
+			r.opaque(s.typ)
+		default:
+			// No other shape has a cache of its own.
+		}
+	}
 }
 
 // cleared returns, for every field that the encoding leaves out of v, a

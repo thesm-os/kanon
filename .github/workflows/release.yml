@@ -7,6 +7,12 @@ on:
 permissions:
   contents: read
 
+# The properties of the conformance suite take their seeds from their
+# contracts under the ci profile, as in the CI workflow, so that the gate
+# that a release runs again tries the cases that CI tried.
+env:
+  DOKIMI_ASSERT_PROP_PROFILE: ci
+
 jobs:
   validate-tag:
     name: Validate tag is on main

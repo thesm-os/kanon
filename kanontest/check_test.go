@@ -6,6 +6,7 @@ package kanontest_test
 import (
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/golden"
 
 	"go.thesmos.sh/kanon/internal/fixture/codec"
@@ -22,6 +23,14 @@ const (
 	// roundTripCheck names the check of a canonical Spec that its reference
 	// decode accepts exactly the inputs that round-trip.
 	roundTripCheck = "DecodeKanon/accepts exactly the inputs that the reference encode writes back"
+)
+
+// golden.MatchAt reports a record of goldenAssertion for output that its
+// golden file does not match. The field goldenWant of the record's detail
+// states the content of the file, and is nil for a file that does not exist.
+const (
+	goldenAssertion = "golden-match-at"
+	goldenWant      = "want"
 )
 
 // codecsSpec describes codec.Codecs, a struct with a field of each type of
@@ -140,6 +149,17 @@ func (m *nilAppendByte) AppendBinary(b []byte) ([]byte, error) {
 // unpinned is a view.Item without a golden file.
 type unpinned struct{ view.Item }
 
+// missesGolden fails t unless r recorded exactly one failure, and that
+// failure is the record that golden.MatchAt reports for a golden file that
+// does not exist.
+func missesGolden(t *testing.T, r *assert.Recorder) {
+	t.Helper()
+	failures := r.Failures()
+	assert.Length(t, failures, 1, "the check fails once")
+	assert.Equal(t, failures[0].Assertion, goldenAssertion, "the check fails at the comparison with its golden file")
+	assert.Nil(t, failures[0].Detail[goldenWant], "the comparison reads no golden file")
+}
+
 func TestCheck(t *testing.T) {
 	t.Parallel()
 	t.Run("SizeKanon", func(t *testing.T) {
@@ -173,8 +193,10 @@ func TestCheck(t *testing.T) {
 			if golden.ShouldUpdate() {
 				t.Skip("the -update flag writes the golden file that the check compares")
 			}
-			rejects(t, kanontest.Spec[unpinned]{Fields: itemSpec.Fields},
-				"MarshalBinary/matches the golden file of the samples and the probes", "the golden file does not exist")
+			r := assert.NewRecorder()
+			named(t, kanontest.Spec[unpinned]{Fields: itemSpec.Fields},
+				"MarshalBinary/matches the golden file of the samples and the probes").Run(r)
+			missesGolden(t, r)
 		})
 	})
 	t.Run("AppendBinary", func(t *testing.T) {
