@@ -143,11 +143,11 @@ type funcValue func()
 func (funcValue) ValidateKanon() error { return nil }
 
 // rejectsValue runs the check of kanontest.ValueChecks for T named name, and
-// fails t unless the check fails with a message that contains want.
+// fails t unless the check fails with a first failure whose reason contains
+// want.
 func rejectsValue[T kanon.Validator](t *testing.T, name, want string) {
 	t.Helper()
-	got := assert.Rejects(t, name, valueCheck[T](t, name).Run)
-	assert.Contains(t, got, want, name+" fails for the reason that it states")
+	rejectedFor(t, name, valueCheck[T](t, name).Run, want)
 }
 
 // valueCheck returns the check of kanontest.ValueChecks for T named name,
@@ -268,9 +268,7 @@ func TestValue(t *testing.T) {
 			if golden.ShouldUpdate() {
 				t.Skip("the -update flag writes the golden file that the check compares")
 			}
-			r := assert.NewRecorder()
-			valueCheck[unpinnedValue](t, valueGoldenCheck).Run(r)
-			missesGolden(t, r)
+			missesGolden(t, valueGoldenCheck, valueCheck[unpinnedValue](t, valueGoldenCheck).Run)
 		})
 	})
 }

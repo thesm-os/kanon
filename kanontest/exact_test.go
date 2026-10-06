@@ -38,6 +38,10 @@ const (
 	stretchLength = 8
 )
 
+// guardByte pins the byte that fills the two bytes of the buffer that the
+// checks of an append method pass, which the append method must keep.
+const guardByte = 0xaa
+
 // gappedValue is the gapped word whose append method fails: 512, which no
 // entry of the value tables gives, and which the decode method decodes from
 // 02 00, the encoding of 0 with 2 added to its first byte.
@@ -515,17 +519,17 @@ func (p pledged) AppendKanon(b []byte) []byte {
 }
 
 // rejectsExact runs the check of kanontest.ExactChecks for T named name, and
-// fails t unless the check fails with a message that contains want.
-func rejectsExact[T kanon.Exact](t *testing.T, name, want string) {
+// fails t unless the check fails with a first failure whose reason contains
+// want. It returns that failure.
+func rejectsExact[T kanon.Exact](t *testing.T, name, want string) assert.Failure {
 	t.Helper()
 	for _, c := range kanontest.ExactChecks[T]() {
 		if c.Name == name {
-			got := assert.Rejects(t, name, c.Run)
-			assert.Contains(t, got, want, name+" fails for the reason that it states")
-			return
+			return rejectedFor(t, name, c.Run, want)
 		}
 	}
 	t.Fatalf("no check is named %q", name)
+	return assert.Failure{}
 }
 
 func TestExact(t *testing.T) {
@@ -564,13 +568,17 @@ func TestExact(t *testing.T) {
 		t.Parallel()
 		t.Run("fails for an AppendKanon that appends other bytes than the append method", func(t *testing.T) {
 			t.Parallel()
-			rejectsExact[skewed](t, exactAppenderCheck, "value 1 of the value tables: AppendKanon appends the bytes "+
-				"that the append method appends\ngot:  aaaa0100\nwant: aaaa0001, error <nil>")
+			got := rejectsExact[skewed](t, exactAppenderCheck, "value 1 of the value tables: AppendKanon appends the "+
+				"bytes that the append method appends")
+			assert.Equal[any](t, got.Detail[gotDetail], []byte{guardByte, guardByte, 1, 0},
+				"the failure states the bytes that AppendKanon appends")
+			assert.Equal[any](t, got.Detail[wantDetail], []byte{guardByte, guardByte, 0, 1},
+				"the failure states the bytes that the append method appends")
 		})
 		t.Run("fails for a type whose append method fails for the zero value", func(t *testing.T) {
 			t.Parallel()
 			rejectsExact[pledged](t, exactAppenderCheck, "the zero value: AppendKanon appends the bytes that the "+
-				"append method appends\ngot:  aaaa\nwant: aaaa, error kanontest_test: the zero digest has no encoding")
+				"append method appends: kanontest_test: the zero digest has no encoding")
 		})
 	})
 	t.Run("ExactKanon", func(t *testing.T) {
@@ -578,8 +586,11 @@ func TestExact(t *testing.T) {
 		rejections := []struct {
 			name  string
 			check string
-			run   func(t *testing.T, name, want string)
+			run   func(t *testing.T, name, want string) assert.Failure
 			want  string
+			// detail lists the entries of the detail of the failure record that
+			// the case checks besides its reason.
+			detail map[string]any
 		}{
 			{
 				name:  "fails for a type without an append method",
@@ -608,36 +619,42 @@ func TestExact(t *testing.T) {
 				want:  "kanontest: kanontest_test.fn: ",
 			},
 			{
-				name:  "fails for a SizeKanon below 0 for the zero value",
-				check: exactSizeCheck,
-				run:   rejectsExact[sunken],
-				want:  "the zero value: SizeKanon returns no negative value\ngot:  -1",
+				name:   "fails for a SizeKanon below 0 for the zero value",
+				check:  exactSizeCheck,
+				run:    rejectsExact[sunken],
+				want:   "the zero value: SizeKanon returns no negative value",
+				detail: map[string]any{gotDetail: -1},
 			},
 			{
-				name:  "fails for a zero value that appends another length than its SizeKanon",
-				check: exactAppendCheck,
-				run:   rejectsExact[hushed],
-				want: "the zero value: the append method appends SizeKanon bytes to its buffer\ngot:  aaaa0000\n" +
-					"want: aaaa and 0 bytes after it",
+				name:   "fails for a zero value that appends another length than its SizeKanon",
+				check:  exactAppendCheck,
+				run:    rejectsExact[hushed],
+				want:   "the zero value: the append method appends SizeKanon bytes to its buffer",
+				detail: map[string]any{gotDetail: 4, wantDetail: 2},
 			},
 			{
 				name:  "fails for an append method that changes its buffer",
 				check: exactAppendCheck,
 				run:   rejectsExact[overwriting],
-				want:  "the zero value: the append method appends SizeKanon bytes to its buffer\ngot:  00aa0000",
+				want:  "the zero value: the append method appends SizeKanon bytes to its buffer",
+				detail: map[string]any{
+					gotDetail:    string([]byte{0, guardByte, 0, 0}),
+					prefixDetail: string([]byte{guardByte, guardByte}),
+				},
 			},
 			{
-				name:  "fails for a SizeKanon that differs from the length of the encoding",
-				check: exactAppendCheck,
-				run:   rejectsExact[oversized],
-				want:  "want: aaaa and 3 bytes after it",
+				name:   "fails for a SizeKanon that differs from the length of the encoding",
+				check:  exactAppendCheck,
+				run:    rejectsExact[oversized],
+				want:   "the append method appends SizeKanon bytes to its buffer",
+				detail: map[string]any{wantDetail: 5},
 			},
 			{
 				name:  "fails for an append method that fails for a value other than the zero value",
 				check: exactErrorCheck,
 				run:   rejectsExact[brittle],
 				want: "value 6 of the value tables: the append method encodes a value other than the zero value " +
-					"without an error\ngot:  error kanontest_test: the word is math.MaxUint16",
+					"without an error: kanontest_test: the word is math.MaxUint16",
 			},
 			{
 				name:  "fails for an append method that fails for a value that the decode method alone gives",
@@ -662,13 +679,17 @@ func TestExact(t *testing.T) {
 				name:  "fails for a decode method that decodes a value that the append method does not encode",
 				check: exactDecodeCheck,
 				run:   rejectsExact[hollow],
-				want:  "got:  , error kanontest_test: the zero digest has no encoding",
+				want: "the append method writes the input for the value that the decode method decodes from it: " +
+					"kanontest_test: the zero digest has no encoding",
 			},
 		}
 		for _, tt := range rejections {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				tt.run(t, tt.check, tt.want)
+				got := tt.run(t, tt.check, tt.want)
+				for key, want := range tt.detail {
+					assert.Equal(t, got.Detail[key], want, "the failure states the "+key+" of its assertion")
+				}
 			})
 		}
 	})

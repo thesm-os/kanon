@@ -33,6 +33,47 @@ const (
 	goldenFails = "fails: "
 )
 
+// causeSeparator separates the messages of the causes in an
+// [errorIdentity].
+const causeSeparator = "; "
+
+// causes lists the causes of a decode error that kanon defines.
+var causes = [...]error{
+	io.ErrUnexpectedEOF, kanon.ErrMalformed, kanon.ErrRange, kanon.ErrDepth, kanon.ErrUnknownType,
+	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey, kanon.ErrNotCanonical,
+}
+
+// errorIdentity is what the checks compare of the error of a decode, an
+// index or a view. The error of a type that decodes itself can be a new
+// value on every call, so two such errors are the same when their
+// identities are. The zero value is the identity of no error, and ==
+// compares two identities.
+type errorIdentity struct {
+	// Present reports whether there is an error.
+	Present bool
+	// Message is the text of the error, which states the location, the
+	// offset and the cause.
+	Message string
+	// Causes lists the messages of the causes that the error wraps, in the
+	// order of [causes], separated by causeSeparator.
+	Causes string
+}
+
+// identityOf returns the identity of err. It allocates the message of err
+// and the list of its causes.
+func identityOf(err error) errorIdentity {
+	if err == nil {
+		return errorIdentity{}
+	}
+	var wrapped []string
+	for _, c := range causes {
+		if errors.Is(err, c) {
+			wrapped = append(wrapped, c.Error())
+		}
+	}
+	return errorIdentity{Present: true, Message: err.Error(), Causes: strings.Join(wrapped, causeSeparator)}
+}
+
 // golden checks that the golden file of T matches these lines, which the
 // -update flag of the test binary writes:
 //
@@ -254,12 +295,12 @@ func (s *suite[T, P]) decode(tb assert.TB, p probe) {
 
 // same checks that the decode that op names, which returned got and err,
 // decodes as the reference decode, which returned want and wantErr: it
-// returns the same error, as sameError compares them, and without an error
-// a value with the same fingerprint.
+// returns an error of the same [errorIdentity], and without an error a value
+// with the same fingerprint.
 func (s *suite[T, P]) same(tb assert.TB, op string, got T, err error, want T, wantErr error) {
 	tb.Helper()
-	if !sameError(err, wantErr) {
-		tb.Fatalf("%s returns the error of the reference decode\ngot:  %v\nwant: %v", op, err, wantErr)
+	if gotID, wantID := identityOf(err), identityOf(wantErr); gotID != wantID {
+		assert.Equal(tb, gotID, wantID, op+" returns the error of the reference decode")
 	}
 	if wantErr != nil || reflect.DeepEqual(got, want) {
 		return
@@ -267,32 +308,6 @@ func (s *suite[T, P]) same(tb assert.TB, op string, got T, err error, want T, wa
 	assert.Equal(tb, s.r.fingerprint(s.l, reflect.ValueOf(&got).Elem()),
 		s.r.fingerprint(s.l, reflect.ValueOf(&want).Elem()),
 		op+" decodes the value of the reference decode, which their fingerprints compare")
-}
-
-// causes lists the causes of a decode error that kanon defines.
-var causes = [...]error{
-	io.ErrUnexpectedEOF, kanon.ErrMalformed, kanon.ErrRange, kanon.ErrDepth, kanon.ErrUnknownType,
-	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey, kanon.ErrNotCanonical,
-}
-
-// sameError reports whether a and b are the same error of a decode: both
-// nil, or two errors with the same message, which names the location, the
-// offset and the cause, that wrap the same causes of causes. The error of
-// a type that decodes itself can be a new value on every call, so that two
-// such causes are the same when their messages are.
-func sameError(a, b error) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	if a.Error() != b.Error() {
-		return false
-	}
-	for _, c := range causes {
-		if errors.Is(a, c) != errors.Is(b, c) {
-			return false
-		}
-	}
-	return true
 }
 
 // encodable returns the samples that encode, the bulk samples included.

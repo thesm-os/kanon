@@ -5,7 +5,9 @@ package kanontest
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -122,18 +124,21 @@ func (es *exactSuite) all() []exactValue {
 }
 
 // size checks that SizeKanon returns no negative value for any value of es.
+// It fails with an in-range record of the size.
 func (es *exactSuite) size(tb assert.TB) {
 	tb.Helper()
 	for _, x := range es.all() {
 		if n := sizeKanon(x.v); n < 0 {
-			tb.Fatalf("%s: SizeKanon returns no negative value\ngot:  %d", x, n)
+			assert.InRange(tb, n, 0, math.MaxInt, x.String()+": SizeKanon returns no negative value")
 		}
 	}
 }
 
 // append checks that the append method appends as many bytes as SizeKanon
 // returns to a buffer of two guard bytes, which it keeps, for every value of
-// es for which it returns no error.
+// es for which it returns no error. It fails with a has-prefix record of a
+// buffer that lost its guard bytes, and with a length record of an encoding
+// of another length than SizeKanon.
 func (es *exactSuite) append(tb assert.TB) {
 	tb.Helper()
 	prefix := []byte{guard, guard}
@@ -141,48 +146,56 @@ func (es *exactSuite) append(tb assert.TB) {
 		n := sizeKanon(x.v)
 		got, err := appendTo(x.v, []byte{guard, guard})
 		if err == nil && (!bytes.HasPrefix(got, prefix) || len(got)-len(prefix) != n) {
-			tb.Fatalf("%s: the append method appends SizeKanon bytes to its buffer\ngot:  %x\nwant: %x and %d bytes "+
-				"after it", x, got, prefix, n)
+			contract := x.String() + ": the append method appends SizeKanon bytes to its buffer"
+			assert.HasPrefix(tb, got, string(prefix), contract)
+			assert.Length(tb, got, len(prefix)+n, contract)
 		}
 	}
 }
 
 // succeed checks that the append method returns no error for every value of
-// es other than the zero value.
+// es other than the zero value. It fails with an err-absent record of the
+// error.
 func (es *exactSuite) succeed(tb assert.TB) {
 	tb.Helper()
 	for _, x := range es.all() {
 		if _, err := appendTo(x.v, nil); err != nil && !x.v.IsZero() {
-			tb.Fatalf("%s: the append method encodes a value other than the zero value without an error\n"+
-				"got:  error %v", x, err)
+			assert.NoError(tb, err,
+				x.String()+": the append method encodes a value other than the zero value without an error")
 		}
 	}
 }
 
 // appender checks that AppendKanon, of a kanon.Appender, appends to a buffer
 // of two guard bytes what the append method of its family appends to it
-// without an error, for every value of es, the zero value included.
+// without an error, for every value of es, the zero value included. It fails
+// with an err-absent record of the error of the append method, and with an
+// equal record of the bytes.
 func (es *exactSuite) appender(tb assert.TB) {
 	tb.Helper()
 	for _, x := range es.all() {
 		want, err := appendTo(x.v, []byte{guard, guard})
 		if got := appendKanon(x.v, []byte{guard, guard}); err != nil || !bytes.Equal(got, want) {
-			tb.Fatalf("%s: AppendKanon appends the bytes that the append method appends\ngot:  %x\nwant: %x, "+
-				"error %v", x, got, want, err)
+			contract := x.String() + ": AppendKanon appends the bytes that the append method appends"
+			assert.NoError(tb, err, contract)
+			assert.Equal(tb, got, want, contract)
 		}
 	}
 }
 
 // decode checks the second guarantee of kanon.Exact: for each input that
 // the decode method accepts, the append method writes the input for the
-// value that the decode method sets.
+// value that the decode method sets. It fails with an err-absent record of
+// the error of the append method, and with an equal record of the bytes.
 func (es *exactSuite) decode(tb assert.TB) {
 	tb.Helper()
 	for _, x := range es.decoded {
 		enc, err := marshal(x.v)
 		if err != nil || !bytes.Equal(enc, x.input) {
-			tb.Fatalf("input %x: the append method writes the input for the value that the decode method decodes "+
-				"from it\ngot:  %x, error %v", x.input, enc, err)
+			contract := "input " + hex.EncodeToString(x.input) +
+				": the append method writes the input for the value that the decode method decodes from it"
+			assert.NoError(tb, err, contract)
+			assert.Equal(tb, enc, x.input, contract)
 		}
 	}
 }

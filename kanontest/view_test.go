@@ -190,7 +190,7 @@ func TestView(t *testing.T) {
 		t.Run("fails for a view method that names no field", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: stray(nil)}, viewCheck,
-				"has the method Size, which names no field of Item")
+				"stray.Size names a field of Item")
 		})
 	})
 	t.Run("IndexKanon", func(t *testing.T) {
@@ -216,7 +216,7 @@ func TestView(t *testing.T) {
 		t.Run("fails for an index method that names no field", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: strayView(nil)}, indexCheck,
-				"has the method Size, which names no field of Item")
+				"strayIndex.Size names a field of Item")
 		})
 	})
 	t.Run("Checks", func(t *testing.T) {

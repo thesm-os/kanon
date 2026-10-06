@@ -59,9 +59,9 @@ func (s *suite[T, P]) views(tb assert.TB, inputs [][]byte) {
 }
 
 // indexes checks IndexKanon of the view type of T for every input of
-// inputs: it returns the error of the reference index, as [indexError]
-// returns it, and without an error each method of the index returns what
-// the reference view of the field that it names returns, as
+// inputs: it returns an error of the [errorIdentity] of the reference index,
+// as [indexError] returns it, and without an error each method of the index
+// returns what the reference view of the field that it names returns, as
 // [suite.viewResult] checks it. The table checks pass the inputs that
 // [suite.viewInputs] returns.
 func (s *suite[T, P]) indexes(tb assert.TB, inputs [][]byte) {
@@ -76,9 +76,8 @@ func (s *suite[T, P]) indexes(tb assert.TB, inputs [][]byte) {
 	for _, data := range inputs {
 		out := reflect.ValueOf(data).Convert(s.view).MethodByName(indexName).Call(nil)
 		err, _ := reflect.TypeAssert[error](out[1])
-		if wantErr := indexError(s.l, read, data); !sameError(err, wantErr) {
-			tb.Fatalf("%s.%s returns the error of the reference index\ngot:  %v\nwant: %v", s.view.Name(), indexName,
-				err, wantErr)
+		if gotID, wantID := identityOf(err), identityOf(indexError(s.l, read, data)); gotID != wantID {
+			assert.Equal(tb, gotID, wantID, s.view.Name()+"."+indexName+" returns the error of the reference index")
 		}
 		if err != nil {
 			continue
@@ -108,22 +107,21 @@ func (s *suite[T, P]) viewInputs() [][]byte {
 // viewResult checks out, the results of the method named method of the
 // view or index type owner for data, against the reference view of the
 // field that the method names, which fields maps by name, as
-// [resolver.view] returns it: the method returns the error of the reference
-// view, and without an error its value, as their [resolver.viewPrint]
-// compares them. A method that names no field of T fails the check.
+// [resolver.view] returns it: the method returns an error of the
+// [errorIdentity] of the reference view, and without an error its value, as
+// their [resolver.viewPrint] compares them. A method that names no field of
+// T fails the check.
 func (s *suite[T, P]) viewResult(tb assert.TB, fields map[string]*field, owner reflect.Type, method string,
 	data []byte, out []reflect.Value,
 ) {
 	tb.Helper()
 	f := fields[method]
-	if f == nil {
-		tb.Fatalf("the type %v has the method %s, which names no field of %s", owner, method, s.l.name)
-	}
 	name := owner.Name() + "." + method
+	assert.NotNil(tb, f, name+" names a field of "+s.l.name)
 	err, _ := reflect.TypeAssert[error](out[1])
 	want, wantErr := s.r.view(s.l, f, data)
-	if !sameError(err, wantErr) {
-		tb.Fatalf("%s returns the error of the reference decode\ngot:  %v\nwant: %v", name, err, wantErr)
+	if gotID, wantID := identityOf(err), identityOf(wantErr); gotID != wantID {
+		assert.Equal(tb, gotID, wantID, name+" returns the error of the reference decode")
 	}
 	if wantErr == nil {
 		assert.Equal(tb, s.r.viewPrint(s.l, f, out[0]), s.r.viewPrint(s.l, f, want),

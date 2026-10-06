@@ -29,6 +29,27 @@ const (
 	blankField = "_"
 )
 
+// Assertions and detail keys of the failure records that the tests read:
+//
+//   - propertyAssertion, the record of a property, whose detail states the
+//     failure of its counterexample under failureDetail;
+//   - noErrorAssertion, the record of NoError, whose detail states the error
+//     under gotDetail;
+//   - goldenAssertion, the record of golden.MatchAt, whose detail states the
+//     content of the golden file under wantDetail, nil for a file that does
+//     not exist;
+//   - gotDetail, wantDetail and prefixDetail, the values of an assertion that
+//     compares them.
+const (
+	propertyAssertion = "prop-for-all"
+	noErrorAssertion  = "err-absent"
+	goldenAssertion   = "golden-match-at"
+	failureDetail     = "failure"
+	gotDetail         = "got"
+	wantDetail        = "want"
+	prefixDetail      = "prefix"
+)
+
 // itemSpec describes view.Item, a struct of a string and a uint32.
 var itemSpec = kanontest.Spec[view.Item]{
 	Fields: []kanontest.Field{
@@ -126,11 +147,36 @@ func unsent(t reflect.Type) bool {
 }
 
 // rejects runs the check of spec named name, and fails t unless the check
-// fails with a message that contains want.
+// fails with a first failure whose reason contains want.
 func rejects[T any, P kanontest.Codec[T]](t *testing.T, spec kanontest.Spec[T], name, want string) {
 	t.Helper()
-	got := assert.Rejects(t, name, named[T, P](t, spec, name).Run)
-	assert.Contains(t, got, want, name+" fails for the reason that it states")
+	rejectedFor(t, name, named[T, P](t, spec, name).Run, want)
+}
+
+// rejectedFor runs check, which name names, and fails t unless the check
+// fails with a first failure whose reason, as reason states it, contains
+// want. It returns that failure.
+func rejectedFor(t *testing.T, name string, check func(assert.TB), want string) assert.Failure {
+	t.Helper()
+	got := assert.Rejects(t, name, check)
+	assert.NotEmpty(t, got, name+" fails with a failure record")
+	assert.Contains(t, reason(got[0]), want, name+" fails for the reason that it states")
+	return got[0]
+}
+
+// reason returns the reason that the failure f states, from the fields of
+// its record: its contract, and after it the text of the error of a NoError
+// failure. The reason of the record of a property is the reason of the
+// failure of its counterexample.
+func reason(f assert.Failure) string {
+	if f.Assertion == propertyAssertion {
+		inner, _ := f.Detail[failureDetail].(assert.Failure)
+		return reason(inner)
+	}
+	if err, ok := f.Detail[gotDetail].(error); ok && f.Assertion == noErrorAssertion {
+		return f.Contract + ": " + err.Error()
+	}
+	return f.Contract
 }
 
 // renamed returns err, and names the struct type wrapper in a
