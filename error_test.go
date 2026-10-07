@@ -71,8 +71,9 @@ func TestDecodeError(t *testing.T) {
 		t.Run("returns the cause for errors.Is and errors.As", func(t *testing.T) {
 			t.Parallel()
 			var err error = &kanon.DecodeError{Type: "Order", Err: io.ErrUnexpectedEOF}
-			assert.ErrorIs(t, err, io.ErrUnexpectedEOF, "errors.Is finds the cause")
-			assert.ErrorIsNot(t, err, kanon.ErrMalformed, "errors.Is does not find another cause")
+			assert.That(t, err).
+				ErrorIs(io.ErrUnexpectedEOF, "errors.Is finds the cause").
+				ErrorIsNot(kanon.ErrMalformed, "errors.Is does not find another cause")
 			got := assert.ErrorAs[*kanon.DecodeError](t, err, "errors.As finds the DecodeError")
 			assert.Equal(t, got.Type, "Order", "errors.As returns the error itself")
 		})

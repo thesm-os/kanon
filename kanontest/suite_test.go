@@ -98,11 +98,11 @@ func passes[T any, P kanontest.Codec[T]](t *testing.T, spec kanontest.Spec[T]) {
 // fall behind its struct type.
 func complete[T any](t *testing.T, spec kanontest.Spec[T]) {
 	t.Helper()
-	assert.Equal(t, unlisted(reflect.TypeFor[T](), spec.Fields, spec.Unknown), nil,
+	assert.Nil(t, unlisted(reflect.TypeFor[T](), spec.Fields, spec.Unknown),
 		"the Spec lists every field of the struct type that kanon encodes")
 	for _, s := range slices.Concat(spec.Structs, spec.Keys) {
 		msg := "the Spec lists every field of " + s.Type.String() + " that kanon encodes"
-		assert.Equal(t, unlisted(s.Type, s.Fields, s.Unknown), nil, msg)
+		assert.Nil(t, unlisted(s.Type, s.Fields, s.Unknown), msg)
 	}
 }
 
@@ -235,7 +235,7 @@ func TestSuite(t *testing.T) {
 				b.Helper()
 				kanontest.Bench(b, itemSpec)
 			})
-			assert.True(t, r.N > 0, "Bench runs its sub-benchmarks")
+			assert.InRange(t, r.N, 1, 1<<63, "Bench runs its sub-benchmarks")
 		})
 		t.Run("skips a Spec that does not describe the struct type", func(t *testing.T) {
 			t.Parallel()

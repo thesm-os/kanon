@@ -172,7 +172,7 @@ func TestGenerate(t *testing.T) {
 	t.Run("Generate", func(t *testing.T) {
 		t.Parallel()
 		runs := generations(t)
-		assert.True(t, len(runs) > 0, "the fixture files have kanon directives")
+		assert.NotEmpty(t, runs, "the fixture files have kanon directives")
 		for _, g := range runs {
 			rel, _ := filepath.Rel(fixtureDir, filepath.Join(g.dir, g.file))
 			t.Run("writes the files that go generate wrote for "+filepath.ToSlash(rel), func(t *testing.T) {

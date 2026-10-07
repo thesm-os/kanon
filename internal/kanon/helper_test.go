@@ -4,7 +4,6 @@
 package kanon_test
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -32,7 +31,7 @@ func TestHelper(t *testing.T) {
 						if d.method != "" || !strings.HasPrefix(d.key, "_") {
 							continue
 						}
-						assert.True(t, slices.Contains(ops, d.op), f.Name+": "+d.key+" has the prefix "+
+						assert.Contains(t, ops, d.op, f.Name+": "+d.key+" has the prefix "+
 							prefixOf(g.file)+" and an operation")
 					}
 				}

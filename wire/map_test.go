@@ -112,12 +112,11 @@ func TestMap(t *testing.T) {
 			t.Parallel()
 			pairs := descending()
 			wire.SortPairs(pairs)
-			keys := make([]string, len(pairs))
-			for i, p := range pairs {
-				keys[i] = p.Key
+			for _, p := range pairs {
 				assert.Equal(t, p.Value, int(p.Key[0]-'a'), "each key keeps its value")
 			}
-			assert.True(t, slices.IsSorted(keys), "the keys ascend as slices.Sort orders them")
+			ascending := func(earlier, later wire.Pair[string, int]) bool { return earlier.Key <= later.Key }
+			assert.Pairwise(t, pairs, ascending, "the keys ascend as slices.Sort orders them")
 		})
 	})
 	t.Run("Take", func(t *testing.T) {

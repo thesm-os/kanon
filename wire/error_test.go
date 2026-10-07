@@ -273,8 +273,9 @@ func TestError(t *testing.T) {
 		t.Run("panics with ErrExact and the error of the append method", func(t *testing.T) {
 			t.Parallel()
 			err := exactPanic(t, func() { wire.MustExact(nil, errOwn, len(exactEncoding), errLoc, errNumber) })
-			assert.ErrorIs(t, err, kanon.ErrExact, "the error wraps ErrExact")
-			assert.ErrorIs(t, err, errOwn, "the error wraps the error of the append method")
+			assert.That(t, err).
+				ErrorIs(kanon.ErrExact, "the error wraps ErrExact").
+				ErrorIs(errOwn, "the error wraps the error of the append method")
 			assert.Equal(t, err.Error(),
 				"kanon: shop.Order.Count (field 7): a type that declares ExactKanon breaks its guarantee: token: empty",
 				"the error names the field and states the error of the append method")

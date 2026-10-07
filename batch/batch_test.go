@@ -435,7 +435,7 @@ func FuzzParse(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		aliased, err := batch.ParseAlias(data)
 		copied, copyErr := batch.Parse(data)
-		assert.True(t, errors.Is(copyErr, err), "Parse and ParseAlias return the same error")
+		assert.ErrorIs(t, copyErr, err, "Parse and ParseAlias return the same error")
 		if err != nil {
 			isKnown := slices.ContainsFunc(known, func(e error) bool { return errors.Is(err, e) })
 			assert.True(t, isKnown, "ParseAlias fails with an error of the package")

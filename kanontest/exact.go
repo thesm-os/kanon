@@ -147,8 +147,9 @@ func (es *exactSuite) append(tb assert.TB) {
 		got, err := appendTo(x.v, []byte{guard, guard})
 		if err == nil && (!bytes.HasPrefix(got, prefix) || len(got)-len(prefix) != n) {
 			contract := x.String() + ": the append method appends SizeKanon bytes to its buffer"
-			assert.HasPrefix(tb, got, string(prefix), contract)
-			assert.Length(tb, got, len(prefix)+n, contract)
+			assert.That(tb, got).
+				HasPrefix(string(prefix), contract).
+				Length(len(prefix)+n, contract)
 		}
 	}
 }

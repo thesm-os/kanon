@@ -146,9 +146,9 @@ func (s *suite[T, P]) clones(tb assert.TB, xs []sample[T]) {
 		d := s.tainted(x)
 		cp := s.copies(tb, x.name+", decoded,", &d)
 		s.clears(tb, x.name+": CloneKanon", cp)
-		before := s.r.fingerprint(s.l, reflect.ValueOf(cp).Elem())
-		_ = P(&d).DecodeKanon(s.bulk[0].enc, kanon.Options{})
-		assert.Equal(tb, s.r.fingerprint(s.l, reflect.ValueOf(cp).Elem()), before,
+		fingerprint := func() []byte { return s.r.fingerprint(s.l, reflect.ValueOf(cp).Elem()) }
+		decode := func() { _ = P(&d).DecodeKanon(s.bulk[0].enc, kanon.Options{}) }
+		assert.Pure(tb, fingerprint, decode,
 			x.name+": the copy that CloneKanon returns shares no memory with the receiver")
 	}
 }
@@ -184,7 +184,7 @@ func (s *suite[T, P]) tainted(x sample[T]) T {
 // that p points at has the zero value, after the method that op names.
 func (s *suite[T, P]) clears(tb assert.TB, op string, p *T) {
 	tb.Helper()
-	assert.False(tb, slices.Contains(s.r.cleared(s.l, reflect.ValueOf(p).Elem()), false),
+	assert.NotContains(tb, s.r.cleared(s.l, reflect.ValueOf(p).Elem()), false,
 		op+" clears the fields that the encoding leaves out")
 }
 

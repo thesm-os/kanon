@@ -4,7 +4,6 @@
 package kanon_test
 
 import (
-	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -37,9 +36,9 @@ func TestDecode(t *testing.T) {
 			assert.NoError(t, err, "Generate generates a struct with a union of one member")
 			assert.Contains(t, files[codeName], "m.Kind = ChoiceOnly",
 				"the decode of the member sets the discriminator")
-			assert.False(t, strings.Contains(files[codeName], "if m.Kind != ChoiceOnly"),
+			assert.NotContains(t, files[codeName], "if m.Kind != ChoiceOnly",
 				"the decode sets the discriminator without a check of its value")
-			assert.False(t, strings.Contains(files[codeName], "deselect"),
+			assert.NotContains(t, files[codeName], "deselect",
 				"the code file declares no deselect function, since the union has no other member to zero")
 		})
 	})

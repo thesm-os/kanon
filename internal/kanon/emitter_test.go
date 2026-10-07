@@ -183,7 +183,7 @@ func goldenDeclarations(t *testing.T, suffix string, pick func(declaration) bool
 			picked += len(got)
 		}
 	}
-	assert.True(t, picked > 0, "the fixtures have such declarations")
+	assert.InRange(t, picked, 1, 1<<63, "the fixtures have such declarations")
 }
 
 func TestEmitter(t *testing.T) {

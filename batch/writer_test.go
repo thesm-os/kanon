@@ -37,9 +37,7 @@ func failing() kanon.Message {
 func write(t *testing.T, wide bool, messages ...kanon.Message) *batch.Writer {
 	t.Helper()
 	w := &batch.Writer{Wide: wide}
-	for _, m := range messages {
-		assert.NoError(t, w.Append(m), "Append appends the message")
-	}
+	assert.Total(t, w.Append, messages, "Append appends the message")
 	return w
 }
 

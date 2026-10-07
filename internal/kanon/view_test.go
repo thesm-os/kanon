@@ -49,10 +49,12 @@ func TestView(t *testing.T) {
 					indexType = d.text
 				}
 			}
-			assert.Contains(t, index, "return AIndex{v: v}, nil", "IndexKanon returns the index of the view")
-			assert.NotContains(t, index, "Skip", "IndexKanon scans no field")
-			assert.Contains(t, indexType, "v AView", "the code file declares the index type")
-			assert.NotContains(t, indexType, "at [", "the index records no offset")
+			assert.That(t, index).
+				Contains("return AIndex{v: v}, nil", "IndexKanon returns the index of the view").
+				NotContains("Skip", "IndexKanon scans no field")
+			assert.That(t, indexType).
+				Contains("v AView", "the code file declares the index type").
+				NotContains("at [", "the index records no offset")
 		})
 	})
 }

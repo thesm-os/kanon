@@ -207,7 +207,7 @@ func TestCanonical(t *testing.T) {
 		}
 		t.Run("checks no member before the first member of a union", func(t *testing.T) {
 			t.Parallel()
-			assert.False(t, strings.Contains(files[codeName], `MemberError("Kind", "A.Word"`),
+			assert.NotContains(t, files[codeName], `MemberError("Kind", "A.Word"`,
 				"Word, the first member of the union of Kind, follows no member of it")
 		})
 		t.Run("records no member after the last member of a union", func(t *testing.T) {
@@ -219,24 +219,24 @@ func TestCanonical(t *testing.T) {
 			t.Parallel()
 			start := strings.Index(files[codeName], "func _a_tagE(")
 			end := start + strings.Index(files[codeName][start:], "\n}\n")
-			assert.False(t, strings.Contains(files[codeName][start:end], "OrderError"),
+			assert.NotContains(t, files[codeName][start:end], "OrderError",
 				"a struct without fields reads no field before a tag")
 		})
 		t.Run("keeps no key before the current one for a key type of one value", func(t *testing.T) {
 			t.Parallel()
-			assert.False(t, strings.Contains(files[codeName], "var pk struct{}"),
+			assert.NotContains(t, files[codeName], "var pk struct{}",
 				"the read function of map[struct{}]int32 declares no pk, which it would never read")
 		})
 		t.Run("writes no negated presence condition", func(t *testing.T) {
 			t.Parallel()
-			assert.False(t, strings.Contains(files[codeName], "if !("),
+			assert.NotContains(t, files[codeName], "if !(",
 				"the code file tests the absence of every field with its absence condition")
 			for _, g := range generations(t) {
 				if !g.opts.Canonical {
 					continue
 				}
 				for _, f := range g.files {
-					assert.False(t, strings.Contains(string(f.Src), "if !("),
+					assert.NotContains(t, string(f.Src), "if !(",
 						filepath.Join(g.dir, f.Name)+": the file writes no negated presence condition")
 				}
 			}
@@ -253,9 +253,9 @@ func TestCanonical(t *testing.T) {
 					continue
 				}
 				for _, f := range g.files {
-					assert.False(t, strings.Contains(string(f.Src), "LongFormError"),
+					assert.NotContains(t, string(f.Src), "LongFormError",
 						filepath.Join(g.dir, f.Name)+": the file checks no shortest form")
-					assert.False(t, strings.Contains(string(f.Src), "Canonical: true"),
+					assert.NotContains(t, string(f.Src), "Canonical: true",
 						filepath.Join(g.dir, f.Name)+": the Spec is not canonical")
 				}
 			}

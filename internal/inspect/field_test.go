@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"slices"
 	"strings"
 	"testing"
 
@@ -206,11 +205,8 @@ func FuzzField(f *testing.F) {
 		assert.NoError(t, inspect.WriteJSON(&js, fields), "WriteJSON writes the fields")
 		assert.True(t, json.Valid(js.Bytes()), "WriteJSON writes valid JSON")
 		if err == nil {
-			offsets := make([]int, len(fields))
-			for k, fd := range fields {
-				offsets[k] = fd.Offset
-			}
-			assert.True(t, slices.IsSorted(offsets), "Parse returns the fields in the order of the input")
+			inOrder := func(earlier, later inspect.Field) bool { return earlier.Offset <= later.Offset }
+			assert.Pairwise(t, fields, inOrder, "Parse returns the fields in the order of the input")
 		}
 		var got view.Record
 		if got.UnmarshalBinary(data) != nil {
@@ -222,10 +218,7 @@ func FuzzField(f *testing.F) {
 		}
 		fields, err = inspect.Parse(canonical, depth)
 		assert.NoError(t, err, "Parse reads the encoding that the generated code writes")
-		numbers := make([]uint64, len(fields))
-		for k, fd := range fields {
-			numbers[k] = fd.Number
-		}
-		assert.True(t, slices.IsSorted(numbers), "Parse returns the fields of an encoder in ascending field number")
+		ascending := func(earlier, later inspect.Field) bool { return earlier.Number <= later.Number }
+		assert.Pairwise(t, fields, ascending, "Parse returns the fields of an encoder in ascending field number")
 	})
 }
