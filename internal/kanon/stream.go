@@ -7,6 +7,7 @@ import (
 	"errors"
 	"go/types"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -136,7 +137,8 @@ func (e *emitter) streamType(m *target, fields []*field) {
 // streamSchema writes the variable schema, the wire.StreamSchema of m and its
 // streamed fields, fields: the location of m in errors, whether its decode
 // is canonical, and per field its tag, its location and, for a slice, the
-// name of the struct of its elements in errors.
+// name of the struct of its elements in errors and the bound of the tag
+// option max.
 func (e *emitter) streamSchema(m *target, fields []*field, schema string) {
 	w := e.wire()
 	e.doc(schema + " describes " + m.name + " to the wire.Stream of its stream decoder.")
@@ -151,6 +153,9 @@ func (e *emitter) streamSchema(m *target, fields []*field, schema string) {
 		if f.val.kind == kindSlice {
 			elem = ", Elem: " + quoted(types.TypeString(f.val.elem.typ, e.cls.relative))
 		}
+		if f.tag.max != 0 {
+			elem += ", Max: " + strconv.Itoa(f.tag.max)
+		}
 		e.line("{Tag: %s, Loc: %s%s},", e.tag(f.num, wireBytes), fieldLoc(m, f), elem)
 	}
 	e.line("},")
@@ -162,11 +167,14 @@ func (e *emitter) streamSchema(m *target, fields []*field, schema string) {
 // streamed fields are fields, with its docblock.
 func (e *emitter) streamStruct(m *target, fields []*field, stream string) {
 	names := make([]string, 0, len(fields))
-	var bytes, clauses []string
+	var bytes, bounded, clauses []string
 	for _, f := range fields {
 		names = append(names, f.name)
 		if f.val.kind != kindSlice {
 			bytes = append(bytes, f.name)
+		}
+		if f.tag.max != 0 {
+			bounded = append(bounded, f.name)
 		}
 	}
 	noAlloc := []string{"Reset", "Len"}
@@ -206,11 +214,19 @@ func (e *emitter) streamStruct(m *target, fields []*field, stream string) {
 	e.line("//")
 	e.line("// # Limits")
 	e.line("//")
-	e.doc("The stream has in memory the decoded fields of the encoding together, one element, and a read buffer " +
-		"of 4096 bytes. A decoded field that would take the decoded fields past the Buffer of its " +
+	limits := "The stream has in memory the decoded fields of the encoding together, one element, and a read " +
+		"buffer of 4096 bytes. A decoded field that would take the decoded fields past the Buffer of its " +
 		"kanon.StreamOptions, and an element longer than that Buffer, fail with a *kanon.DecodeError that wraps " +
-		"kanon.ErrLimit. A reader that returns fewer than size bytes fails the call that needs the next byte with " +
-		"a *kanon.DecodeError that wraps io.ErrUnexpectedEOF, at the offset of that byte. The methods return any " +
+		"kanon.ErrLimit."
+	allocated := "the stream and its read buffer of 4096 bytes"
+	if len(bounded) > 0 {
+		limits += " An element of " + series(bounded, "or") + " past the bound of the tag option max of its field " +
+			"fails with a *kanon.DecodeError that wraps kanon.ErrMax."
+		allocated = "the stream, its read buffer of 4096 bytes and the counts of the elements of " +
+			series(bounded, "and")
+	}
+	e.doc(limits + " A reader that returns fewer than size bytes fails the call that needs the next byte with a " +
+		"*kanon.DecodeError that wraps io.ErrUnexpectedEOF, at the offset of that byte. The methods return any " +
 		"other error of the reader unchanged, and io.ErrNoProgress when the reader returns no byte and no error " +
 		"100 times before the bytes that a call needs. After an error, every method returns that error.")
 	e.line("//")
@@ -222,10 +238,9 @@ func (e *emitter) streamStruct(m *target, fields []*field, stream string) {
 	e.line("//")
 	e.line("// # Allocation contract")
 	e.line("//")
-	e.doc(newPrefix + stream + " allocates the stream and its read buffer of 4096 bytes. Next and the decode " +
-		"methods allocate nothing once the buffers of the stream have grown to the decoded fields and to the " +
-		"longest element of more than 4096 bytes, except where DecodeKanon allocates for the same values. " +
-		allocs + ".")
+	e.doc(newPrefix + stream + " allocates " + allocated + ". Next and the decode methods allocate nothing once " +
+		"the buffers of the stream have grown to the decoded fields and to the longest element of more than 4096 " +
+		"bytes, except where DecodeKanon allocates for the same values. " + allocs + ".")
 	e.line("//")
 	e.line("// # Concurrency")
 	e.line("//")
@@ -368,12 +383,15 @@ func (e *emitter) streamReaders(fields []*field, stream string) {
 	e.line("return d.s.Len()")
 	e.line("}")
 	e.line("")
-	var bytes, slices []string
+	var bytes, slices, bounded []string
 	for _, f := range fields {
 		if f.val.kind == kindSlice {
 			slices = append(slices, f.name)
 		} else {
 			bytes = append(bytes, f.name)
+		}
+		if f.tag.max != 0 {
+			bounded = append(bounded, f.name)
 		}
 	}
 	if len(bytes) > 0 {
@@ -397,10 +415,15 @@ func (e *emitter) streamReaders(fields []*field, stream string) {
 	if len(slices) == 0 {
 		return
 	}
+	bound := ""
+	if len(bounded) > 0 {
+		bound = " It fails at an element of " + series(bounded, "or") + " past the bound of the tag option max of " +
+			"its field, before it reads the length, as DecodeKanon fails."
+	}
 	e.doc("Element reads the length of the next element of the current field, when the current field is " +
 		series(slices, "or") + ", and returns it without reading the element. It returns the same length until a " +
 		"decode method decodes the element. It checks the length as DecodeKanon checks it, and returns io.EOF " +
-		"after the last element and when the current field is another field.")
+		"after the last element and when the current field is another field." + bound)
 	e.line("func (d *%s) Element() (int64, error) {", stream)
 	e.line("return d.s.Element()")
 	e.line("}")
@@ -425,11 +448,15 @@ func (e *emitter) decodeElement(f *field, stream string) {
 		call = method("e", decodeMethod) + "(r.Data, r.Slab(), 0, r.Depth)"
 	}
 	name := decodePrefix + f.name
+	bound := ""
+	if f.tag.max != 0 {
+		bound = " It fails at an element past the bound of the tag option max of " + f.name + ", as Element fails."
+	}
 	e.doc(name + " decodes the next element of " + f.name + " into e, when " + f.name + " is the current field, " +
 		"with the code that DecodeKanon runs for an element of " + f.name + ", at the same depth. It reads the " +
-		"length of the element first when Element has not read it. It returns io.EOF after the last element, " +
-		"and when the current field is another field. The strings of e are substrings of the buffers of d " +
-		"until the next call of Next, Element or a decode method.")
+		"length of the element first when Element has not read it." + bound + " It returns io.EOF after the last " +
+		"element, and when the current field is another field. The strings of e are substrings of the buffers " +
+		"of d until the next call of Next, Element or a decode method.")
 	e.line("func (d *%s) %s(e *%s) error {", stream, name, e.p.typ(elem.typ))
 	e.line("r, err := d.s.Value(%d)", f.num)
 	e.line("if err != nil {")

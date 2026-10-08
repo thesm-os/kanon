@@ -23,7 +23,8 @@ const (
 // a struct whose encoding can fail. [emitter.doc] wraps its words.
 const encodeFailure = `It fails when the value of a field fails to encode: a type that encodes itself returns an
 error, ValidateKanon of a type rejects a value, an interface stores a type that the tag option types of its field
-does not list, or a map has a key with a NaN component or two keys of one projection.`
+does not list, a map has a key with a NaN component or two keys of one projection, or a slice or a map has more
+elements than the tag option max of its field allows.`
 
 // neverFails states the error of the encoding methods of a struct whose
 // encoding cannot fail.
@@ -164,7 +165,8 @@ func (e *emitter) encodeBody(m *target, withErr bool) {
 // [emitter.sizeField] states, and move i to its first byte. A field of a
 // kanon.Exact type writes through the put function of a field, and a field
 // of a kanon.Appender through the put function of its type, which writes
-// every position of it without an error.
+// every position of it without an error. A field with the tag option max
+// checks its length first, as [emitter.boundCheck] writes it.
 func (e *emitter) putField(m *target, f *field) {
 	x, v, loc, num := "m."+f.name, f.val, fieldLoc(m, f), strconv.Itoa(f.num)
 	switch v.kind {
@@ -209,6 +211,7 @@ func (e *emitter) putField(m *target, f *field) {
 		e.line("}")
 	default:
 		e.line("if %s {", e.present(v, x))
+		e.boundCheck(m, f, x)
 		e.putFramed(v, x, loc, num)
 		e.putTag(f.num, v.kind.wire())
 		e.line("}")
@@ -220,10 +223,12 @@ func (e *emitter) putField(m *target, f *field) {
 // the zero value of the type that it points at for a nil pointer, as
 // [emitter.memberTarget] sets it. The one value of a type that
 // [value.zeroOnly] reports is a constant, so its statements do not read a
-// target.
+// target. A member with the tag option max checks its length first, as
+// [emitter.boundCheck] writes it.
 func (e *emitter) putMember(m *target, f *field) {
 	x, v, loc, num := "m."+f.name, f.val, fieldLoc(m, f), strconv.Itoa(f.num)
 	if v.kind != kindPointer {
+		e.boundCheck(m, f, x)
 		e.putFramed(v, x, loc, num)
 		e.putTag(f.num, v.kind.wire())
 		return
@@ -757,10 +762,15 @@ func (e *emitter) putMap(v *value) bool {
 // length, which the encode allocates, and a lookup finds the value of each
 // key, since a lookup of an integer or string key costs less than a
 // comparison through a function value, which the sort of pairs would call.
+// The put function of a map that e.short marks takes no larger map, so its
+// statements sort in the stack array alone.
 func (e *emitter) putOrderedMap(v *value) {
 	w := e.wire()
 	key := e.p.typ(v.key.typ)
-	e.line("if len(x) <= %d {", mapKeyBuffer)
+	short := e.short[v.id]
+	if !short {
+		e.line("if len(x) <= %d {", mapKeyBuffer)
+	}
 	e.line("type pair = %sPair[%s, %s]", w, key, e.p.typ(v.elem.typ))
 	e.line("var arr [%d]pair", mapKeyBuffer)
 	e.line("pairs := arr[:0]")
@@ -772,6 +782,9 @@ func (e *emitter) putOrderedMap(v *value) {
 	e.putScoped(v.elem, "pairs[k].Value")
 	e.keyPutScoped(v.key, "pairs[k].Key")
 	e.line("}")
+	if short {
+		return
+	}
 	e.line("} else {")
 	e.line("keys := make([]%s, 0, len(x))", key)
 	e.line("for mk := range x {")

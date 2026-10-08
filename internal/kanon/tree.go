@@ -52,7 +52,8 @@ func (c classifier) holdsInterface(t types.Type) bool {
 // interface, which can store a type that its list does not name, or a map
 // whose keys can have a NaN component or share a projection, as
 // [classifier.floats] and [classifier.ambiguous] report. A struct fails as
-// [classifier.fieldsMayFail] reports. seen marks the named types visited.
+// [classifier.fieldsMayFail] reports, which counts a field with the tag
+// option max. seen marks the named types visited.
 func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 	var match func(types.Type) (bool, bool)
 	match = func(t types.Type) (bool, bool) {
@@ -78,13 +79,17 @@ func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 
 // fieldsMayFail reports whether encoding a field of the struct type st can
 // fail, as match reports it for the type of the field, for the fields that
-// [walked] returns. A field that is not a union member and whose type
-// declares kanon.Exact, as [exactType] reports, cannot fail, as
+// [walked] returns. A field with the tag option max fails for a value with
+// more elements than its bound. A field that is not a union member and whose
+// type declares kanon.Exact, as [exactType] reports, cannot fail, as
 // [exactField] states.
 func (c classifier) fieldsMayFail(st *types.Struct, seen map[*types.Named]bool,
 	match func(types.Type) (bool, bool),
 ) bool {
 	for fld, tg := range walked(st) {
+		if tg.max != 0 {
+			return true
+		}
 		if tg.union == "" && exactType(fld.Type()) {
 			continue
 		}

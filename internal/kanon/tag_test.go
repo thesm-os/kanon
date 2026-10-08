@@ -48,6 +48,11 @@ func TestTag(t *testing.T) {
 					"//kanon:numbers A.S \"P[int32, string]\"=1",
 				},
 			},
+			{
+				name:  "reads a max option beside a field number",
+				files: map[string]string{source: structA("X []int32 `kanon:\"max=2147483647,4\"`")},
+				want:  []string{"//kanon:numbers A X=4"},
+			},
 		}
 		for _, tt := range numbers {
 			t.Run(tt.name, func(t *testing.T) {
@@ -101,6 +106,32 @@ func TestTag(t *testing.T) {
 				name:  "returns an error for a field number above the largest",
 				field: "X int32 `kanon:\"2147483648\"`",
 				want:  "kanon: a.go:4:2: A.X: tag \"2147483648\": field number 2147483648 outside 1 to 2147483647",
+			},
+			{
+				name:  "returns an error for a second max option",
+				field: "X []int32 `kanon:\",max=1,max=2\"`",
+				want:  "kanon: a.go:4:2: A.X: tag \",max=1,max=2\": second max option",
+			},
+			{
+				name:  "returns an error for a max of 0",
+				field: "X []int32 `kanon:\",max=0\"`",
+				want:  "kanon: a.go:4:2: A.X: tag \",max=0\": max \"0\" is not a decimal from 1 to 2147483647",
+			},
+			{
+				name:  "returns an error for a max above the largest",
+				field: "X []int32 `kanon:\",max=2147483648\"`",
+				want: "kanon: a.go:4:2: A.X: tag \",max=2147483648\": max \"2147483648\" is not a decimal from 1 to " +
+					"2147483647",
+			},
+			{
+				name:  "returns an error for a max that is not a decimal",
+				field: "X []int32 `kanon:\",max=ten\"`",
+				want:  "kanon: a.go:4:2: A.X: tag \",max=ten\": max \"ten\" is not a decimal from 1 to 2147483647",
+			},
+			{
+				name:  "returns an error for the word unknown beside a max option",
+				field: "U []byte `kanon:\"unknown,max=1\"`",
+				want:  "kanon: a.go:4:2: A.U: tag \"unknown,max=1\": the word unknown takes no other word",
 			},
 		}
 		for _, tt := range failures {

@@ -456,8 +456,8 @@ func (e *emitter) readField(m *target, f *field) {
 	case kindSlice:
 		e.validFrom(v, p)
 		e.readLength(p)
-		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s); err != nil {",
-			e.fn(opRead, v), addr(x), p.depth(), p.loc, p.num)
+		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s%s, %s); err != nil {",
+			e.fn(opRead, v), addr(x), p.depth(), e.boundArg(v, f.tag.max), p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
@@ -470,8 +470,8 @@ func (e *emitter) readField(m *target, f *field) {
 		}
 		e.validFrom(v, p)
 		e.readLength(p)
-		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s, %s); err != nil {",
-			e.fn(opRead, v), addr(x), p.depth(), collect, p.loc, p.num)
+		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s%s, %s, %s); err != nil {",
+			e.fn(opRead, v), addr(x), p.depth(), e.boundArg(v, f.tag.max), collect, p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
@@ -727,8 +727,8 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 			e.line("%s = %s[:0]", dst, primary(dst))
 			e.line("}")
 		}
-		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s); err != nil {", e.fn(opRead, v),
-			addr(dst), p.depth(), p.loc, p.num)
+		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s%s, %s); err != nil {", e.fn(opRead, v),
+			addr(dst), p.depth(), e.boundArg(v, 0), p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
@@ -738,8 +738,8 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 			collect = "!" + merge
 		}
 		e.readLength(p)
-		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s, %s, %s); err != nil {",
-			e.fn(opRead, v), addr(dst), p.depth(), collect, p.loc, p.num)
+		e.line("if err := %s(%s, data[i:i+int(l)], slab, off+i, %s, %s%s, %s, %s); err != nil {",
+			e.fn(opRead, v), addr(dst), p.depth(), e.boundArg(v, 0), collect, p.loc, p.num)
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
@@ -913,8 +913,9 @@ func (e *emitter) readHelper(name string, v *value) {
 		e.decodeBody(m, func(o op) string { return e.fn(o, v) + "(m, " })
 	case kindSlice:
 		e.doc(name + " appends the elements that data encodes, a " + typ + " without its length, to *dst." +
-			about + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth int, loc string, num int) error {", name, typ)
+			about + e.boundDoc(v, "an element", "the slice") + errs)
+		e.line("func %s(dst *%s, data []byte, slab string, off, depth%s int, loc string, num int) error {", name,
+			typ, e.boundParam(v))
 		e.readSlice(v)
 	case kindArray:
 		e.doc(name + " decodes the elements that data encodes, a " + typ + " without its length, into *dst. " +
@@ -924,9 +925,9 @@ func (e *emitter) readHelper(name string, v *value) {
 	case kindMap:
 		e.doc(name + " adds the entries that data encodes, a " + typ + " without its length, to *dst. With " +
 			"collect set, it clears *dst first, and the entries reuse the memory of up to " +
-			strconv.Itoa(freeListLength) + " of its values." + about + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {",
-			name, typ)
+			strconv.Itoa(freeListLength) + " of its values." + about + e.boundDoc(v, "an entry", "the map") + errs)
+		e.line("func %s(dst *%s, data []byte, slab string, off, depth%s int, collect bool, loc string, num int) "+
+			"error {", name, typ, e.boundParam(v))
 		e.readMap(v)
 	case kindPointer:
 		merging := ""
@@ -956,20 +957,33 @@ func (e *emitter) readHelper(name string, v *value) {
 }
 
 // readSlice writes the body of the read function of the slice type of v. A
-// nil slice takes the capacity for the elements, which it counts in data,
-// except for pointers and interfaces, whose count takes a walk of every
-// value they contain. An element that refers to memory decodes into the
-// element in the spare capacity, which a decode before left there.
+// nil slice takes the capacity for the elements, which it counts in data, as
+// wire.SliceCap caps it, and the bound of a function that takes one caps it
+// too. Pointers and interfaces take no capacity, since their count takes a
+// walk of every value they contain. A function with a bound fails at an
+// element when the slice has bound elements, before it reads the element. An
+// element that refers to memory decodes into the element in the spare
+// capacity, which a decode before left there.
 func (e *emitter) readSlice(v *value) {
 	e.ret = retError
 	e.levelCheck()
 	e.line("x := *dst")
+	bounded := e.bounded[v.id]
 	if count := e.count(v.elem); count != "" {
+		capacity := e.wire() + "SliceCap[" + e.p.typ(v.elem.typ) + "](" + count + ")"
+		if bounded {
+			capacity = "min(" + capacity + ", " + boundName + ")"
+		}
 		e.line("if x == nil && len(data) > 0 {")
-		e.line("x = make(%s, 0, %s)", e.p.typ(v.typ), count)
+		e.line("x = make(%s, 0, %s)", e.p.typ(v.typ), capacity)
 		e.line("}")
 	}
 	e.line("for i := 0; i < len(data); {")
+	if bounded {
+		e.line("if len(x) >= %s {", boundName)
+		e.fail(e.wire() + "MaxError(loc, num, off+i, " + boundName + ")")
+		e.line("}")
+	}
 	if v.elem.holdsMemory() {
 		e.line("if len(x) < cap(x) {")
 		e.line("x = x[:len(x)+1]")
@@ -1043,7 +1057,11 @@ func (e *emitter) readArray(v *value) {
 // map: the loop runs while err is nil, and wire.KeepLastKeys finds no key
 // to delete. In a canonical code file the keys must ascend, as
 // [emitter.keyOrder] writes the check, and a decode, which sets collect,
-// collects no key.
+// collects no key. A function with a bound fails at an entry whose key the
+// map does not have under == when the map has bound entries, after the
+// checks of the key and before the decode of the value. The check counts the
+// keys before wire.KeepLastKeys deletes the entries of a repeated
+// projection.
 func (e *emitter) readMap(v *value) {
 	kt, vt := e.p.typ(v.key.typ), e.p.typ(v.elem.typ)
 	reuse := v.elem.holdsMemory()
@@ -1094,7 +1112,8 @@ func (e *emitter) readMap(v *value) {
 	if v.key.holdsMemory() {
 		e.line("mk = %s", e.zero(v.key.typ))
 	}
-	if nan || e.canonical {
+	bounded := e.bounded[v.id]
+	if nan || e.canonical || bounded {
 		e.line("at := i")
 	}
 	e.readScoped(v.key, "mk", place{loc: locParam, num: numParam, k: 1})
@@ -1104,6 +1123,13 @@ func (e *emitter) readMap(v *value) {
 		e.line("}")
 	}
 	e.keyOrder(v)
+	if bounded {
+		e.line("if len(x) >= %s {", boundName)
+		e.line("if _, ok := x[mk]; !ok {")
+		e.fail(w + "MaxError(loc, num, off+at, " + boundName + ")")
+		e.line("}")
+		e.line("}")
+	}
 	if reuse {
 		e.line("mv = %s", e.zero(v.elem.typ))
 		e.line("if held > 0 {")

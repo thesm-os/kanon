@@ -44,7 +44,7 @@ const (
 
 // generatorVersion is the version of the generator, which the EnforceVersion
 // constants of every code file state.
-const generatorVersion = 3
+const generatorVersion = 4
 
 // Names of the parameters of the helpers that locate a value in errors: the
 // location, "Type.Field", and the field number.
@@ -131,6 +131,12 @@ type emitter struct {
 	// merging marks the ids of the values whose read functions take the
 	// merge flag, as [mergingValues] collects them.
 	merging map[string]bool
+	// bounded marks the ids of the values whose read functions take the bound
+	// of the tag option max, as [boundedValues] collects them, and short the
+	// ids of the map values whose put functions take at most mapKeyBuffer
+	// entries, as [shortMaps] collects them.
+	bounded map[string]bool
+	short   map[string]bool
 	// inKey reports that the emitter writes the size or the encoding of a
 	// map key, whose projection writes every float component of -0.0 as
 	// +0.0: a float field is present when it is not zero, and a value that

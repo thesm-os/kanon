@@ -65,6 +65,8 @@ func codeFile(u *unit) ([]byte, error) {
 	}
 	markNilable(slices.Concat(u.targets, u.inlines.list))
 	e.merging = mergingValues(slices.Concat(u.targets, u.inlines.list))
+	e.bounded = boundedValues(slices.Concat(u.targets, u.inlines.list))
+	e.short = shortMaps(slices.Concat(u.targets, u.inlines.list))
 	rt := e.rt()
 	e.line("")
 	e.doc(fmt.Sprintf("The file compiles against a runtime that supports version %d of the generator.",
@@ -191,8 +193,8 @@ func methodNames() []string {
 // the package under one of them.
 func localNames() []string {
 	return []string{
-		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "d", "data", "depth", "dst", "e",
-		"ea", "eb",
+		"a", "all", "arr", "at", "av", "b", boundName, "buf", "bv", "c", "ck", "collect", "cv", "d", "data", "depth",
+		"dst", "e", "ea", "eb",
 		"enc",
 		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "ix", "k", "keys", "l", "last", locParam, "m",
 		membersName, "mk",
@@ -211,7 +213,7 @@ func localNames() []string {
 func predeclaredNames() []string {
 	return []string{
 		"any", "append", "bool", "byte", "cap", "clear", "complex", "complex128", "complex64", "copy", "error",
-		falseName, "float32", "float64", "imag", "int", "int16", "int32", "int64", "int8", "len", "make", "new",
-		nilName, "real", "string", trueName, "uint", "uint16", "uint32", "uint64", "uint8", "uintptr",
+		falseName, "float32", "float64", "imag", "int", "int16", "int32", "int64", "int8", "len", "make", "min",
+		"new", nilName, "real", "string", trueName, "uint", "uint16", "uint32", "uint64", "uint8", "uintptr",
 	}
 }

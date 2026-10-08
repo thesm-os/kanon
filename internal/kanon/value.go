@@ -45,8 +45,9 @@ type value struct {
 	self selfCodec
 	// fails reports that encoding the value can fail: it is or contains a
 	// kindBinary value of a type that is no kanon.Appender, a kanon.Validator
-	// whose ValidateKanon the generated code calls, or an interface. The value
-	// of a field that [exactField] reports cannot fail.
+	// whose ValidateKanon the generated code calls, an interface, or a struct
+	// with a field with the tag option max. The value of a field that
+	// [exactField] reports cannot fail.
 	fails bool
 	// validate reports that the value is of a kanon.Validator, a named type
 	// that is not a struct and encodes as its underlying type, and that the

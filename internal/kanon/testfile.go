@@ -42,9 +42,10 @@ const (
 // stream decoder to kanontest.Stream, as [streamAdapter] writes it. A field
 // of a spec states what its Go type does not: its name, its number, the
 // fixed option, the union it belongs to and the constant that selects it,
-// the concrete types of its interfaces with their numbers, and the stream
-// option. A struct states the field that keeps its unknown fields. Each
-// value type gets a test function that runs kanontest.RunValue on it.
+// the concrete types of its interfaces with their numbers, the stream option
+// and the bound of the max option. A struct states the field that keeps its
+// unknown fields. Each value type gets a test function that runs
+// kanontest.RunValue on it.
 func testFile(u *unit) ([]byte, error) {
 	p := newPrinter(u.pkg.types.Path(), u.pkg.types.Scope().Names())
 	kt := p.use(kanontestPath, kanontestName)
@@ -137,6 +138,9 @@ func specFields(p *printer, m *target) {
 		}
 		if f.tag.stream {
 			parts = append(parts, "Stream: true")
+		}
+		if f.tag.max != 0 {
+			parts = append(parts, "Max: "+strconv.Itoa(f.tag.max))
 		}
 		p.line("{%s},", strings.Join(parts, ", "))
 	}

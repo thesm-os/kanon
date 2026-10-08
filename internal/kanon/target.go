@@ -68,8 +68,8 @@ type target struct {
 	// fails reports that the encoding can fail, as [classifier.mayFail]
 	// reports: the struct contains a type that encodes itself outside a field
 	// of a kanon.Exact type and is no kanon.Appender, a kanon.Validator, an
-	// interface, or a map whose keys can have a NaN component or share a
-	// projection.
+	// interface, a map whose keys can have a NaN component or share a
+	// projection, or a field with the tag option max.
 	fails bool
 }
 
@@ -281,9 +281,10 @@ func (c classifier) target(named *types.Named) (*target, error) {
 // a kanon tag, for an unexported field with a kanon tag in a
 // struct of another package, which the code of the file cannot reach, for
 // a types option that [classifier.listOf] rejects, for a field type that
-// kanon does not encode, for the tag option stream on a field that
-// [streamable] rejects, for an invalid union, and for a field tagged
-// unknown that is unexported, is not a []byte or follows another.
+// kanon does not encode, for the tag option max on a field that is not a
+// slice or a map, for the tag option stream on a field that [streamable]
+// rejects, for an invalid union, and for a field tagged unknown that is
+// unexported, is not a []byte or follows another.
 func (c classifier) analyze(m *target, at site) error {
 	st, _ := m.typ.Underlying().(*types.Struct)
 	byName := make(map[string]*types.Var, st.NumFields())
@@ -329,6 +330,9 @@ func (c classifier) analyze(m *target, at site) error {
 		f := &field{obj: obj, name: obj.Name(), tag: t, list: list}
 		if f.val, err = c.classify(obj.Type(), t.fixed, list, at.field(obj.Name())); err != nil {
 			return m.fail(obj, err)
+		}
+		if t.max != 0 && f.val.kind != kindSlice && f.val.kind != kindMap {
+			return m.fail(obj, errBoundKind)
 		}
 		if t.stream {
 			if err := streamable(m, f); err != nil {
