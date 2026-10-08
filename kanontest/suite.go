@@ -4,7 +4,9 @@
 package kanontest
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"reflect"
 	"slices"
@@ -109,6 +111,9 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 			s.indexes(tb, s.viewInputs())
 		}})
 	}
+	if s.stream != nil {
+		checks = append(checks, s.streamChecks()...)
+	}
 	return append(checks,
 		Check{
 			Name: "DecodeKanon/decodes into a receiver that decoded before as into a zero one",
@@ -175,9 +180,11 @@ func run(t *testing.T, checks []Check) {
 // that spec describes, each as a sub-benchmark of b, on the table sample
 // of entry 1, whose every field is present: EncodeKanon into a buffer of
 // the length of the encoding, and DecodeKanon with a slab into a receiver
-// that decoded the encoding before. Each reports the length of the
-// encoding as the bytes metric. Bench skips a Spec that does not describe
-// T, which [Run] reports.
+// that decoded the encoding before. For a Spec with a stream decoder it
+// measures the stream decoder too, which reads the encoding to its end
+// after Reset, into a receiver that decoded it before. Each reports the
+// length of the encoding as the bytes metric. Bench skips a Spec that does
+// not describe T, which [Run] reports.
 func Bench[T any, P Codec[T]](b *testing.B, spec Spec[T]) {
 	b.Helper()
 	s, err := newSuite[T, P](spec)
@@ -206,6 +213,19 @@ func Bench[T any, P Codec[T]](b *testing.B, spec Spec[T]) {
 		_ = P(&d).DecodeKanon(enc, opts)
 		for b.Loop() {
 			_ = P(&d).DecodeKanon(enc, opts)
+		}
+		b.ReportMetric(float64(len(enc)), bytesMetric)
+	})
+	if s.stream == nil {
+		return
+	}
+	b.Run("Stream", func(b *testing.B) {
+		var d T
+		r := bytes.NewReader(enc)
+		pass := s.drainer(s.stream(r, int64(len(enc)), &d, kanon.StreamOptions{}), r, enc, &d)
+		_ = pass()
+		for b.Loop() {
+			_ = pass()
 		}
 		b.ReportMetric(float64(len(enc)), bytesMetric)
 	})
@@ -262,6 +282,11 @@ type suite[T any, P Codec[T]] struct {
 	// cloner reports that P implements kanon.Cloner, which the clone check
 	// requires of the codec.
 	cloner bool
+	// stream is the constructor of the stream decoder of T, and nil when T
+	// has none, and streamFields lists its streamed fields in ascending field
+	// number.
+	stream       func(r io.Reader, size int64, m *T, opts kanon.StreamOptions) Stream[T]
+	streamFields []*field
 }
 
 // sample is a value of T that the checks run on.
@@ -311,7 +336,11 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 	// The shapes of T start at T, as the inline struct of its layout.
 	r.prepare(&shape{typ: l.typ, kind: kindInline, layout: l})
 	_, cloner := any(P(nil)).(kanon.Cloner[T])
-	s := &suite[T, P]{r: r, l: l, cloner: cloner}
+	fields, err := streamFields(spec, l)
+	if err != nil {
+		return nil, err
+	}
+	s := &suite[T, P]{r: r, l: l, cloner: cloner, stream: spec.Stream, streamFields: fields}
 	if spec.View != nil {
 		s.view = reflect.TypeOf(spec.View)
 		if s.view.Kind() != reflect.Slice || s.view.Elem() != reflect.TypeFor[byte]() {

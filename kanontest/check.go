@@ -186,11 +186,13 @@ func (*suite[T, P]) short(tb assert.TB, xs []sample[T]) {
 		}
 		v := x.value
 		buf := bytes.Repeat([]byte{guard}, len(x.enc)-1)
-		n, err := P(&v).EncodeKanon(buf)
+		observe := func() []byte { return slices.Clone(buf) }
+		var n int
+		var err error
+		encode := func() { n, err = P(&v).EncodeKanon(buf) }
+		assert.Pure(tb, observe, encode, x.name+": EncodeKanon writes nothing into a short buffer")
 		assert.ErrorIs(tb, err, io.ErrShortBuffer, x.name+": EncodeKanon returns io.ErrShortBuffer for a short buffer")
 		assert.Equal(tb, n, 0, x.name+": EncodeKanon returns length 0 for a short buffer")
-		assert.Equal(tb, buf, bytes.Repeat([]byte{guard}, len(x.enc)-1),
-			x.name+": EncodeKanon writes nothing into a short buffer")
 	}
 }
 
@@ -207,10 +209,13 @@ func (*suite[T, P]) nilEncode(tb assert.TB) {
 	tb.Helper()
 	var p P
 	buf := []byte{guard}
-	n, err := p.EncodeKanon(buf)
+	observe := func() []byte { return slices.Clone(buf) }
+	var n int
+	var err error
+	encode := func() { n, err = p.EncodeKanon(buf) }
+	assert.Pure(tb, observe, encode, "EncodeKanon writes nothing for a nil receiver")
 	assert.NoError(tb, err, "EncodeKanon returns no error for a nil receiver")
 	assert.Equal(tb, n, 0, "EncodeKanon returns length 0 for a nil receiver")
-	assert.Equal(tb, buf, []byte{guard}, "EncodeKanon writes nothing for a nil receiver")
 }
 
 // nilAppend checks that AppendBinary returns its buffer unchanged for a nil
@@ -273,12 +278,17 @@ func (s *suite[T, P]) roundTrip(tb assert.TB, p probe) {
 }
 
 // probing returns the check that decodes the probes of a family, which
-// probes returns, as the reference decode.
+// probes returns, as the reference decode: with DecodeKanon, and with the
+// stream decoder of T when the Spec names one, as [suite.streams] decodes
+// them.
 func (s *suite[T, P]) probing(probes func() []probe) func(assert.TB) {
 	return func(tb assert.TB) {
 		tb.Helper()
 		for _, p := range probes() {
 			s.decode(tb, p)
+			if s.stream != nil {
+				s.streams(tb, p)
+			}
 		}
 	}
 }

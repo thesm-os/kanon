@@ -56,14 +56,25 @@ func (e *emitter) shortest(n, end, loc, num, off string) {
 // [emitter.tagger] returns its error: prior is the number of the last field
 // that matched.
 func (e *emitter) decodeInOrder(m *target) {
-	fields := byNumber(m.fields)
-	if len(fields) > 0 {
+	if len(m.fields) > 0 {
 		e.line("var %s uint64", priorName)
 	}
 	if unionBits(m) {
 		e.line("var %s [%d]uint64", membersName, (len(m.discriminators)+63)/64)
 	}
 	e.line("i := 0")
+	e.inOrder(m, byNumber(m.fields))
+	e.fail(nilName)
+	e.line("}")
+	e.line("")
+}
+
+// inOrder writes the statements of the canonical decode of m that match the
+// tag of each of fields, fields of m in ascending field number, at data[i],
+// and decode the value of each field whose tag matches, as
+// [emitter.decodeInOrder] states, and then the statement that returns the
+// error of a byte that remains after the last match.
+func (e *emitter) inOrder(m *target, fields []*field) {
 	for _, f := range fields {
 		tag := tagBytes(f.num, fieldWire(f))
 		if len(tag) == 1 {
@@ -86,14 +97,11 @@ func (e *emitter) decodeInOrder(m *target) {
 	}
 	e.line("if i != len(data) {")
 	args := "data, i, off"
-	if len(fields) > 0 {
+	if len(m.fields) > 0 {
 		args = "data, i, " + priorName + ", off"
 	}
 	e.fail(e.tagger(m) + "(" + args + ")")
 	e.line("}")
-	e.fail(nilName)
-	e.line("}")
-	e.line("")
 }
 
 // byNumber returns fields in ascending field number, the order of the

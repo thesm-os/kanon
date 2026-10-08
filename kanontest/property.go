@@ -69,6 +69,9 @@ func (s *suite[T, P]) property(tb assert.TB) {
 //   - DecodeKanon on the probe;
 //   - for a canonical Spec, the round trip of the probe and of the
 //     encoding of each value that encodes;
+//   - for a Spec with a stream decoder, the stream decoder on the probe and
+//     on the encoding of each value that encodes, as [suite.streams] runs
+//     it;
 //   - the view methods and IndexKanon on the probe and on the encoding of
 //     each value that encodes.
 //
@@ -107,6 +110,9 @@ func (s *suite[T, P]) generated(c *prop.Case) {
 		inputs[k] = q.data
 		if s.r.canonical {
 			s.roundTrip(c, q)
+		}
+		if s.stream != nil {
+			s.streams(c, q)
 		}
 	}
 	if s.view != nil {

@@ -251,17 +251,34 @@ func (e *emitter) bit(f *field) (string, string) {
 }
 
 // decodeBody writes the statements that set the struct that m points at to
-// the value encoded in data, and the end of the function. They clear the
-// fields that the encoding leaves out, keeping the memory of every encoded
-// field, reset every field that the decode does not track, the
-// discriminators and the unknown fields, and decode the fields of data.
+// the value encoded in data, and the end of the function: the statements of
+// [emitter.decodePrologue], and then the decode of the fields of data.
 // Without tracked fields they return the merge of data. With them they call
-// the function of the loop with a clear seen bitmap, and then set each
-// pointer and interface that data does not contain to nil, reset each
-// struct and array, and clear each map. call returns the beginning of the
+// the function of the loop with a clear seen bitmap, and then the
+// statements of [emitter.decodeEpilogue]. call returns the beginning of the
 // call of the merge, for opMerge, and of the function of the loop, for
 // opFields, up to the argument data.
 func (e *emitter) decodeBody(m *target, call func(op) string) {
+	e.decodePrologue(m)
+	if e.seenWords() == 0 {
+		e.line("return %sdata, slab, off, depth)", call(opMerge))
+		e.line("}")
+		e.line("")
+		return
+	}
+	e.line("seen, err := %sdata, slab, off, depth, %s{})", call(opFields), e.bitmap())
+	e.decodeEpilogue(m)
+	e.line("return err")
+	e.line("}")
+	e.line("")
+}
+
+// decodePrologue writes the statements of a decode that precede the decode
+// of the fields of the struct that m points at: they clear the fields that
+// the encoding leaves out, keeping the memory of every encoded field, and
+// reset every field that the decode does not track, the discriminators and
+// the unknown fields.
+func (e *emitter) decodePrologue(m *target) {
 	e.clearLeftOut(m, func(f *field) bool { return f.val.holdsMemory() })
 	for _, f := range m.fields {
 		if _, ok := e.bits[f]; !ok {
@@ -274,13 +291,14 @@ func (e *emitter) decodeBody(m *target, call func(op) string) {
 	if m.unknown != nil {
 		e.line("m.%s = m.%s[:0]", m.unknown.Name(), m.unknown.Name())
 	}
-	if e.seenWords() == 0 {
-		e.line("return %sdata, slab, off, depth)", call(opMerge))
-		e.line("}")
-		e.line("")
-		return
-	}
-	e.line("seen, err := %sdata, slab, off, depth, %s{})", call(opFields), e.bitmap())
+}
+
+// decodeEpilogue writes the statements of a decode that follow the decode of
+// the fields of the struct that m points at, which records the tracked
+// fields that the encoding contains in seen: they set each tracked pointer
+// and interface that the encoding does not contain to nil, reset each such
+// struct and array, and clear each such map.
+func (e *emitter) decodeEpilogue(m *target) {
 	for _, f := range m.fields {
 		if _, ok := e.bits[f]; !ok {
 			continue
@@ -294,9 +312,6 @@ func (e *emitter) decodeBody(m *target, call func(op) string) {
 		}
 		e.line("}")
 	}
-	e.line("return err")
-	e.line("}")
-	e.line("")
 }
 
 // mergeBody writes the statements that merge the encoding in data into the

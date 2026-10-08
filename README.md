@@ -22,6 +22,7 @@ A `go:generate` directive names the types:
 - An encode into a buffer with spare capacity does not allocate.
 - A decode into a value that decoded before allocates one copy of its input when the type contains a string, and nothing when you pass a slab. `kanon.Message` lists the values that allocate in either case.
 - A decode error contains the struct type, the field, the field number and the offset of the malformed input.
+- A type with a field that has the tag option `stream` gets a stream decoder, which reads an encoding too large for memory from an `io.Reader`, one field at a time.
 - kanon writes a conformance test per type. The test compares the codec with a reference encoder and decoder on fixed samples and on generated values, and checks the allocation contract. A fuzz target runs the comparison on the values and inputs that the fuzzer searches, arbitrary input included.
 
 ## Install
@@ -208,6 +209,7 @@ A tag is a comma-separated list of at most one field number and any of the optio
 | `kanon:",union=Kind"` | Makes the field a member of the union whose discriminator is the field `Kind`. |
 | `kanon:",types=Circle\|*Square"` | Lists the concrete types of the interfaces in the type of the field, as `gob.Register` registers types. |
 | `kanon:",unknown"` | Marks the `[]byte` field in which a decode keeps the fields that it does not know. |
+| `kanon:",stream"` | Makes the stream decoder of the struct return the value of the field to its caller, as [Stream decoding](#stream-decoding) describes. |
 
 The constant that selects a union member is named after the type of the discriminator and the member.
 When `Kind` has type `Kind`, the constant `KindText` selects the member `Text`.
@@ -328,6 +330,75 @@ The flag changes the decode of the named types alone, and their encode and their
 A canonical reader rejects a field that its struct does not declare.
 Upgrade every canonical reader before a writer sets a new field.
 The generation fails for a canonical type that contains a struct with a kanon codec whose directive does not set `-canonical`, a struct whose codec is written by hand, or a field tagged `unknown`.
+
+## Stream decoding
+
+A decode reads the whole encoding from one byte slice.
+For an encoding too large to read into memory, such as an object of 4 GiB, mark its large fields with the tag option `stream`:
+
+```go
+//go:generate go tool kanon -type=Bundle,Inner -canonical
+
+type Bundle struct {
+	Name    string
+	Data    []byte  `kanon:",stream"`
+	Members []Inner `kanon:",stream"`
+}
+```
+
+The option applies to a byte slice, a string and a slice of a struct type with a kanon codec.
+It changes neither the encoding nor the other methods of the type.
+kanon writes a stream decoder for the type, `BundleStream`, which reads an encoding of a known length from an `io.Reader`.
+It decodes the other fields into the receiver, and stops at each streamed field:
+
+```go
+s := NewBundleStream(r, size, &b, kanon.StreamOptions{})
+for {
+	f, err := s.Next()
+	if errors.Is(err, io.EOF) {
+		return nil // b contains every field but Data and Members
+	}
+	if err != nil {
+		return err
+	}
+	switch f {
+	case BundleFieldData:
+		if _, err := io.Copy(h, s); err != nil { // hashes the bytes of Data
+			return err
+		}
+	case BundleFieldMembers:
+		for {
+			n, err := s.Element() // the length, before the element is read
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if n > maxMember {
+				return errMemberTooLong
+			}
+			if err := s.DecodeMembers(&member); err != nil {
+				return err
+			}
+		}
+	}
+}
+```
+
+- `Len` returns the declared length of the current field before the stream reads its value.
+- `Read` reads the bytes of a streamed byte slice or string, and `WriteTo` writes them to an `io.Writer`. `io.Copy` calls `WriteTo`, so the copy allocates nothing.
+- `Element` returns the length of the next element of a streamed slice, and the decode method of the slice, here `DecodeMembers`, decodes it.
+- `Next` discards the bytes that you do not read, and decodes the elements that you skip, so that their checks run.
+
+The stream applies the checks of `DecodeKanon` and returns its errors at the same offsets.
+It returns a streamed value before it reads the rest of the encoding, so a later byte can still fail.
+Act on the values only after `Next` returns `io.EOF`.
+
+`kanon.StreamOptions` sets the nesting limit and the buffer limit, which is 16 MiB by default.
+The decoded fields together, and each element, must fit within the buffer limit, or the stream fails with `kanon.ErrLimit`.
+The strings of the receiver alias the buffer of the stream until the next `Reset`.
+The strings of an element alias it until the next call of `Next`, `Element` or a decode method.
 
 ## Frames and batches
 
@@ -519,6 +590,7 @@ The design is in RFCs under [docs/rfc](docs/rfc/README.md), and the decisions ar
 - [Batches](docs/rfc/0004-batches.md) specifies messages in storage blocks.
 - [Inspection](docs/rfc/0005-inspection.md), a draft, specifies `kanon inspect`.
 - [Canonical decoding](docs/rfc/0006-canonical-decoding.md), a draft, specifies the `-canonical` flag.
+- [Stream decoding](docs/rfc/0007-stream-decoding.md), a draft, specifies the tag option `stream` and the stream decoder.
 
 ## Development
 

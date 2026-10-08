@@ -75,15 +75,27 @@
 //
 // The code file imports the runtime packages go.thesmos.sh/kanon and
 // go.thesmos.sh/kanon/wire and the standard library. It declares two
-// kanon.EnforceVersion constants for version 1 of the generator. Each
-// -type struct gets the exported methods of kanon.Cloner and the unexported
-// methods encodeKanon, decodeKanon, mergeKanon, fieldsKanon and cloneKanon,
-// which the code of the structs of the package that contain it calls. The
-// helpers of the file, the functions of its inline structs, slices, arrays,
-// maps, pointers and interfaces, take the name of the source file as a
-// prefix, so that two code files of one package declare distinct names.
-// With -views, each -type struct also gets a view type, <T>View, and its
-// index type, <T>Index, which IndexKanon of the view fills from one scan.
+// kanon.EnforceVersion constants for the version of the generator that
+// wrote it. Each -type struct gets the exported methods of kanon.Cloner and
+// the unexported methods encodeKanon, decodeKanon, mergeKanon, fieldsKanon
+// and cloneKanon, which the code of the structs of the package that contain
+// it calls. The helpers of the file, the functions of its inline structs,
+// slices, arrays, maps, pointers and interfaces, take the name of the source
+// file as a prefix, so that two code files of one package declare distinct
+// names. With -views, each -type struct also gets a view type, <T>View, and
+// its index type, <T>Index, which IndexKanon of the view fills from one
+// scan.
+//
+// A -type struct with a field that has the tag option stream gets a stream
+// decoder: the type <T>Field, whose constants name the streamed fields, and
+// the type <T>Stream with its constructor New<T>Stream, its methods Reset,
+// Next and Len, Read and WriteTo for a streamed byte slice or string, and
+// Element and a decode method Decode<F> per streamed slice F. The stream decoder reads
+// the encoding through a wire.Stream, which frames the fields, and decodes
+// each run of fields between the streamed fields with the unexported method
+// of the struct that DecodeKanon calls for the fields, and each element with
+// the decode of an element of the slice. The test file adapts the stream
+// decoder to kanontest.Stream for the conformance suite.
 //
 // A type that encodes itself and declares SizeKanon() int, a kanon.Sizer, is
 // sized with that method and appended into its room in place. A kanon.Exact

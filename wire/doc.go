@@ -3,9 +3,10 @@
 
 // Package wire provides the primitives that the code of the kanon generator
 // calls: varints, fixed-width values, lengths, times, the skipping of
-// unknown fields, the order of map keys, and the errors of an encode and a
-// decode. It is exported because generated code in other modules imports
-// it. Applications use package go.thesmos.sh/kanon instead.
+// unknown fields, the order of map keys, the reader of a stream decoder, and
+// the errors of an encode and a decode. It is exported because generated
+// code in other modules imports it. Applications use package
+// go.thesmos.sh/kanon instead.
 //
 // # Writing backward
 //
@@ -45,6 +46,6 @@
 // # Dependency position
 //
 // wire imports go.thesmos.sh/kanon for the errors, and cmp, encoding/binary,
-// errors, fmt, io, math/bits, strconv, strings, sync/atomic and time from the
-// standard library. Generated code imports it.
+// errors, fmt, io, math, math/bits, slices, strconv, strings, sync/atomic,
+// time and unsafe from the standard library. Generated code imports it.
 package wire

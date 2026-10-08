@@ -28,19 +28,23 @@ const (
 	testPrefix      = "TestKanon"
 	benchmarkPrefix = "BenchmarkKanon"
 	fuzzPrefix      = "FuzzKanon"
+	// adapterPrefix begins the name of the type that adapts the stream
+	// decoder of a struct to kanontest.Stream.
+	adapterPrefix = "kanonStream"
 )
 
 // testFile returns the test file of u: for each target, the kanontest.Spec
 // that describes its fields, the inline structs of the types of its fields,
 // the key structs of the code file, the view type of the target when the
-// code file declares one and whether its decode is canonical, and the test,
-// benchmark and fuzz functions that
-// run the conformance suite on it. A field of a spec states
-// what its Go type does not: its name, its number, the fixed option, the
-// union it belongs to and the constant that selects it, and the concrete
-// types of its interfaces with their numbers. A struct states the field
-// that keeps its unknown fields. Each value type gets a test function that
-// runs kanontest.RunValue on it.
+// code file declares one, whether its decode is canonical and the
+// constructor of its stream decoder, and the test, benchmark and fuzz
+// functions that run the conformance suite on it, and the adapter of its
+// stream decoder to kanontest.Stream, as [streamAdapter] writes it. A field
+// of a spec states what its Go type does not: its name, its number, the
+// fixed option, the union it belongs to and the constant that selects it,
+// the concrete types of its interfaces with their numbers, and the stream
+// option. A struct states the field that keeps its unknown fields. Each
+// value type gets a test function that runs kanontest.RunValue on it.
 func testFile(u *unit) ([]byte, error) {
 	p := newPrinter(u.pkg.types.Path(), u.pkg.types.Scope().Names())
 	kt := p.use(kanontestPath, kanontestName)
@@ -71,6 +75,13 @@ func testFile(u *unit) ([]byte, error) {
 		if u.canonical {
 			p.line("Canonical: true,")
 		}
+		fields := streamed(m)
+		if len(fields) > 0 {
+			p.line("Stream: func(r %s.Reader, size int64, m *%s, opts %s.StreamOptions) %s.Stream[%s] {",
+				p.std(ioPath), name, p.use(runtimePath, runtimeName), kt, name)
+			p.line("return %s%s{%s%s%s(r, size, m, opts)}", adapterPrefix, m.name, newPrefix, m.name, streamSuffix)
+			p.line("},")
+		}
 		p.line("}")
 		p.line("")
 		p.line("// %s%s runs the conformance suite on %s.", testPrefix, m.name, name)
@@ -87,6 +98,9 @@ func testFile(u *unit) ([]byte, error) {
 		p.line("func %s%s(f *%s.F) {", fuzzPrefix, m.name, tst)
 		p.line("%s.Fuzz(f, %s)", kt, spec)
 		p.line("}")
+		if len(fields) > 0 {
+			streamAdapter(p, m, fields)
+		}
 	}
 	for _, vt := range u.values {
 		name := p.typ(vt.typ)
@@ -120,6 +134,9 @@ func specFields(p *printer, m *target) {
 				types = append(types, "{Type: "+rt+".TypeFor["+p.typ(c.typ)+"](), Number: "+strconv.Itoa(c.num)+"}")
 			}
 			parts = append(parts, "Types: []"+kt+".ConcreteType{"+strings.Join(types, ", ")+"}")
+		}
+		if f.tag.stream {
+			parts = append(parts, "Stream: true")
 		}
 		p.line("{%s},", strings.Join(parts, ", "))
 	}
@@ -155,6 +172,52 @@ func specKeys(p *printer, keys map[string]keyStruct) {
 		p.line("},")
 	}
 	p.line("},")
+}
+
+// streamAdapter writes the type that adapts the stream decoder of m, whose
+// streamed fields are fields, to kanontest.Stream: it embeds the stream
+// decoder, whose Reset and Len it promotes, and its Read and Element when
+// they exist, and adds Next, which returns the number of the field, and,
+// when a slice streams, Decode, which calls the decode method of the slice
+// num on the element e. Decode returns io.EOF for a number of no streamed
+// slice, as the decode method of another field does.
+func streamAdapter(p *printer, m *target, fields []*field) {
+	kt := p.use(kanontestPath, kanontestName)
+	adapter, stream := adapterPrefix+m.name, m.name+streamSuffix
+	p.line("")
+	p.line("// %s adapts a %s to %s.Stream.", adapter, stream, kt)
+	p.line("type %s struct {", adapter)
+	p.line("*%s", stream)
+	p.line("}")
+	p.line("")
+	p.line("// Next returns the number of the next streamed field of %s.", m.name)
+	p.line("func (s %s) Next() (int, error) {", adapter)
+	p.line("f, err := s.%s.Next()", stream)
+	p.line("return int(f), err")
+	p.line("}")
+	var slices []*field
+	for _, f := range fields {
+		if f.val.kind == kindSlice {
+			slices = append(slices, f)
+		}
+	}
+	if len(slices) == 0 {
+		return
+	}
+	p.line("")
+	for _, l := range wrap("Decode decodes the next element of the streamed slice of " + m.name +
+		" with the number num into e, a pointer to an element.") {
+		p.line("%s", l)
+	}
+	p.line("func (s %s) Decode(num int, e any) error {", adapter)
+	p.line("switch num {")
+	for _, f := range slices {
+		p.line("case %d:", f.num)
+		p.line("return s.%s%s(e.(*%s))", decodePrefix, f.name, p.typ(f.val.elem.typ))
+	}
+	p.line("}")
+	p.line("return %s.EOF", p.std(ioPath))
+	p.line("}")
 }
 
 // reached returns the inline structs of the types of the fields of m: in the

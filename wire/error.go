@@ -222,6 +222,15 @@ func ExactError(err error, loc string, num, tagOff, valueOff int) error {
 	return AbsentError(loc, num, tagOff)
 }
 
+// LimitError returns the error of a stream decoder for the value at offset
+// off that would take the bytes that the decoder has in memory past limit:
+// a field that does not stream, which loc names as the struct with num 0,
+// or an element of the streamed slice that loc and num name. It wraps
+// kanon.ErrLimit.
+func LimitError(loc string, num, off, limit int) error {
+	return decodeError(kanon.ErrLimit, loc, num, off, "value takes the buffer past "+strconv.Itoa(limit)+" bytes")
+}
+
 // SizeError returns the error for the encode of a value of a kanon.Sizer,
 // whose encode method returned another length than its SizeKanon, which
 // loc and num locate at the field of the value. It wraps kanon.ErrSize.

@@ -4,6 +4,7 @@
 package kanontest_test
 
 import (
+	"io"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -100,6 +101,22 @@ func (m *shortIgnore) EncodeKanon(buf []byte) (int, error) {
 		return 0, nil
 	}
 	return m.Item.EncodeKanon(buf)
+}
+
+// shortWrite is a view.Item whose EncodeKanon writes into a short buffer
+// before it returns io.ErrShortBuffer.
+type shortWrite struct{ view.Item }
+
+// EncodeKanon writes a zero byte into the end of a short buffer that has
+// room for one, and returns 0 and io.ErrShortBuffer for every short buffer.
+func (m *shortWrite) EncodeKanon(buf []byte) (int, error) {
+	if len(buf) >= m.SizeKanon() {
+		return m.Item.EncodeKanon(buf)
+	}
+	if len(buf) > 0 {
+		buf[len(buf)-1] = 0
+	}
+	return 0, io.ErrShortBuffer
 }
 
 // nilSizeOne is a view.Item whose SizeKanon returns 1 for a nil receiver.
@@ -220,10 +237,16 @@ func TestCheck(t *testing.T) {
 				"EncodeKanon/returns io.ErrShortBuffer for a buffer shorter than the encoding",
 				"EncodeKanon returns io.ErrShortBuffer for a short buffer")
 		})
+		t.Run("fails for a codec that writes into a short buffer", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[shortWrite]{Fields: itemSpec.Fields},
+				"EncodeKanon/returns io.ErrShortBuffer for a buffer shorter than the encoding",
+				"EncodeKanon writes nothing into a short buffer")
+		})
 		t.Run("fails for a codec that writes a byte for a nil receiver", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[nilEncodeByte]{Fields: itemSpec.Fields},
-				"EncodeKanon/writes nothing for a nil receiver", "EncodeKanon returns length 0 for a nil receiver")
+				"EncodeKanon/writes nothing for a nil receiver", "EncodeKanon writes nothing for a nil receiver")
 		})
 	})
 	t.Run("DecodeKanon", func(t *testing.T) {

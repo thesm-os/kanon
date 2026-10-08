@@ -53,6 +53,19 @@
 // flag applies to every decode of the type: DecodeKanon, MergeKanon and
 // UnmarshalBinary.
 //
+// # Stream decoding
+//
+// The tag option stream on a byte slice, a string or a slice of a struct
+// type with a kanon codec makes the generator write a stream decoder for the
+// struct type T: TStream, which reads an encoding of a known length from an
+// io.Reader, decodes the other fields into a *T, and returns each field with
+// the option to its caller. The caller reads the bytes of a byte slice or a
+// string, and decodes the elements of a slice one at a time. The stream
+// applies the checks of the decode of T and returns its errors at the same
+// offsets. [StreamOptions] set its nesting limit and its buffer limit, and a
+// value that would take its memory past the buffer limit fails with
+// [ErrLimit].
+//
 // # Errors
 //
 // A decode returns a [*DecodeError] that names the struct type, the field,
@@ -60,7 +73,9 @@
 // one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth],
 // [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey], [ErrRepeatedView]
 // and [ErrNotCanonical], the error of a type that decodes itself, or the
-// error of the ValidateKanon of a [Validator]. An encode returns a [*EncodeError]
+// error of the ValidateKanon of a [Validator]. A stream decoder also returns
+// a [*DecodeError] that wraps [ErrLimit], and [ErrStreamSize] for a size
+// outside 0 to math.MaxInt. An encode returns a [*EncodeError]
 // that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
 // [ErrSize], the error of a type that encodes itself, or the error of
 // ValidateKanon. An encode panics with a [*EncodeError] that wraps

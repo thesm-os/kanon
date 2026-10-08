@@ -4,11 +4,11 @@
 package kanon
 
 // EnforceVersion checks at compile time that a generated file and the
-// runtime it imports agree. A file that generator version 2 wrote declares
+// runtime it imports agree. A file that generator version 3 wrote declares
 //
 //	const (
-//		_ = kanon.EnforceVersion(2 - kanon.MinVersion)
-//		_ = kanon.EnforceVersion(kanon.MaxVersion - 2)
+//		_ = kanon.EnforceVersion(3 - kanon.MinVersion)
+//		_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
 //	)
 //
 // A constant below zero does not convert to the unsigned EnforceVersion,
@@ -24,5 +24,5 @@ const (
 	MinVersion = 1
 	// MaxVersion is the newest generator version whose files compile
 	// against the runtime.
-	MaxVersion = 2
+	MaxVersion = 3
 )

@@ -44,7 +44,7 @@ const (
 
 // generatorVersion is the version of the generator, which the EnforceVersion
 // constants of every code file state.
-const generatorVersion = 2
+const generatorVersion = 3
 
 // Names of the parameters of the helpers that locate a value in errors: the
 // location, "Type.Field", and the field number.

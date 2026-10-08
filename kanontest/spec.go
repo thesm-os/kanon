@@ -4,6 +4,7 @@
 package kanontest
 
 import (
+	"io"
 	"reflect"
 
 	"go.thesmos.sh/kanon"
@@ -43,6 +44,12 @@ type Spec[T any] struct {
 	// The reference decode then applies the canonical rules, and the checks
 	// compare it with the round trip through the reference encode.
 	Canonical bool
+	// Stream returns the stream decoder of T over the encoding of size bytes
+	// in r, into m, with opts, as the test file that kanon generates adapts it
+	// to [Stream]. kanon declares a stream decoder for a struct type with a
+	// field that has the tag option stream, and Stream is nil for any other
+	// type.
+	Stream func(r io.Reader, size int64, m *T, opts kanon.StreamOptions) Stream[T]
 }
 
 // Field describes one encoded field of a struct.
@@ -64,6 +71,9 @@ type Field struct {
 	// Types lists the concrete types that the interfaces in the type of
 	// the field store, as the tag option types lists them.
 	Types []ConcreteType
+	// Stream reports the tag option stream: the stream decoder of the struct
+	// returns the value of the field to its caller instead of decoding it.
+	Stream bool
 }
 
 // ConcreteType is a concrete type that the interfaces of a field store.

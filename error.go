@@ -47,7 +47,17 @@ var (
 	// field of 0, or bytes of a type that encodes itself that its encode
 	// method does not write for the decoded value.
 	ErrNotCanonical = errors.New("kanon: input is not the canonical encoding")
+	// ErrLimit marks a value that a stream decoder does not read into
+	// memory: a field that does not stream and that would take the fields
+	// that do not stream past the Buffer of its [StreamOptions], or an
+	// element of a streamed slice that is longer than that Buffer.
+	ErrLimit = errors.New("kanon: value longer than the buffer of the stream")
 )
+
+// ErrStreamSize is the error of a stream decoder whose size is below 0 or
+// above math.MaxInt, the largest offset that a [DecodeError] states. Its
+// first call of Next returns it, as it is, and so does every later call.
+var ErrStreamSize = errors.New("kanon: stream size outside 0 to math.MaxInt")
 
 // ErrUnlistedType, ErrSize and ErrExact are causes of an [EncodeError], which
 // errors.Is matches through [EncodeError.Unwrap].
@@ -94,14 +104,16 @@ type DecodeError struct {
 	// Number is the field number of Field, and 0 when Field is empty.
 	Number int
 	// Offset is the offset of the malformed input in the slab of the
-	// decode.
+	// decode. A stream decoder counts it from the first byte of the
+	// encoding.
 	Offset int
 	// Detail states what is malformed, and is empty when Err states it.
 	Detail string
 	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
 	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
-	// [ErrRepeatedView], [ErrNotCanonical], the error of a type that decodes
-	// itself, or the error of the ValidateKanon of a [Validator].
+	// [ErrRepeatedView], [ErrNotCanonical], [ErrLimit], the error of a type
+	// that decodes itself, or the error of the ValidateKanon of a
+	// [Validator].
 	Err error
 }
 

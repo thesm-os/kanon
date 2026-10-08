@@ -281,7 +281,8 @@ func (c classifier) target(named *types.Named) (*target, error) {
 // a kanon tag, for an unexported field with a kanon tag in a
 // struct of another package, which the code of the file cannot reach, for
 // a types option that [classifier.listOf] rejects, for a field type that
-// kanon does not encode, for an invalid union, and for a field tagged
+// kanon does not encode, for the tag option stream on a field that
+// [streamable] rejects, for an invalid union, and for a field tagged
 // unknown that is unexported, is not a []byte or follows another.
 func (c classifier) analyze(m *target, at site) error {
 	st, _ := m.typ.Underlying().(*types.Struct)
@@ -328,6 +329,11 @@ func (c classifier) analyze(m *target, at site) error {
 		f := &field{obj: obj, name: obj.Name(), tag: t, list: list}
 		if f.val, err = c.classify(obj.Type(), t.fixed, list, at.field(obj.Name())); err != nil {
 			return m.fail(obj, err)
+		}
+		if t.stream {
+			if err := streamable(m, f); err != nil {
+				return m.fail(obj, err)
+			}
 		}
 		if exactField(f.val, t) {
 			f.val.fails = false

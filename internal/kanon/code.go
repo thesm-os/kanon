@@ -29,8 +29,8 @@ const (
 
 // codeFile returns the code file of u: the numbers lines, the version check,
 // the interface assertions of the targets, the methods of each target, a
-// view type and its index type per target when u.views is set, the
-// ValidateKanon method of
+// view type and its index type per target when u.views is set, the stream
+// decoder of each target with a streamed field, the ValidateKanon method of
 // each value type, and the helpers that the code calls, in the order in
 // which it first calls them.
 func codeFile(u *unit) ([]byte, error) {
@@ -93,6 +93,9 @@ func codeFile(u *unit) ([]byte, error) {
 		if u.views {
 			e.viewType(m)
 		}
+		if fields := streamed(m); len(fields) > 0 {
+			e.streamType(m, fields)
+		}
 	}
 	for _, vt := range u.values {
 		e.validateMethod(vt)
@@ -120,17 +123,20 @@ func codeFile(u *unit) ([]byte, error) {
 }
 
 // check fails for a declaration of the package of u that breaks the code
-// file that e wrote: a declaration named like a helper or a view type, one
-// that shadows a predeclared identifier that the code uses, a type or a
-// constant that the code refers to under the name of one of its locals,
-// and a field or a method of a target named like a method that kanon
-// generates.
+// file that e wrote: a declaration named like a helper, a view type or a
+// declaration of a stream decoder, one that shadows a predeclared identifier
+// that the code uses, a type or a constant that the code refers to under the
+// name of one of its locals, and a field or a method of a target named like
+// a method that kanon generates.
 func (u *unit) check(e *emitter) error {
 	scope := u.pkg.types.Scope()
 	names := slices.Sorted(maps.Values(e.names))
-	if u.views {
-		for _, m := range u.targets {
+	for _, m := range u.targets {
+		if u.views {
 			names = append(names, m.name+viewSuffix, m.name+indexSuffix)
+		}
+		if fields := streamed(m); len(fields) > 0 {
+			names = append(names, streamNames(m, fields, u.prefix)...)
 		}
 	}
 	for _, name := range names {
@@ -185,13 +191,15 @@ func methodNames() []string {
 // the package under one of them.
 func localNames() []string {
 	return []string{
-		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "data", "depth", "dst", "ea", "eb",
+		"a", "all", "arr", "at", "av", "b", "buf", "bv", "c", "ck", "collect", "cv", "d", "data", "depth", "dst", "e",
+		"ea", "eb",
 		"enc",
 		"end", "err", "free", "freeKeys", fromName, "held", "i", "im", "ix", "k", "keys", "l", "last", locParam, "m",
 		membersName, "mk",
 		"mv",
-		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "pair", "pairs", prevKeyName, "present",
-		priorName, "re", "s",
+		mergeParam, "n", "na", "nb", numParam, "off", "ok", "opts", "out", "p", "pair", "pairs", prevKeyName,
+		"present",
+		priorName, "r", "re", "s",
 		"sa", "sb",
 		"scratch", "seen", "size", "skipped", "slab", "src", "t", "tag", "u", "used", "v", "w", "x", "zero",
 	}

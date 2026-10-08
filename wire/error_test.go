@@ -27,6 +27,9 @@ const (
 	// wire.ExactError chooses between.
 	errTagOff   = 3
 	errValueOff = 20
+	// errLimit is the buffer limit of a stream decoder that wire.LimitError
+	// names.
+	errLimit = 4096
 )
 
 // errOwn is the error of a type that encodes or decodes itself.
@@ -211,6 +214,18 @@ func TestError(t *testing.T) {
 			name: "ExactError/locates the zero value at the offset of the tag",
 			err:  wire.ExactError(nil, errLoc, errNumber, errOff, errValueOff),
 			want: located(kanon.ErrNotCanonical, "field at a value that the encoding leaves out"),
+		},
+		{
+			name: "LimitError/names the buffer limit at the field of an element",
+			err:  wire.LimitError(errLoc, errNumber, errOff, errLimit),
+			want: located(kanon.ErrLimit, "value takes the buffer past 4096 bytes"),
+		},
+		{
+			name: "LimitError/locates a field that does not stream at the struct",
+			err:  wire.LimitError(errType, 0, errOff, errLimit),
+			want: &kanon.DecodeError{
+				Type: errType, Offset: errOff, Detail: "value takes the buffer past 4096 bytes", Err: kanon.ErrLimit,
+			},
 		},
 	}
 	for _, c := range cases {

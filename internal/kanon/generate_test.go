@@ -98,12 +98,14 @@ func generations(t *testing.T) []generation {
 }
 
 // Files of the modules that the tests write: the go.mod of a module of one
-// package, the source file of its struct types, and its code file.
+// package, the source file of its struct types, its code file and its test
+// file.
 const (
 	goMod    = "module example.com/m\n\ngo 1.27\n"
 	modName  = "go.mod"
 	source   = "a.go"
 	codeName = "a.kanon.go"
+	testName = "a.kanon_test.go"
 	// pkgClause begins every Go file of the package.
 	pkgClause = "package m\n\n"
 )

@@ -134,6 +134,32 @@
 // fields that the view reads, and without an error each method of the index
 // returns what the reference view of its field returns.
 //
+// # Stream decoders
+//
+// When the Spec names a stream decoder, which kanon declares for a struct
+// type with a field that has the tag option stream, the checks run the
+// stream decoder on the encoding of every sample, on every probe and on the
+// inputs of the property, as a caller runs it: it reads the bytes of each
+// streamed byte slice and string, and decodes every element of each
+// streamed slice. The receiver, with each streamed field set to the value
+// that the stream returned, and the error of the stream must equal the
+// value and the error of the reference decode, without the slab of the
+// probe. A second run reads from a reader of one byte per call, a third
+// copies each streamed byte slice and string through WriteTo, and a fourth
+// skips every streamed value, which leaves the streamed fields empty.
+// Further checks state the other contracts of the stream decoder on the
+// encoding of every sample that decodes:
+//
+//   - Len returns the length that the encoding declares for each streamed
+//     value.
+//   - A reader that ends at any offset of the encoding fails the stream with
+//     io.ErrUnexpectedEOF at that offset, through Read and through WriteTo.
+//     This check leaves out the wide samples and the key sample.
+//   - Under the buffer limit that the encoding needs, its decoded fields
+//     together or its longest element, the stream decodes it, and under one
+//     byte less it fails with kanon.ErrLimit.
+//   - A negative size fails every call of Next with kanon.ErrStreamSize.
+//
 // # Generated values
 //
 // One check of [Checks] runs a property of go.dokimi.dev/assert/prop with
@@ -235,11 +261,13 @@
 // # Allocations
 //
 // The allocation checks count the allocations of SizeKanon, of EncodeKanon
-// and AppendBinary into a buffer with room for the encoding, and of
-// DecodeKanon with a slab into a receiver that decoded the encoding before.
-// Each allows none. They measure every sample except the wide samples and
-// the samples that contain a value that [go.thesmos.sh/kanon.Message] lists
-// as allocating, and the golden file pins the samples that they measure.
+// and AppendBinary into a buffer with room for the encoding, of DecodeKanon
+// with a slab into a receiver that decoded the encoding before, and of a
+// stream decoder that reads an encoding that it read before to its end
+// after Reset. Each allows none. They measure every sample except the wide
+// samples and the samples that contain a value that
+// [go.thesmos.sh/kanon.Message] lists as allocating, and the golden file
+// pins the samples that they measure.
 // They count through testing.AllocsPerRun, which panics while a parallel
 // test runs, so [Run] runs them first and serially, and [Check.Serial]
 // marks them.

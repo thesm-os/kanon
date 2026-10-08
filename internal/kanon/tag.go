@@ -23,6 +23,9 @@ const (
 	// tagUnknown marks the []byte field that keeps the unknown fields of a
 	// decode.
 	tagUnknown = "unknown"
+	// tagStream marks a streamed field, whose value the stream decoder of its
+	// struct returns to its caller instead of decoding it.
+	tagStream = "stream"
 	// tagUnion names the discriminator field of a union member, as in
 	// "union=Kind".
 	tagUnion = "union="
@@ -70,15 +73,18 @@ type tag struct {
 	fixed bool
 	// unknown marks the field that keeps unknown fields.
 	unknown bool
+	// stream marks a streamed field.
+	stream bool
 }
 
 // parseTag parses the value of the kanon key of the struct tag structTag:
 // "-" or a comma-separated list, in any order, of at most one field number
-// and the words fixed, unknown, union=Name and types=T1|T2, which lists Go
-// type expressions. A comma inside brackets, parentheses or braces belongs
-// to the type expression around it, so that `types=Pair[int, string]` is
-// one word. parseTag ignores empty words, so that `kanon:",fixed"` selects
-// the encoding alone and `kanon:""` states only that the field has a tag.
+// and the words fixed, unknown, stream, union=Name and types=T1|T2, which
+// lists Go type expressions. A comma inside brackets, parentheses or braces
+// belongs to the type expression around it, so that `types=Pair[int,
+// string]` is one word. parseTag ignores empty words, so that
+// `kanon:",fixed"` selects the encoding alone and `kanon:""` states only that
+// the field has a tag.
 //
 // parseTag fails for an unknown word, a second number, a number outside 1
 // to 2147483647, an empty union name, a second types option, a types option
@@ -97,7 +103,7 @@ func parseTag(structTag string) (tag, error) {
 			return tag{}, err
 		}
 	}
-	if t.unknown && (t.num != 0 || t.fixed || t.union != "" || t.types != "") {
+	if t.unknown && (t.num != 0 || t.fixed || t.union != "" || t.types != "" || t.stream) {
 		return tag{}, fmt.Errorf("kanon: tag %q: the word %s takes no other word", value, tagUnknown)
 	}
 	return t, nil
@@ -115,6 +121,10 @@ func (t *tag) add(value, word string) error {
 	}
 	if word == tagUnknown {
 		t.unknown = true
+		return nil
+	}
+	if word == tagStream {
+		t.stream = true
 		return nil
 	}
 	if union, ok := strings.CutPrefix(word, tagUnion); ok {
