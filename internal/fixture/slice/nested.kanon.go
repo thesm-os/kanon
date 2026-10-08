@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -559,7 +559,7 @@ func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab string, off, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]int32, 0, wire.CountValues(data))
+		x = make([][]int32, 0, wire.SliceCap[[]int32](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -593,7 +593,7 @@ func _nested_readSliceSliceString(dst *[][]string, data []byte, slab string, off
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]string, 0, wire.CountValues(data))
+		x = make([][]string, 0, wire.SliceCap[[]string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -627,7 +627,7 @@ func _nested_readSliceArray2String(dst *[][2]string, data []byte, slab string, o
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][2]string, 0, wire.CountValues(data))
+		x = make([][2]string, 0, wire.SliceCap[[2]string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [2]string{})
@@ -656,7 +656,7 @@ func _nested_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]map[string]int32, 0, wire.CountValues(data))
+		x = make([]map[string]int32, 0, wire.SliceCap[map[string]int32](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -689,7 +689,7 @@ func _nested_readSliceSliceTimeTime(dst *[][]time.Time, data []byte, slab string
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]time.Time, 0, wire.CountValues(data))
+		x = make([][]time.Time, 0, wire.SliceCap[[]time.Time](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -723,7 +723,7 @@ func _nested_readSliceArray0Byte(dst *[][0]byte, data []byte, slab string, off, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][0]byte, 0, len(data))
+		x = make([][0]byte, 0, wire.SliceCap[[0]byte](len(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [0]byte{})
@@ -752,7 +752,7 @@ func _nested_readSliceSliceSliceInt64(dst *[][][]int64, data []byte, slab string
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][][]int64, 0, wire.CountValues(data))
+		x = make([][][]int64, 0, wire.SliceCap[[][]int64](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -785,7 +785,7 @@ func _nested_readTree(dst *Tree, data []byte, slab string, off, depth int, loc s
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make(Tree, 0, wire.CountValues(data))
+		x = make(Tree, 0, wire.SliceCap[Tree](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -819,7 +819,7 @@ func _nested_readSliceArray0PtrInt32(dst *[][0]*int32, data []byte, slab string,
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][0]*int32, 0, len(data))
+		x = make([][0]*int32, 0, wire.SliceCap[[0]*int32](len(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [0]*int32{})
@@ -1162,7 +1162,7 @@ func _nested_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int32, 0, wire.CountVarints(data))
+		x = make([]int32, 0, wire.SliceCap[int32](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -1192,7 +1192,7 @@ func _nested_readSliceString(dst *[]string, data []byte, slab string, off, depth
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]string, 0, wire.CountValues(data))
+		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, "")
@@ -1286,7 +1286,7 @@ func _nested_readSliceTimeTime(dst *[]time.Time, data []byte, slab string, off, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]time.Time, 0, wire.CountValues(data))
+		x = make([]time.Time, 0, wire.SliceCap[time.Time](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, time.Time{})
@@ -1317,7 +1317,7 @@ func _nested_readSliceSliceInt64(dst *[][]int64, data []byte, slab string, off, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]int64, 0, wire.CountValues(data))
+		x = make([][]int64, 0, wire.SliceCap[[]int64](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -1431,7 +1431,7 @@ func _nested_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int64, 0, wire.CountVarints(data))
+		x = make([]int64, 0, wire.SliceCap[int64](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

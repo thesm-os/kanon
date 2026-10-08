@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -387,7 +387,7 @@ func _fixed_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int32, 0, len(data)/4)
+		x = make([]int32, 0, wire.SliceCap[int32](len(data)/4))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -413,7 +413,7 @@ func _fixed_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int64, 0, len(data)/8)
+		x = make([]int64, 0, wire.SliceCap[int64](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -439,7 +439,7 @@ func _fixed_readSliceUint32(dst *[]uint32, data []byte, slab string, off, depth 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]uint32, 0, len(data)/4)
+		x = make([]uint32, 0, wire.SliceCap[uint32](len(data)/4))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -465,7 +465,7 @@ func _fixed_readSliceUint64(dst *[]uint64, data []byte, slab string, off, depth 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]uint64, 0, len(data)/8)
+		x = make([]uint64, 0, wire.SliceCap[uint64](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -491,7 +491,7 @@ func _fixed_readSliceLevel(dst *[]Level, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Level, 0, len(data)/4)
+		x = make([]Level, 0, wire.SliceCap[Level](len(data)/4))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -516,7 +516,7 @@ func _fixed_readSliceSize(dst *[]Size, data []byte, slab string, off, depth int,
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Size, 0, len(data)/8)
+		x = make([]Size, 0, wire.SliceCap[Size](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

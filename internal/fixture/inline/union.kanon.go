@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -515,7 +515,7 @@ func _union_readSliceExternalVariant(dst *[]external.Variant, data []byte, slab 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]external.Variant, 0, wire.CountValues(data))
+		x = make([]external.Variant, 0, wire.SliceCap[external.Variant](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, external.Variant{})
@@ -608,7 +608,7 @@ func _union_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int32, 0, wire.CountVarints(data))
+		x = make([]int32, 0, wire.SliceCap[int32](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

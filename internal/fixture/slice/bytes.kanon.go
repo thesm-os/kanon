@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -393,7 +393,7 @@ func _bytes_readSliceArray0Byte(dst *[][0]byte, data []byte, slab string, off, d
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][0]byte, 0, len(data))
+		x = make([][0]byte, 0, wire.SliceCap[[0]byte](len(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [0]byte{})
@@ -422,7 +422,7 @@ func _bytes_readSliceArray1Byte(dst *[][1]byte, data []byte, slab string, off, d
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][1]byte, 0, len(data)/2)
+		x = make([][1]byte, 0, wire.SliceCap[[1]byte](len(data)/2))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [1]byte{})
@@ -451,7 +451,7 @@ func _bytes_readSliceArray32Byte(dst *[][32]byte, data []byte, slab string, off,
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][32]byte, 0, len(data)/33)
+		x = make([][32]byte, 0, wire.SliceCap[[32]byte](len(data)/33))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [32]byte{})
@@ -480,7 +480,7 @@ func _bytes_readSliceArray127Byte(dst *[][127]byte, data []byte, slab string, of
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][127]byte, 0, len(data)/128)
+		x = make([][127]byte, 0, wire.SliceCap[[127]byte](len(data)/128))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [127]byte{})
@@ -509,7 +509,7 @@ func _bytes_readSliceArray128Byte(dst *[][128]byte, data []byte, slab string, of
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][128]byte, 0, len(data)/130)
+		x = make([][128]byte, 0, wire.SliceCap[[128]byte](len(data)/130))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, [128]byte{})
@@ -538,7 +538,7 @@ func _bytes_readSliceDigest(dst *[]Digest, data []byte, slab string, off, depth 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Digest, 0, len(data)/33)
+		x = make([]Digest, 0, wire.SliceCap[Digest](len(data)/33))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, Digest{})

@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -559,7 +559,7 @@ func _float_readSliceFloat32(dst *[]float32, data []byte, slab string, off, dept
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]float32, 0, len(data)/4)
+		x = make([]float32, 0, wire.SliceCap[float32](len(data)/4))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -585,7 +585,7 @@ func _float_readSliceFloat64(dst *[]float64, data []byte, slab string, off, dept
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]float64, 0, len(data)/8)
+		x = make([]float64, 0, wire.SliceCap[float64](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -611,7 +611,7 @@ func _float_readSliceRatio(dst *[]Ratio, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Ratio, 0, len(data)/4)
+		x = make([]Ratio, 0, wire.SliceCap[Ratio](len(data)/4))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -637,7 +637,7 @@ func _float_readSliceScore(dst *[]Score, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Score, 0, len(data)/8)
+		x = make([]Score, 0, wire.SliceCap[Score](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -713,7 +713,7 @@ func _float_readSliceComplex64(dst *[]complex64, data []byte, slab string, off, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]complex64, 0, len(data)/8)
+		x = make([]complex64, 0, wire.SliceCap[complex64](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -739,7 +739,7 @@ func _float_readSliceComplex128(dst *[]complex128, data []byte, slab string, off
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]complex128, 0, len(data)/17)
+		x = make([]complex128, 0, wire.SliceCap[complex128](len(data)/17))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -771,7 +771,7 @@ func _float_readSlicePhase(dst *[]Phase, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Phase, 0, len(data)/8)
+		x = make([]Phase, 0, wire.SliceCap[Phase](len(data)/8))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -796,7 +796,7 @@ func _float_readSliceWave(dst *[]Wave, data []byte, slab string, off, depth int,
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Wave, 0, len(data)/17)
+		x = make([]Wave, 0, wire.SliceCap[Wave](len(data)/17))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

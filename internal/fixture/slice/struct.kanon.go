@@ -22,10 +22,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -255,8 +255,9 @@ func (m *Structs) SizeKanon() int {
 // SizeKanon bytes, EncodeKanon writes nothing and returns io.ErrShortBuffer. It
 // fails when the value of a field fails to encode: a type that encodes itself
 // returns an error, ValidateKanon of a type rejects a value, an interface
-// stores a type that the tag option types of its field does not list, or a map
-// has a key with a NaN component or two keys of one projection.
+// stores a type that the tag option types of its field does not list, a map has
+// a key with a NaN component or two keys of one projection, or a slice or a map
+// has more elements than the tag option max of its field allows.
 func (m *Structs) EncodeKanon(buf []byte) (int, error) {
 	if m == nil {
 		return 0, nil
@@ -272,8 +273,9 @@ func (m *Structs) EncodeKanon(buf []byte) (int, error) {
 // the package that contain one call it. It fails when the value of a field
 // fails to encode: a type that encodes itself returns an error, ValidateKanon
 // of a type rejects a value, an interface stores a type that the tag option
-// types of its field does not list, or a map has a key with a NaN component or
-// two keys of one projection.
+// types of its field does not list, a map has a key with a NaN component or two
+// keys of one projection, or a slice or a map has more elements than the tag
+// option max of its field allows.
 func (m *Structs) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
 	if len(m.Nothing) > 0 {
@@ -315,8 +317,9 @@ func (m *Structs) encodeKanon(buf []byte) (int, error) {
 // It does not allocate when b has SizeKanon bytes of spare capacity. It fails
 // when the value of a field fails to encode: a type that encodes itself returns
 // an error, ValidateKanon of a type rejects a value, an interface stores a type
-// that the tag option types of its field does not list, or a map has a key with
-// a NaN component or two keys of one projection.
+// that the tag option types of its field does not list, a map has a key with a
+// NaN component or two keys of one projection, or a slice or a map has more
+// elements than the tag option max of its field allows.
 func (m *Structs) AppendBinary(b []byte) ([]byte, error) {
 	if m == nil {
 		return b, nil
@@ -333,7 +336,8 @@ func (m *Structs) AppendBinary(b []byte) ([]byte, error) {
 // encoding. It fails when the value of a field fails to encode: a type that
 // encodes itself returns an error, ValidateKanon of a type rejects a value, an
 // interface stores a type that the tag option types of its field does not list,
-// or a map has a key with a NaN component or two keys of one projection.
+// a map has a key with a NaN component or two keys of one projection, or a
+// slice or a map has more elements than the tag option max of its field allows.
 func (m *Structs) MarshalBinary() ([]byte, error) {
 	return m.AppendBinary(nil)
 }
@@ -719,7 +723,7 @@ func _struct_readSliceInner(dst *[]Inner, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Inner, 0, wire.CountValues(data))
+		x = make([]Inner, 0, wire.SliceCap[Inner](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, Inner{})
@@ -751,7 +755,7 @@ func _struct_readSliceExternalLabel(dst *[]external.Label, data []byte, slab str
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]external.Label, 0, wire.CountValues(data))
+		x = make([]external.Label, 0, wire.SliceCap[external.Label](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, external.Label{})
@@ -783,7 +787,7 @@ func _struct_readSliceLoose(dst *[]Loose, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Loose, 0, wire.CountValues(data))
+		x = make([]Loose, 0, wire.SliceCap[Loose](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, Loose{})
@@ -815,7 +819,7 @@ func _struct_readSliceExternalRemote(dst *[]external.Remote, data []byte, slab s
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]external.Remote, 0, wire.CountValues(data))
+		x = make([]external.Remote, 0, wire.SliceCap[external.Remote](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, external.Remote{})
@@ -847,7 +851,7 @@ func _struct_readSliceExternalPairStringInt32(dst *[]external.Pair[string, int32
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]external.Pair[string, int32], 0, wire.CountValues(data))
+		x = make([]external.Pair[string, int32], 0, wire.SliceCap[external.Pair[string, int32]](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, external.Pair[string, int32]{})
@@ -885,7 +889,10 @@ func _struct_readSliceAny(dst *[]struct {
 		x = make([]struct {
 			A int32
 			B int32
-		}, 0, wire.CountValues(data))
+		}, 0, wire.SliceCap[struct {
+			A int32
+			B int32
+		}](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, struct {
@@ -920,7 +927,7 @@ func _struct_readSliceAny2(dst *[]struct{}, data []byte, slab string, off, depth
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]struct{}, 0, len(data))
+		x = make([]struct{}, 0, wire.SliceCap[struct{}](len(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, struct{}{})

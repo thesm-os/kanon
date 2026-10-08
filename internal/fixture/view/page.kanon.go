@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -284,7 +284,7 @@ func _page_readSliceUint64(dst *[]uint64, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]uint64, 0, wire.CountVarints(data))
+		x = make([]uint64, 0, wire.SliceCap[uint64](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -310,7 +310,7 @@ func _page_readSliceSliceByte(dst *[][]byte, data []byte, slab string, off, dept
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]byte, 0, wire.CountValues(data))
+		x = make([][]byte, 0, wire.SliceCap[[]byte](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {

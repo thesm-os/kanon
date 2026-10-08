@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -360,7 +360,7 @@ func _text_readSliceString(dst *[]string, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]string, 0, wire.CountValues(data))
+		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, "")
@@ -387,7 +387,7 @@ func _text_readSliceSliceByte(dst *[][]byte, data []byte, slab string, off, dept
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([][]byte, 0, wire.CountValues(data))
+		x = make([][]byte, 0, wire.SliceCap[[]byte](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {
@@ -417,7 +417,7 @@ func _text_readSliceName(dst *[]Name, data []byte, slab string, off, depth int, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Name, 0, wire.CountValues(data))
+		x = make([]Name, 0, wire.SliceCap[Name](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, "")
@@ -443,7 +443,7 @@ func _text_readSliceBlob(dst *[]Blob, data []byte, slab string, off, depth int, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Blob, 0, wire.CountValues(data))
+		x = make([]Blob, 0, wire.SliceCap[Blob](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		if len(x) < cap(x) {

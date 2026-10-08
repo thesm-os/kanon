@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -314,7 +314,7 @@ func _alias_readSliceInt32(dst *[]Int32Alias, data []byte, slab string, off, dep
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Int32Alias, 0, wire.CountVarints(data))
+		x = make([]Int32Alias, 0, wire.SliceCap[int32](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -344,7 +344,7 @@ func _alias_readSliceName(dst *[]NameAlias, data []byte, slab string, off, depth
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]NameAlias, 0, wire.CountValues(data))
+		x = make([]NameAlias, 0, wire.SliceCap[Name](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, "")
@@ -371,7 +371,7 @@ func _alias_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth in
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int64, 0, wire.CountVarints(data))
+		x = make([]int64, 0, wire.SliceCap[int64](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

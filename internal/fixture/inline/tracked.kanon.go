@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -215,8 +215,9 @@ func (m *Tracked) SizeKanon() int {
 // SizeKanon bytes, EncodeKanon writes nothing and returns io.ErrShortBuffer. It
 // fails when the value of a field fails to encode: a type that encodes itself
 // returns an error, ValidateKanon of a type rejects a value, an interface
-// stores a type that the tag option types of its field does not list, or a map
-// has a key with a NaN component or two keys of one projection.
+// stores a type that the tag option types of its field does not list, a map has
+// a key with a NaN component or two keys of one projection, or a slice or a map
+// has more elements than the tag option max of its field allows.
 func (m *Tracked) EncodeKanon(buf []byte) (int, error) {
 	if m == nil {
 		return 0, nil
@@ -232,8 +233,9 @@ func (m *Tracked) EncodeKanon(buf []byte) (int, error) {
 // the package that contain one call it. It fails when the value of a field
 // fails to encode: a type that encodes itself returns an error, ValidateKanon
 // of a type rejects a value, an interface stores a type that the tag option
-// types of its field does not list, or a map has a key with a NaN component or
-// two keys of one projection.
+// types of its field does not list, a map has a key with a NaN component or two
+// keys of one projection, or a slice or a map has more elements than the tag
+// option max of its field allows.
 func (m *Tracked) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
 	if m.Holders != nil {
@@ -259,8 +261,9 @@ func (m *Tracked) encodeKanon(buf []byte) (int, error) {
 // It does not allocate when b has SizeKanon bytes of spare capacity. It fails
 // when the value of a field fails to encode: a type that encodes itself returns
 // an error, ValidateKanon of a type rejects a value, an interface stores a type
-// that the tag option types of its field does not list, or a map has a key with
-// a NaN component or two keys of one projection.
+// that the tag option types of its field does not list, a map has a key with a
+// NaN component or two keys of one projection, or a slice or a map has more
+// elements than the tag option max of its field allows.
 func (m *Tracked) AppendBinary(b []byte) ([]byte, error) {
 	if m == nil {
 		return b, nil
@@ -277,7 +280,8 @@ func (m *Tracked) AppendBinary(b []byte) ([]byte, error) {
 // encoding. It fails when the value of a field fails to encode: a type that
 // encodes itself returns an error, ValidateKanon of a type rejects a value, an
 // interface stores a type that the tag option types of its field does not list,
-// or a map has a key with a NaN component or two keys of one projection.
+// a map has a key with a NaN component or two keys of one projection, or a
+// slice or a map has more elements than the tag option max of its field allows.
 func (m *Tracked) MarshalBinary() ([]byte, error) {
 	return m.AppendBinary(nil)
 }
@@ -469,8 +473,9 @@ func _tracked_sizeHolder(m *Holder) int {
 // the end of buf, which has room for it, and returns its length. It fails when
 // the value of a field fails to encode: a type that encodes itself returns an
 // error, ValidateKanon of a type rejects a value, an interface stores a type
-// that the tag option types of its field does not list, or a map has a key with
-// a NaN component or two keys of one projection.
+// that the tag option types of its field does not list, a map has a key with a
+// NaN component or two keys of one projection, or a slice or a map has more
+// elements than the tag option max of its field allows.
 func _tracked_putHolder(buf []byte, m *Holder) (int, error) {
 	i := len(buf)
 	if m.Word != (codec.Word{}) {
@@ -924,7 +929,7 @@ func _tracked_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int32, 0, wire.CountVarints(data))
+		x = make([]int32, 0, wire.SliceCap[int32](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

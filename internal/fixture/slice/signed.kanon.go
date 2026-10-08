@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -672,7 +672,7 @@ func _signed_readSliceInt(dst *[]int, data []byte, slab string, off, depth int, 
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int, 0, wire.CountVarints(data))
+		x = make([]int, 0, wire.SliceCap[int](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -699,7 +699,7 @@ func _signed_readSliceInt8(dst *[]int8, data []byte, slab string, off, depth int
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int8, 0, wire.CountVarints(data))
+		x = make([]int8, 0, wire.SliceCap[int8](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -729,7 +729,7 @@ func _signed_readSliceInt16(dst *[]int16, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int16, 0, wire.CountVarints(data))
+		x = make([]int16, 0, wire.SliceCap[int16](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -759,7 +759,7 @@ func _signed_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int32, 0, wire.CountVarints(data))
+		x = make([]int32, 0, wire.SliceCap[int32](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -789,7 +789,7 @@ func _signed_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]int64, 0, wire.CountVarints(data))
+		x = make([]int64, 0, wire.SliceCap[int64](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -815,7 +815,7 @@ func _signed_readSliceTiny(dst *[]Tiny, data []byte, slab string, off, depth int
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Tiny, 0, wire.CountVarints(data))
+		x = make([]Tiny, 0, wire.SliceCap[Tiny](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -845,7 +845,7 @@ func _signed_readSliceSmall(dst *[]Small, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Small, 0, wire.CountVarints(data))
+		x = make([]Small, 0, wire.SliceCap[Small](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -875,7 +875,7 @@ func _signed_readSliceLevel(dst *[]Level, data []byte, slab string, off, depth i
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Level, 0, wire.CountVarints(data))
+		x = make([]Level, 0, wire.SliceCap[Level](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -905,7 +905,7 @@ func _signed_readSliceAmount(dst *[]Amount, data []byte, slab string, off, depth
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Amount, 0, wire.CountVarints(data))
+		x = make([]Amount, 0, wire.SliceCap[Amount](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -931,7 +931,7 @@ func _signed_readSliceOffset(dst *[]Offset, data []byte, slab string, off, depth
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]Offset, 0, wire.CountVarints(data))
+		x = make([]Offset, 0, wire.SliceCap[Offset](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)
@@ -958,7 +958,7 @@ func _signed_readSliceTimeDuration(dst *[]time.Duration, data []byte, slab strin
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]time.Duration, 0, wire.CountVarints(data))
+		x = make([]time.Duration, 0, wire.SliceCap[time.Duration](wire.CountVarints(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, 0)

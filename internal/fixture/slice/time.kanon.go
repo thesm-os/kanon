@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 3 of the generator.
+// The file compiles against a runtime that supports version 4 of the generator.
 const (
-	_ = kanon.EnforceVersion(3 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 3)
+	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
 )
 
 // The generated types implement kanon.Cloner.
@@ -225,7 +225,7 @@ func _time_readSliceTimeTime(dst *[]time.Time, data []byte, slab string, off, de
 	}
 	x := *dst
 	if x == nil && len(data) > 0 {
-		x = make([]time.Time, 0, wire.CountValues(data))
+		x = make([]time.Time, 0, wire.SliceCap[time.Time](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
 		x = append(x, time.Time{})
