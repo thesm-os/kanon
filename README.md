@@ -23,6 +23,7 @@ A `go:generate` directive names the types:
 - A decode into a value that decoded before allocates one copy of its input when the type contains a string, and nothing when you pass a slab. `kanon.Message` lists the values that allocate in either case.
 - A decode error contains the struct type, the field, the field number and the offset of the malformed input.
 - A type with a field that has the tag option `stream` gets a stream decoder, which reads an encoding too large for memory from an `io.Reader`, one field at a time.
+- A slice or a map field with the tag option `max` has a bound on its elements, which the decode checks before it allocates for an element past it.
 - kanon writes a conformance test per type. The test compares the codec with a reference encoder and decoder on fixed samples and on generated values, and checks the allocation contract. A fuzz target runs the comparison on the values and inputs that the fuzzer searches, arbitrary input included.
 
 ## Install
@@ -152,7 +153,7 @@ if derr, ok := errors.AsType[*kanon.DecodeError](err); ok {
 }
 ```
 
-An encode returns a `*kanon.EncodeError` in six cases:
+An encode returns a `*kanon.EncodeError` in seven cases:
 
 - A map key has a NaN component.
 - Two keys of one map encode alike.
@@ -160,6 +161,7 @@ An encode returns a `*kanon.EncodeError` in six cases:
 - A type that encodes itself returns an error.
 - The encoding of a type that declares `SizeKanon` has another length than `SizeKanon` returns, and the error wraps `kanon.ErrSize`.
 - The `ValidateKanon` method of a type rejects a value.
+- A slice or a map has more elements than the tag option `max` of its field allows, and the error wraps `kanon.ErrMax`.
 
 A value of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
 
@@ -210,6 +212,7 @@ A tag is a comma-separated list of at most one field number and any of the optio
 | `kanon:",types=Circle\|*Square"` | Lists the concrete types of the interfaces in the type of the field, as `gob.Register` registers types. |
 | `kanon:",unknown"` | Marks the `[]byte` field in which a decode keeps the fields that it does not know. |
 | `kanon:",stream"` | Makes the stream decoder of the struct return the value of the field to its caller, as [Stream decoding](#stream-decoding) describes. |
+| `kanon:",max=1024"` | Bounds the elements of a slice or a map field at 1024, as [Bounds](#bounds) describes. |
 
 The constant that selects a union member is named after the type of the discriminator and the member.
 When `Kind` has type `Kind`, the constant `KindText` selects the member `Text`.
@@ -331,6 +334,33 @@ A canonical reader rejects a field that its struct does not declare.
 Upgrade every canonical reader before a writer sets a new field.
 The generation fails for a canonical type that contains a struct with a kanon codec whose directive does not set `-canonical`, a struct whose codec is written by hand, or a field tagged `unknown`.
 
+## Bounds
+
+A decode makes a slice with room for every element that it counts in its input, before it decodes the first one.
+An empty element takes one byte of input, so 1 MiB of untrusted input can make a slice of a million elements.
+Bound a slice or a map field with the tag option `max`:
+
+```go
+type Page struct {
+	Items [][]byte          `kanon:"1,max=1024"`
+	Path  []string          `kanon:"2,max=32"`
+	Meta  map[string]string `kanon:"3,max=16"`
+}
+```
+
+- The encode of a value whose field has more elements fails with a `*kanon.EncodeError` that wraps `kanon.ErrMax`.
+- A decode, a merge and a stream decoder fail with a `*kanon.DecodeError` that wraps `kanon.ErrMax` at the element that would take the field past its bound, before they decode it.
+- The first allocation of a bounded slice makes room for its bound of elements at most.
+- The first allocation of every slice takes at most 10 MiB, bounded or not, and the slice grows by `append` after it.
+
+The bound counts the elements of every occurrence of the field in the encoding, and in a merge the elements of the receiver.
+It applies to the field itself, and not to the slices and maps in its elements.
+The option applies to a slice and a map, other than a byte slice and a type that encodes itself.
+
+The option does not change the encoding.
+Adding it, or lowering the bound, makes a reader reject what an older writer can write, so upgrade every writer first.
+Removing it, or raising the bound, makes a writer write what an older reader rejects, so upgrade every reader first.
+
 ## Stream decoding
 
 A decode reads the whole encoding from one byte slice.
@@ -397,6 +427,7 @@ Act on the values only after `Next` returns `io.EOF`.
 
 `kanon.StreamOptions` sets the nesting limit and the buffer limit, which is 16 MiB by default.
 The decoded fields together, and each element, must fit within the buffer limit, or the stream fails with `kanon.ErrLimit`.
+A streamed slice with the tag option `max` fails with `kanon.ErrMax` at the element past its bound, before the stream reads the length of the element.
 The strings of the receiver alias the buffer of the stream until the next `Reset`.
 The strings of an element alias it until the next call of `Next`, `Element` or a decode method.
 
@@ -591,6 +622,7 @@ The design is in RFCs under [docs/rfc](docs/rfc/README.md), and the decisions ar
 - [Inspection](docs/rfc/0005-inspection.md), a draft, specifies `kanon inspect`.
 - [Canonical decoding](docs/rfc/0006-canonical-decoding.md), a draft, specifies the `-canonical` flag.
 - [Stream decoding](docs/rfc/0007-stream-decoding.md), a draft, specifies the tag option `stream` and the stream decoder.
+- [Element bounds](docs/rfc/0008-element-bounds.md), a draft, specifies the tag option `max`.
 
 ## Development
 

@@ -66,18 +66,28 @@
 // value that would take its memory past the buffer limit fails with
 // [ErrLimit].
 //
+// # Bounds
+//
+// The tag option max=N on a slice or a map field bounds the number of its
+// elements at N. The encode of a value whose field has more elements fails
+// with [ErrMax]. A decode, a merge and a stream decoder fail with [ErrMax] at
+// the element that would take the field past N, before they decode it, and
+// the first allocation of a bounded slice makes room for N elements at most.
+// The first allocation of every slice takes at most 10 MiB, and the slice
+// grows by append after it.
+//
 // # Errors
 //
 // A decode returns a [*DecodeError] that names the struct type, the field,
 // the field number and the offset of the malformed input, and that wraps
 // one of [io.ErrUnexpectedEOF], [ErrMalformed], [ErrRange], [ErrDepth],
-// [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey], [ErrRepeatedView]
-// and [ErrNotCanonical], the error of a type that decodes itself, or the
-// error of the ValidateKanon of a [Validator]. A stream decoder also returns
-// a [*DecodeError] that wraps [ErrLimit], and [ErrStreamSize] for a size
-// outside 0 to math.MaxInt. An encode returns a [*EncodeError]
-// that wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey] or
-// [ErrSize], the error of a type that encodes itself, or the error of
+// [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey], [ErrRepeatedView],
+// [ErrNotCanonical] and [ErrMax], the error of a type that decodes itself, or
+// the error of the ValidateKanon of a [Validator]. A stream decoder also
+// returns a [*DecodeError] that wraps [ErrLimit], and [ErrStreamSize] for a
+// size outside 0 to math.MaxInt. An encode returns a [*EncodeError] that
+// wraps [ErrUnlistedType], [ErrInvalidKey], [ErrAmbiguousKey], [ErrSize] or
+// [ErrMax], the error of a type that encodes itself, or the error of
 // ValidateKanon. An encode panics with a [*EncodeError] that wraps
 // [ErrExact] for a value of an [Exact] type that breaks its guarantee.
 // errors.Is and errors.As classify both.

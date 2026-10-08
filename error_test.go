@@ -24,6 +24,7 @@ const (
 	exactText     = "kanon: a type that declares ExactKanon breaks its guarantee"
 	limitText     = "kanon: value longer than the buffer of the stream"
 	sizeText      = "kanon: stream size outside 0 to math.MaxInt"
+	maxText       = "kanon: more elements than the max of the field"
 )
 
 func TestDecodeError(t *testing.T) {
@@ -127,6 +128,7 @@ func TestCauses(t *testing.T) {
 			{name: "states ErrExact", err: kanon.ErrExact, want: exactText},
 			{name: "states ErrLimit", err: kanon.ErrLimit, want: limitText},
 			{name: "states ErrStreamSize", err: kanon.ErrStreamSize, want: sizeText},
+			{name: "states ErrMax", err: kanon.ErrMax, want: maxText},
 		}
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {

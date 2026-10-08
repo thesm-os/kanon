@@ -89,6 +89,13 @@ var (
 	ErrAmbiguousKey = errors.New("kanon: two map keys encode alike")
 )
 
+// ErrMax is a cause of an [EncodeError] and of a [DecodeError]: a slice or a
+// map with more elements than the tag option max of its field allows. The
+// encode of a value whose field has more elements fails, and the decode
+// fails at the element that would take the field past the bound, before it
+// decodes the element.
+var ErrMax = errors.New("kanon: more elements than the max of the field")
+
 // DecodeError is the error of a decode: the malformed input, where it
 // starts, and why it is malformed. The generated code returns one for every
 // failure, as a *DecodeError.
@@ -111,8 +118,8 @@ type DecodeError struct {
 	Detail string
 	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
 	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
-	// [ErrRepeatedView], [ErrNotCanonical], [ErrLimit], the error of a type
-	// that decodes itself, or the error of the ValidateKanon of a
+	// [ErrRepeatedView], [ErrNotCanonical], [ErrLimit], [ErrMax], the error
+	// of a type that decodes itself, or the error of the ValidateKanon of a
 	// [Validator].
 	Err error
 }
@@ -153,8 +160,8 @@ type EncodeError struct {
 	// Number is the field number of Field.
 	Number int
 	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
-	// [ErrAmbiguousKey], [ErrSize], the error of a type that encodes itself,
-	// or the error of the ValidateKanon of a [Validator].
+	// [ErrAmbiguousKey], [ErrSize], [ErrMax], the error of a type that
+	// encodes itself, or the error of the ValidateKanon of a [Validator].
 	Err error
 }
 

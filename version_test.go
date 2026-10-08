@@ -14,7 +14,7 @@ import (
 // The oldest and the newest generator version that the runtime supports.
 const (
 	oldestVersion = 1
-	newestVersion = 3
+	newestVersion = 4
 )
 
 // The constants that generated files of both versions declare compile.
@@ -38,7 +38,7 @@ func TestEnforceVersion(t *testing.T) {
 		t.Parallel()
 		t.Run("is the newest generator version", func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, kanon.MaxVersion, newestVersion, "the runtime supports generator version 3")
+			assert.Equal(t, kanon.MaxVersion, newestVersion, "the runtime supports generator version 4")
 		})
 	})
 }
