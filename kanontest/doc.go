@@ -38,14 +38,17 @@
 //     which it alone fails that way: a value of a type that encodes itself
 //     whose SizeKanon as a kanon.Sizer is below 0, whose method rejects it,
 //     or that encodes to another length than its SizeKanon, an interface
-//     that stores a type that its field does not list, or a map with a key
-//     with a NaN component or with two keys of one projection;
+//     that stores a type that its field does not list, a map with a key
+//     with a NaN component or with two keys of one projection, or a field
+//     with the tag option max at one element past its bound;
 //   - the key sample, whose map keys differ in one part each and have no
 //     NaN component;
 //   - wide samples, whose maps have more entries than a decode reuses, and
 //     per side of the entries of a map whose keys or values can fail to
 //     encode, a wide sample in which one entry of such a map fails at that
-//     side.
+//     side;
+//   - per field with the tag option max, the bound sample, which sets the
+//     field alone at its bound.
 //
 // A value of a type that encodes itself takes the value of its Go kind, and
 // for a struct the values of the fields that kanon would encode. A type for
@@ -88,6 +91,28 @@
 //
 // The golden file of T pins the number and a digest of the probes of each
 // family, and the encodings of the samples.
+//
+// # Bounds
+//
+// A field with the tag option max, whose bound the Max of its Field states,
+// has at most its bound of elements in every sample, other than a sample
+// that fails at the field. The bound of a field of a struct with a kanon
+// codec that a sample contains is the one that its tag states. The reference
+// encoder fails a value with more elements, and the reference decoder fails
+// at the element that would take the field past the bound, as the generated
+// code fails. The reference decoder counts the keys of a map under ==, as the
+// generated code counts them before it keeps one entry per projection.
+//
+// The checks that run once on every sample also run on the bound samples.
+// The probes that cut a sample at each byte, write a value of it wrong, or
+// leave out its elements one at a time leave them out, so that the time of
+// their checks grows linearly with the bound, and the golden file pins the
+// encoding of a bound sample by its length and a digest. A merge of a bound
+// sample into its own decode fails at its first element for a slice, and
+// succeeds for a map, whose keys the decode has already. One more family of
+// probes decodes each field with a bound alone at one element past it, the
+// last element in the order of the encoding, and fails with kanon.ErrMax. A
+// map whose key type has no more keys than the bound has no such probe.
 //
 // # Canonical Specs
 //
@@ -177,7 +202,7 @@
 //     byte slice differs from an empty one.
 //   - Times take the range of time.Time, in UTC or in a fixed zone.
 //   - Slices and maps take up to 4 elements or nil, three levels deep at
-//     most.
+//     most, and at most the bound of a field with the tag option max.
 //   - Each value that can fail to encode fails with odds of 1 in 16.
 //
 // The probe is one probe of a family that the decode checks derive from

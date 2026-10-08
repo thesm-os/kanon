@@ -11,6 +11,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/files"
 
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/external"
 	"go.thesmos.sh/kanon/internal/fixture/iface"
@@ -357,6 +358,23 @@ func TestShape(t *testing.T) {
 				},
 			}}
 			rejects(t, spec, specCheck, "field Tree of iface.Trees: type func() is not encoded")
+		})
+		t.Run("fails for a Max below 0", func(t *testing.T) {
+			t.Parallel()
+			spec := kanontest.Spec[bound.Shelf]{Fields: []kanontest.Field{
+				{Name: "Name", Number: 1},
+				{Name: "Lists", Number: 2, Max: -1},
+			}}
+			rejects(t, spec, specCheck, "the Spec bounds field Lists of bound.Shelf at -1, below 1")
+		})
+		t.Run("fails for a Max on a field that is not a slice or a map", func(t *testing.T) {
+			t.Parallel()
+			spec := kanontest.Spec[bound.Shelf]{Fields: []kanontest.Field{
+				{Name: "Name", Number: 1, Max: 2},
+				{Name: "Lists", Number: 2},
+			}}
+			rejects(t, spec, specCheck,
+				"the Spec bounds field Name of bound.Shelf, whose type string is not a slice or a map")
 		})
 	})
 }

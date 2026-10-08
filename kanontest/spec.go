@@ -74,6 +74,10 @@ type Field struct {
 	// Stream reports the tag option stream: the stream decoder of the struct
 	// returns the value of the field to its caller instead of decoding it.
 	Stream bool
+	// Max is the bound of the tag option max: the most elements of a slice,
+	// or entries of a map, that a value of the field has, and 0 for a field
+	// without the option.
+	Max int
 }
 
 // ConcreteType is a concrete type that the interfaces of a field store.

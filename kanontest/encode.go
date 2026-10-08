@@ -314,7 +314,10 @@ func (e *encoder) appendSelected(b []byte, l *layout, f *field, x reflect.Value)
 // bit is absent at its zero value, which does not encode. The value of a
 // struct and of any other type that encodes itself encodes before its
 // presence is known, as the generated code encodes it, so its failure
-// counts when the value has no bytes.
+// counts when the value has no bytes. A field with the tag option max whose
+// value has more elements than its bound fails with kanon.ErrMax, after the
+// failures of its value, since the generated code checks the bound before it
+// writes the value. The encoding still has the value.
 func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, member bool) []byte {
 	s := f.shape
 	if s.kind == kindPointer {
@@ -339,6 +342,9 @@ func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, m
 		value = e.appendValue(nil, s, x, loc, f.Number)
 	} else {
 		return b
+	}
+	if f.Max > 0 && x.Len() > f.Max {
+		e.fail(wire.MarshalError(kanon.ErrMax, loc, f.Number))
 	}
 	b = e.appendUvarint(b, uint64(f.Number)<<3|uint64(s.wire()))
 	if s.unframed() {

@@ -85,6 +85,10 @@ type source interface {
 	count() int
 	// entries returns the number of entries of a map, and -1 for a nil one.
 	entries() int
+	// most returns the most elements of a slice, and entries of a map, that
+	// the builder gives the value of the source: the bound of the field of a
+	// [bounded] source, and math.MaxInt for any other source.
+	most() int
 	// set reports whether a pointer is not nil.
 	set() bool
 	// pick returns one of n choices, from 0 to n-1.
@@ -147,6 +151,9 @@ func (i table) count() int {
 // entries returns the count of i, as for a slice.
 func (i table) entries() int { return i.count() }
 
+// most returns math.MaxInt.
+func (table) most() int { return math.MaxInt }
+
 // set reports whether i is not a multiple of pointerCycle, so that the
 // pointers of a chain of three point at values.
 func (i table) set() bool { return i%pointerCycle != 0 }
@@ -206,6 +213,9 @@ func (counting) count() int { return 1 }
 // entries returns wideEntries.
 func (counting) entries() int { return wideEntries }
 
+// most returns math.MaxInt.
+func (counting) most() int { return math.MaxInt }
+
 // set returns true.
 func (counting) set() bool { return true }
 
@@ -220,6 +230,45 @@ func (counting) fail() bool { return false }
 
 // failEntry returns false.
 func (counting) failEntry(*shape, bool) bool { return false }
+
+// bounded is the source of the value of a field with the tag option max that
+// keeps to its bound: the values of src, with at most max elements in the
+// slice or the map of the field itself. Its parts are the parts of src,
+// since the bound applies to the field alone.
+type bounded struct {
+	source
+	max int
+}
+
+// most returns the bound of the field.
+func (b bounded) most() int { return b.max }
+
+// lean is the source of the parts of the value of a field at its bound: the
+// values of a wide sample, with one entry in every map, so that the time of
+// the checks of the value grows linearly with the bound.
+type lean struct {
+	counting
+}
+
+// part returns lean n+k.
+func (l lean) part(k int) source { return lean{l.counting + counting(k)} }
+
+// entries returns 1.
+func (lean) entries() int { return 1 }
+
+// filled is the source of the value of a field with the tag option max at n
+// elements: n elements in the slice, or n entries in the map, of the field
+// itself, whose parts are lean.
+type filled struct {
+	lean
+	n int
+}
+
+// count returns n.
+func (f filled) count() int { return f.n }
+
+// entries returns n.
+func (f filled) entries() int { return f.n }
 
 // keyed is the source of the key sample: the values of src, with the keys
 // of the key sample in every map, as [resolver.buildMap] builds them.
@@ -423,7 +472,7 @@ func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 	case kindInline:
 		r.fill(src, s.layout, v, depth-1)
 	case kindSlice:
-		if n := src.count(); n >= 0 {
+		if n := min(src.count(), src.most()); n >= 0 {
 			v.Set(reflect.MakeSlice(s.typ, n, n))
 			for j := range n {
 				v.Index(j).Set(r.build(src.part(j), s.elem, depth-1))
@@ -468,31 +517,35 @@ func (r *resolver) buildInterface(src source, s *shape, v reflect.Value, depth i
 	}
 }
 
-// buildMap sets the map v of the shape s to the entries that src counts.
-// Entry j takes its key from part j and its value from part j+1, so that
-// keys and values of one type differ. [resolver.taintField] sets each field
-// of a key that the encoding leaves out to a value other than the zero
-// value that a decode yields. A keyed source takes the keys of the key
-// sample instead: the key that [keyTable] builds from entry 1 and the keys
-// that [resolver.keyAlts] derives from it.
+// buildMap sets the map v of the shape s to the entries that src counts, at
+// most as many as src.most returns. Entry j takes its key from part j and its
+// value from part j+1, so that keys and values of one type differ.
+// [resolver.taintField] sets each field of a key that the encoding leaves out
+// to a value other than the zero value that a decode yields. A keyed source
+// takes the keys of the key sample instead, up to the same count: the key
+// that [keyTable] builds from entry 1 and the keys that [resolver.keyAlts]
+// derives from it.
 //
 // After its entries, a map takes the entry that fails at a side of them
 // when src fails that side, as [resolver.addFailingEntry] adds it. The map
 // then counts as one value that can fail for each way to fail its encode
 // that [resolver.badKeys] finds: a key with a NaN component, and two keys
 // of one projection. A source that fails such a value adds its key, or its
-// two keys, to the map with the zero value, on which no check depends.
+// two keys, to the map with the zero value, on which no check depends. Such
+// an entry can take a map with a bound past it, whose encode then fails with
+// kanon.ErrMax first.
 func (r *resolver) buildMap(src source, s *shape, v reflect.Value, depth int) {
 	if src.keyed() {
 		base := r.build(keyTable{table(fieldEntry)}, s.key, nesting)
 		keys := append([]reflect.Value{base}, r.keyAlts(s.key, base, nesting)...)
+		keys = keys[:min(len(keys), src.most())]
 		v.Set(reflect.MakeMapWithSize(s.typ, len(keys)))
 		for j, k := range keys {
 			r.insert(s, v, k, r.build(src.part(j+1), s.elem, depth))
 		}
 		return
 	}
-	n := src.entries()
+	n := min(src.entries(), src.most())
 	if n < 0 {
 		return
 	}
@@ -962,12 +1015,24 @@ func (r *resolver) scalar(src source, v reflect.Value, depth int) {
 }
 
 // fill sets the fields of v, a struct of the layout l, from src: field k of
-// the layout takes part k+1. A union takes the member that the part of the
-// number of its first member picks, or the zero discriminator, and every
-// member has a value.
+// the layout takes part k+1. A field with the tag option max counts as one
+// value that can fail, before the values that it contains: it takes one
+// element more than its bound when its part fails it, as a [filled] source
+// builds it, and at most its bound of elements otherwise, as a [bounded]
+// source builds it. A union takes the member that the part of the number of
+// its first member picks, or the zero discriminator, and every member has a
+// value.
 func (r *resolver) fill(src source, l *layout, v reflect.Value, depth int) {
 	for k, f := range l.fields {
-		f.of(v).Set(r.build(src.part(k+1), f.shape, depth))
+		part := src.part(k + 1)
+		if f.Max > 0 && part.fail() {
+			f.of(v).Set(r.build(filled{n: f.Max + 1}, f.shape, depth))
+			continue
+		}
+		if f.Max > 0 {
+			part = bounded{part, f.Max}
+		}
+		f.of(v).Set(r.build(part, f.shape, depth))
 	}
 	for _, members := range l.unions() {
 		d := v.FieldByIndex(members[0].disc)

@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"hash/fnv"
 	"io"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.dokimi.dev/assert"
@@ -40,7 +42,7 @@ const causeSeparator = "; "
 // causes lists the causes of a decode error that kanon defines.
 var causes = [...]error{
 	io.ErrUnexpectedEOF, kanon.ErrMalformed, kanon.ErrRange, kanon.ErrDepth, kanon.ErrUnknownType,
-	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey, kanon.ErrNotCanonical,
+	kanon.ErrRepeatedView, kanon.ErrInvalidKey, kanon.ErrAmbiguousKey, kanon.ErrNotCanonical, kanon.ErrMax,
 }
 
 // errorIdentity is what the checks compare of the error of a decode, an
@@ -80,21 +82,30 @@ func identityOf(err error) errorIdentity {
 //   - per sample, its name and the encoding that MarshalBinary returns in
 //     hex, or its error when it fails to encode, which are the test vectors
 //     of the codec;
+//   - per bound sample, its name and the length and the digest of that
+//     encoding, as [encodingDigest] writes them, since the encoding of a field
+//     at a bound such as 65536 is too long for a line;
 //   - per family of probes, its check and the digest of its probes;
 //   - per allocation measure, the number of the samples that it measures and
 //     the digest of their names.
 func (s *suite[T, P]) golden(tb assert.TB) {
 	tb.Helper()
 	var b strings.Builder
-	for _, x := range s.all() {
+	line := func(x sample[T], pin func([]byte) string) {
 		v := x.value
 		b.WriteString(x.name + ": ")
 		if enc, err := P(&v).MarshalBinary(); err != nil {
 			b.WriteString(goldenFails + err.Error())
 		} else {
-			b.WriteString(hex.EncodeToString(enc))
+			b.WriteString(pin(enc))
 		}
 		b.WriteByte('\n')
+	}
+	for _, x := range slices.Concat(s.samples, s.bulk) {
+		line(x, hex.EncodeToString)
+	}
+	for _, x := range s.bounds {
+		line(x, encodingDigest)
 	}
 	for _, f := range s.families() {
 		b.WriteString(f.check + ": " + digest(f.probes()) + "\n")
@@ -105,6 +116,15 @@ func (s *suite[T, P]) golden(tb assert.TB) {
 		names(s.measured(s.r.decodeAllocates)) + "\n")
 	path := filepath.Join(filepath.FromSlash(goldenDir), s.l.typ.String()+goldenSuffix)
 	golden.MatchAt(tb, path, []byte(b.String()), golden.ShouldUpdate())
+}
+
+// encodingDigest returns the length of enc and the 64-bit FNV-1a hash of its
+// bytes, which pin an encoding in the golden file.
+func encodingDigest(enc []byte) string {
+	h := fnv.New64a()
+	// The Write method of a hash.Hash never returns an error.
+	_, _ = h.Write(enc)
+	return strconv.Itoa(len(enc)) + " bytes, digest " + strconv.FormatUint(h.Sum64(), 16)
 }
 
 // size checks that SizeKanon returns the length of the reference encoding

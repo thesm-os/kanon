@@ -148,6 +148,10 @@ func (d drawn) count() int { return d.c.Draw(prop.Integer(-1, drawnLength), d.pa
 // entries draws the number of entries of a map as count draws a length.
 func (d drawn) entries() int { return d.count() }
 
+// most returns math.MaxInt. The builder applies the bound of a field with the
+// tag option max to the lengths that d draws.
+func (drawn) most() int { return math.MaxInt }
+
 // set draws whether a pointer points at a value.
 func (d drawn) set() bool { return d.c.Draw(booleans, d.path) }
 

@@ -1,0 +1,53 @@
+the zero value: 
+table sample 0: 0a0504deadbeef120a07c3a9e29c93cf898001
+table sample 1: 0a820101007f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161
+table sample 2: 128b0180016262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262808080808080808001
+table sample 3: 0a820180016262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262626262120c010080808080808080808001
+table sample 4: 0aaf0200ac02636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363636363
+table sample 5: 120402fffe00
+table sample 6: 0a0201ff12020001
+table sample 7: 0a060004deadbeef
+the sample of field Items: 0a0504deadbeef
+the sample of field Meta: 1207056b616e6f6e7f
+table sample 0 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 0 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 1 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 1 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 2 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 2 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 3 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 3 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 4 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 4 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 5 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 5 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 6 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 6 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 7 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
+table sample 7 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+wide sample 0: 0a03027731120402773203
+wide sample 1: 0a03027732120402773304
+the key sample: 0a820101007f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161120c056b616e6f6e808080808001
+the sample of field Items at its bound: 8 bytes, digest ae4fd1ab8e48f0a8
+the sample of field Meta at its bound: 6 bytes, digest 7bab6fd496e6c14f
+DecodeKanon/decodes each prefix of a field as the reference decode: 796 probes, digest 426e9600d19b3588
+DecodeKanon/decodes a field with one value written wrong as the reference decode: 1493 probes, digest 243cfd7370e15054
+DecodeKanon/decodes a field with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes a field with one changed byte as the reference decode: 2346 probes, digest adfeb8050a43a5a2
+DecodeKanon/decodes a field with its tag in another wire format as the reference decode: 42 probes, digest 610bc7365ff1ca82
+DecodeKanon/decodes a field written twice as the reference decode: 14 probes, digest 91ab78f7ec1ff768
+DecodeKanon/decodes a field under each depth limit as the reference decode: 195 probes, digest 64c7b4544e0b28fd
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 16 probes, digest c86fd8d85c108556
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest 6f570813a6d32cf
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 16 probes, digest bea4d700e2f9e552
+DecodeKanon/decodes a field with one element past its bound as the reference decode: 2 probes, digest a9439f1e06c7b93d
+DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode: 49 probes, digest 72c38a4c5182e194
+DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode: 3 probes, digest 49466839b8ad45a2
+DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode: 24 probes, digest 5a339ecebd0fe1
+DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode: 22 probes, digest 591b7ad1d32b9c18
+DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode: 72 probes, digest bc83e7f956a50efb
+DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 29 probes, digest de0e4e8b529910c5
+the samples that the encode allocation checks measure: 11 samples, digest 67e2785fc80dd786
+the samples that the decode allocation check measures: 11 samples, digest 67e2785fc80dd786

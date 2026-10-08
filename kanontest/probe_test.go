@@ -10,12 +10,17 @@ import (
 	"testing"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/canonical"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
 	"go.thesmos.sh/kanon/wire"
 )
+
+// pastCheck names the check of the family of probes that decodes a field with
+// one element past its bound.
+const pastCheck = "DecodeKanon/decodes a field with one element past its bound as the reference decode"
 
 // Names of the checks of the families of probes of a canonical Spec that the
 // cases run.
@@ -41,7 +46,27 @@ var (
 	// scoresSpec describes canonical.Keys, whose map with float64 keys gives
 	// the probes the sites of breachNegZero.
 	scoresSpec = kanontest.Spec[canonical.Keys]{Fields: fields("Scores", "Refs"), Canonical: true}
+	// boundSpec describes bound.Page, the type of the test vectors of the
+	// bound, with the bound 2 on Items and 1 on Meta.
+	boundSpec = kanontest.Spec[bound.Page]{
+		Fields:    []kanontest.Field{{Name: "Items", Number: 1, Max: 2}, {Name: "Meta", Number: 2, Max: 1}},
+		Canonical: true,
+	}
 )
+
+// maxOff is a bound.Page whose DecodeKanon reports the offset of an element
+// past a bound one byte too far.
+type maxOff struct{ bound.Page }
+
+// DecodeKanon decodes data, and adds 1 to the offset of an error that wraps
+// kanon.ErrMax.
+func (m *maxOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	err := renamed(m.Page.DecodeKanon(data, opts), "Page", "maxOff")
+	if e, ok := errors.AsType[*kanon.DecodeError](err); ok && errors.Is(err, kanon.ErrMax) {
+		e.Offset++
+	}
+	return err
+}
 
 // lenientOff is a canonical.Maps whose DecodeKanon decodes input that is not
 // the canonical encoding of its value without an error.
@@ -297,6 +322,14 @@ func TestProbe(t *testing.T) {
 		t.Run("fails for a canonical codec that decodes a map key of -0.0", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[signOff]{Fields: scoresSpec.Fields, Canonical: true}, negZeroCheck, errorCheck)
+		})
+		t.Run("passes a canonical type with a slice and a map with a bound", func(t *testing.T) {
+			t.Parallel()
+			passes(t, boundSpec)
+		})
+		t.Run("fails for a codec that reports another offset for an element past a bound", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[maxOff]{Fields: boundSpec.Fields, Canonical: true}, pastCheck, errorCheck)
 		})
 	})
 }

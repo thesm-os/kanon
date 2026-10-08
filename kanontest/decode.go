@@ -180,6 +180,9 @@ func byLength(s *shape) bool {
 // interface merges a value of the concrete type that it stores, and any
 // other value takes the value of the occurrence. An occurrence of a union
 // member replaces the union: it selects the member, whose value it replaces.
+// A slice and a map with the tag option max fail at the element that would
+// take them past the bound of f, as [decoder.readSlice] and [decoder.readMap]
+// state.
 func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, off, lv int) (int, error) {
 	s, x, loc, num := f.shape, f.of(v), l.loc(f), f.Number
 	if f.Union != "" {
@@ -198,9 +201,9 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 			return 0, err
 		}
 		if s.kind == kindSlice {
-			err = d.readSlice(s, x, data[start:end], off+start, lv-1, loc, num)
+			err = d.readSlice(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
 		} else {
-			err = d.readMap(s, x, data[start:end], off+start, lv-1, loc, num)
+			err = d.readMap(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
 		}
 		if err == nil {
 			err = validated(s, x, loc, num, off+i)
@@ -353,9 +356,9 @@ func (d *decoder) merge(s *shape, x reflect.Value, data []byte, i, off int, loc 
 	start, end, _ := d.length(data, i, off, loc, num)
 	switch s.kind {
 	case kindSlice:
-		_ = d.readSlice(s, x, data[start:end], off+start, math.MaxInt, loc, num)
+		_ = d.readSlice(s, x, data[start:end], off+start, math.MaxInt, 0, loc, num)
 	case kindMap:
-		_ = d.readMap(s, x, data[start:end], off+start, math.MaxInt, loc, num)
+		_ = d.readMap(s, x, data[start:end], off+start, math.MaxInt, 0, loc, num)
 	default:
 		_ = d.readStruct(s, x, data[start:end], off+start, math.MaxInt, true)
 	}
@@ -460,10 +463,10 @@ func (d *decoder) body(s *shape, x reflect.Value, data []byte, off, lv int, loc 
 		return d.readArray(s, x, data, off, lv, loc, num)
 	case kindSlice:
 		x.SetZero()
-		return d.readSlice(s, x, data, off, lv, loc, num)
+		return d.readSlice(s, x, data, off, lv, 0, loc, num)
 	default:
 		x.SetZero()
-		return d.readMap(s, x, data, off, lv, loc, num)
+		return d.readMap(s, x, data, off, lv, 0, loc, num)
 	}
 	return nil
 }
@@ -486,9 +489,11 @@ func (d *decoder) readStruct(s *shape, x reflect.Value, data []byte, off, lv int
 }
 
 // readSlice appends the elements in data, a slice of s at level lv and at
-// offset off without its length, to the slice x. An element takes a byte
+// offset off without its length, to the slice x. With a bound above 0, the
+// bound of the tag option max of its field, it fails at an element when x
+// has bound elements, before it reads the element. An element takes a byte
 // at least, so that the loop runs len(data) times at most.
-func (d *decoder) readSlice(s *shape, x reflect.Value, data []byte, off, lv int, loc string, num int) error {
+func (d *decoder) readSlice(s *shape, x reflect.Value, data []byte, off, lv, bound int, loc string, num int) error {
 	if lv < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -496,6 +501,9 @@ func (d *decoder) readSlice(s *shape, x reflect.Value, data []byte, off, lv int,
 	for range len(data) {
 		if i == len(data) {
 			break
+		}
+		if bound > 0 && x.Len() >= bound {
+			return wire.MaxError(loc, num, off+i, bound)
 		}
 		e := reflect.New(s.elem.typ).Elem()
 		var err error
@@ -532,9 +540,16 @@ func (d *decoder) readArray(s *shape, x reflect.Value, data []byte, off, lv int,
 // with a NaN component, and with kanon.ErrAmbiguousKey, before it changes
 // x, when two keys of x have one projection. A canonical decode then fails
 // at a key with a float component of -0.0, and at a key that is not above
-// the key before it. An entry takes a byte at least, so that the loop runs
-// len(data) times at most.
-func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, loc string, num int) error {
+// the key before it.
+//
+// With a bound above 0, the bound of the tag option max of its field, it
+// then fails at a key that the keys of x and the keys before it in data do
+// not have under ==, when they have bound keys under ==, before it reads the
+// value. The generated code counts the keys so: it adds every key to the map
+// and deletes the entries of a repeated projection after the last entry.
+// An entry takes a byte at least, so that the loop runs len(data) times at
+// most.
+func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv, bound int, loc string, num int) error {
 	if lv < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -548,6 +563,15 @@ func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, l
 	}
 	if x.IsNil() {
 		x.Set(reflect.MakeMap(s.typ))
+	}
+	// counted has the keys that the bound counts, under ==, as a set.
+	var counted reflect.Value
+	member := reflect.ValueOf(struct{}{})
+	if bound > 0 {
+		counted = reflect.MakeMap(reflect.MapOf(s.key.typ, member.Type()))
+		for _, k := range keys {
+			counted.SetMapIndex(k, member)
+		}
 	}
 	i := 0
 	var prev reflect.Value
@@ -571,6 +595,12 @@ func (d *decoder) readMap(s *shape, x reflect.Value, data []byte, off, lv int, l
 			return wire.KeyOrderError(loc, num, off+at)
 		}
 		prev = k
+		if bound > 0 {
+			if counted.Len() >= bound && !counted.MapIndex(k).IsValid() {
+				return wire.MaxError(loc, num, off+at, bound)
+			}
+			counted.SetMapIndex(k, member)
+		}
 		if i, err = d.read(s.elem, v, data, i, off, lv-1, loc, num); err != nil {
 			return err
 		}

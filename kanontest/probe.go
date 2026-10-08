@@ -89,10 +89,18 @@ func (s *suite[T, P]) families() []probeFamily {
 }
 
 // decodeFamilies returns the families of the probes of the decode checks of
-// every Spec, whose checks name the probes of a piece by [suite.subject].
+// every Spec, whose checks name the probes of a piece by [suite.subject], and
+// for a T with a field past whose bound a sample goes, as [suite.overs] lists
+// them, the family of [suite.pasts].
 func (s *suite[T, P]) decodeFamilies() []probeFamily {
 	field := s.subject()
-	return []probeFamily{
+	var past []probeFamily
+	if len(s.overs) > 0 {
+		past = []probeFamily{{
+			"DecodeKanon/decodes a field with one element past its bound as the reference decode", s.pasts,
+		}}
+	}
+	return slices.Concat([]probeFamily{
 		{"DecodeKanon/decodes each prefix of " + field + " as the reference decode", s.prefixes},
 		{"DecodeKanon/decodes " + field + " with one value written wrong as the reference decode", s.faults},
 		{
@@ -106,7 +114,19 @@ func (s *suite[T, P]) decodeFamilies() []probeFamily {
 		{"DecodeKanon/decodes an encoding that writes every field twice as the reference decode", s.redundancies},
 		{"DecodeKanon/decodes two concatenated encodings as the reference decode", s.concatenations},
 		{"DecodeKanon/decodes an encoding in a slab at its offset as the reference decode", s.slabs},
+	}, past)
+}
+
+// pasts returns the probes of the bound: the reference encoding of each
+// sample of [suite.overs], which sets a field with the tag option max alone
+// at one element past its bound, the last in the order of the encoding. The
+// reference encoder writes the encoding, whose encode fails.
+func (s *suite[T, P]) pasts() []probe {
+	out := make([]probe, len(s.overs))
+	for k, x := range s.overs {
+		out[k] = probe{name: x.name, data: x.enc}
 	}
+	return out
 }
 
 // breachFamilies returns the families of the probes of a canonical Spec that
@@ -380,14 +400,14 @@ func (s *suite[T, P]) repeats() []probe {
 }
 
 // limits returns the probes of every piece of every sample, the bulk
-// samples included, in each encoding that thinned returns, under each
-// depth limit: the smallest int, which rejects every nested value, and 1 to
-// 4, one more than nesting, the levels of the deepest value of a sample
-// below T. A decode fails at the first value that is too deep, and in one
-// of the encodings each value comes first.
+// samples included and the bound samples left out, in each encoding that
+// thinned returns, under each depth limit: the smallest int, which rejects
+// every nested value, and 1 to 4, one more than nesting, the levels of the
+// deepest value of a sample below T. A decode fails at the first value that
+// is too deep, and in one of the encodings each value comes first.
 func (s *suite[T, P]) limits() []probe {
 	var out []probe
-	for _, x := range s.piecesOf(s.all()) {
+	for _, x := range s.piecesOf(slices.Concat(s.samples, s.bulk)) {
 		for n, enc := range s.thinned(x) {
 			for _, d := range []int{math.MinInt, 1, 2, 3, 4} {
 				name := x.name + " without the first " + strconv.Itoa(n) + " values under depth " + strconv.Itoa(d)

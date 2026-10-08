@@ -4,12 +4,15 @@
 package kanontest_test
 
 import (
+	"errors"
 	"io"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/golden"
 
+	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/codec"
 	"go.thesmos.sh/kanon/internal/fixture/unknown"
 	"go.thesmos.sh/kanon/internal/fixture/view"
@@ -73,6 +76,20 @@ type swallow struct{ codec.Codecs }
 func (m *swallow) MarshalBinary() ([]byte, error) {
 	b, _ := m.Codecs.MarshalBinary()
 	return b, nil
+}
+
+// boundless is a bound.Page whose MarshalBinary encodes a field past its
+// bound without an error.
+type boundless struct{ bound.Page }
+
+// MarshalBinary returns the encoding, and drops an error that wraps
+// kanon.ErrMax.
+func (m *boundless) MarshalBinary() ([]byte, error) {
+	b, err := m.Page.MarshalBinary()
+	if errors.Is(err, kanon.ErrMax) {
+		return b, nil
+	}
+	return b, err
 }
 
 // appendDrop is a view.Item whose AppendBinary drops the bytes of its
@@ -197,6 +214,11 @@ func TestCheck(t *testing.T) {
 		t.Run("fails for a codec that drops the error of a value", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[swallow]{Fields: codecsSpec.Fields}, marshalErrorCheck,
+				"MarshalBinary returns the error of the value that fails to encode")
+		})
+		t.Run("fails for a codec that encodes a field past its bound", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[boundless]{Fields: boundSpec.Fields, Canonical: true}, marshalErrorCheck,
 				"MarshalBinary returns the error of the value that fails to encode")
 		})
 		t.Run("fails for a codec without a golden file", func(t *testing.T) {

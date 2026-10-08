@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +69,8 @@ const (
 )
 
 // Words of the kanon struct tag that change which fields of a struct type
-// that no Spec describes are encoded.
+// that no Spec describes are encoded, and how many elements a sample gives
+// them.
 const (
 	// tagKey is the struct tag key that kanon reads.
 	tagKey = "kanon"
@@ -76,6 +78,11 @@ const (
 	tagSkip = "-"
 	// tagUnknown marks the field that keeps unknown fields.
 	tagUnknown = "unknown"
+	// tagMax begins the tag option max, which bounds the elements of a slice
+	// or a map field.
+	tagMax = "max="
+	// tagSeparator separates the words of a tag.
+	tagSeparator = ","
 )
 
 // blankName is the name of a blank struct field, which no code reads or
@@ -335,8 +342,9 @@ func newResolver[T any](spec Spec[T]) (*resolver, *layout, error) {
 
 // describe sets the fields of l, the layout of a struct type that the Spec
 // describes with fields and unknown, in ascending field number. It fails
-// as [newResolver] states, and for an unexported discriminator or unknown
-// field, which the generator rejects.
+// as [newResolver] states, for an unexported discriminator or unknown
+// field, which the generator rejects, and for a Max below 0 or on a field
+// that is not a slice or a map.
 func (r *resolver) describe(l *layout, fields []Field, unknown string) error {
 	for _, f := range fields {
 		sf, ok := l.typ.FieldByName(f.Name)
@@ -346,6 +354,13 @@ func (r *resolver) describe(l *layout, fields []Field, unknown string) error {
 		s, err := r.shapeOf(sf.Type, opts{types: f.Types, seen: make(map[seenKey]*shape), fixed: f.Fixed})
 		if err != nil {
 			return fmt.Errorf("kanontest: field %s of %s: %w", f.Name, l.typ, err)
+		}
+		if f.Max < 0 {
+			return fmt.Errorf("kanontest: the Spec bounds field %s of %s at %d, below 1", f.Name, l.typ, f.Max)
+		}
+		if f.Max > 0 && s.kind != kindSlice && s.kind != kindMap {
+			return fmt.Errorf("kanontest: the Spec bounds field %s of %s, whose type %s is not a slice or a map",
+				f.Name, l.typ, s.typ)
 		}
 		for _, c := range f.Types {
 			if !slices.Contains(r.concretes, c.Type) {
@@ -491,7 +506,8 @@ func (r *resolver) inline(t reflect.Type, loose bool) (*layout, error) {
 
 // looseLayout returns the layout of the struct type t that no Spec
 // describes: its fields that kanon encodes, as [encoded] reports, in the
-// order of their names, whose interfaces store nothing. A reorder of the
+// order of their names, whose interfaces store nothing, with the bound of the
+// tag option max of each field, as [boundOf] reads it. A reorder of the
 // declarations of t, which keeps the field numbers of a struct with a kanon
 // codec, leaves the layout unchanged. looseLayout records the layout before
 // it resolves the fields, so that a struct type that contains itself ends
@@ -509,10 +525,27 @@ func (r *resolver) looseLayout(t reflect.Type) *layout {
 		// A loose resolution fails for no type that a generated codec
 		// contains, since the generator rejects every other type.
 		s, _ := r.shapeOf(sf.Type, opts{seen: make(map[seenKey]*shape), loose: true})
-		l.fields = append(l.fields, &field{Name: sf.Name, index: sf.Index, exported: sf.IsExported(), shape: s})
+		l.fields = append(l.fields, &field{
+			Name: sf.Name, Max: boundOf(sf.Tag.Get(tagKey)), index: sf.Index, exported: sf.IsExported(), shape: s,
+		})
 	}
 	slices.SortFunc(l.fields, func(a, b *field) int { return cmp.Compare(a.Name, b.Name) })
 	return l
+}
+
+// boundOf returns the bound of the tag option max in the kanon tag value
+// tag, and 0 for a tag without the option. The generator rejects a bound that
+// is not a decimal from 1 to 2147483647, so the tag of a struct with a
+// generated codec has none, and a word of the types option, whose type
+// expressions can contain commas, never begins with the option.
+func boundOf(tag string) int {
+	for word := range strings.SplitSeq(tag, tagSeparator) {
+		if bound, ok := strings.CutPrefix(strings.TrimSpace(word), tagMax); ok {
+			n, _ := strconv.Atoi(bound)
+			return n
+		}
+	}
+	return 0
 }
 
 // iface completes s, the shape of an interface: its variants are the
@@ -598,7 +631,7 @@ func leftOut(sf reflect.StructField) bool {
 // keepsUnknown reports whether the kanon tag value tag marks the field that
 // keeps unknown fields.
 func keepsUnknown(tag string) bool {
-	return slices.Contains(strings.Split(tag, ","), tagUnknown)
+	return slices.Contains(strings.Split(tag, tagSeparator), tagUnknown)
 }
 
 // pick returns a when cond is true and b otherwise.

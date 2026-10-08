@@ -151,11 +151,11 @@ func (s *suite[T, P]) drawProbe(c *prop.Case, xs []sample[T]) probe {
 }
 
 // over returns a copy of s whose samples and table samples are xs. The copy
-// has the pieces of xs and no bulk samples, so that the families of the
-// decode checks derive their probes from xs alone.
+// has the pieces of xs, and no bulk samples and no samples of a bound, so
+// that the families of the decode checks derive their probes from xs alone.
 func (s *suite[T, P]) over(xs []sample[T]) *suite[T, P] {
 	d := *s
-	d.samples, d.tables, d.bulk = xs, xs, nil
+	d.samples, d.tables, d.bulk, d.bounds, d.overs = xs, xs, nil, nil, nil
 	d.pieces = d.piecesOf(xs)
 	return &d
 }

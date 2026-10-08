@@ -4,9 +4,11 @@
 package kanontest_test
 
 import (
+	"errors"
 	"testing"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/number"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
@@ -36,6 +38,18 @@ type decodeMerge struct{ view.Item }
 // MergeKanon decodes data into m as DecodeKanon does.
 func (m *decodeMerge) MergeKanon(data []byte, opts kanon.Options) error {
 	return m.DecodeKanon(data, opts)
+}
+
+// mergePast is a bound.Page whose MergeKanon drops the error of an element
+// past a bound.
+type mergePast struct{ bound.Page }
+
+// MergeKanon merges data into m, and drops an error that wraps kanon.ErrMax.
+func (m *mergePast) MergeKanon(data []byte, opts kanon.Options) error {
+	if err := renamed(m.Page.MergeKanon(data, opts), "Page", "mergePast"); !errors.Is(err, kanon.ErrMax) {
+		return err
+	}
+	return nil
 }
 
 // resetNothing is a view.Item whose Reset keeps the fields of the receiver.
@@ -146,6 +160,11 @@ func TestReuse(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[decodeMerge]{Fields: itemSpec.Fields}, mergeCheck,
 				"MergeKanon decodes the value of the reference decode")
+		})
+		t.Run("fails for a codec whose MergeKanon merges past the bound of a field", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[mergePast]{Fields: boundSpec.Fields, Canonical: true}, mergeCheck,
+				"MergeKanon returns the error of the reference decode")
 		})
 		t.Run("fails for a codec whose Reset keeps the fields of the receiver", func(t *testing.T) {
 			t.Parallel()
