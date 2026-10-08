@@ -25,20 +25,28 @@ import (
 )
 
 // The streamed fields of Box, the struct type of the stream cases: the byte
-// slice Data and the slice Items of the struct Item.
+// slice Data and the slice Items of the struct Item, and with the tag option
+// max the slice Parts of the struct Part.
 const (
 	dataNum  = 2
 	itemsNum = 4
+	partsNum = 6
 )
 
 // The schemas of Box: with the decode that accepts every encoding of a
-// value, and with the canonical decode.
+// value, with the canonical decode, and with the bounds 2 on Items and 1 on
+// Parts.
 var (
 	boxSchema = wire.StreamSchema{Loc: "Box", Fields: []wire.StreamField{
 		{Tag: dataNum<<3 | wire.Bytes, Loc: "Box.Data"},
 		{Tag: itemsNum<<3 | wire.Bytes, Loc: "Box.Items", Elem: "Item"},
 	}}
 	canonicalSchema = wire.StreamSchema{Loc: "Box", Canonical: true, Fields: boxSchema.Fields}
+	boundedSchema   = wire.StreamSchema{Loc: "Box", Fields: []wire.StreamField{
+		{Tag: dataNum<<3 | wire.Bytes, Loc: "Box.Data"},
+		{Tag: itemsNum<<3 | wire.Bytes, Loc: "Box.Items", Elem: "Item", Max: 2},
+		{Tag: partsNum<<3 | wire.Bytes, Loc: "Box.Parts", Elem: "Part", Max: 1},
+	}}
 )
 
 // farSchema is the schema of Far, whose byte slice Data is field 64, whose
@@ -996,6 +1004,43 @@ func TestStream(t *testing.T) {
 				broken: true, ends: 2,
 				want: []string{"run [] at 0", "open 4", "len 3", "Element: disk: broken"},
 			},
+			{
+				name:   "returns the elements of a slice up to its bound",
+				schema: &boundedSchema,
+				enc:    []byte{0x22, 0x02, 0x00, 0x00},
+				want: []string{
+					"run [] at 0", "open 4", "len 2", "element 0", "value [] at 3", "element 0", "value [] at 4",
+					"run [] at 4 end", "Open: EOF",
+				},
+			},
+			{
+				name:   "returns kanon.ErrMax at the length of the element past the bound",
+				schema: &boundedSchema,
+				enc:    []byte{0x22, 0x03, 0x00, 0x00, 0x05},
+				want: []string{
+					"run [] at 0", "open 4", "len 3", "element 0", "value [] at 3", "element 0", "value [] at 4",
+					"Element: kanon: Box.Items (field 4) at offset 4: more elements than the max of 2",
+				},
+			},
+			{
+				name:   "returns kanon.ErrMax for the elements of every occurrence of the field together",
+				schema: &boundedSchema,
+				enc:    []byte{0x22, 0x02, 0x00, 0x00, 0x22, 0x01, 0x00},
+				want: []string{
+					"run [] at 0", "open 4", "len 2", "element 0", "value [] at 3", "element 0", "value [] at 4",
+					"run [] at 4", "open 4", "len 1",
+					"Element: kanon: Box.Items (field 4) at offset 6: more elements than the max of 2",
+				},
+			},
+			{
+				name:   "counts the elements of each bounded slice apart",
+				schema: &boundedSchema,
+				enc:    []byte{0x22, 0x02, 0x00, 0x00, 0x32, 0x01, 0x00},
+				want: []string{
+					"run [] at 0", "open 4", "len 2", "element 0", "value [] at 3", "element 0", "value [] at 4",
+					"run [] at 4", "open 6", "len 1", "element 0", "value [] at 7", "run [] at 7 end", "Open: EOF",
+				},
+			},
 		})
 		t.Run("returns the same length until Value reads the element", func(t *testing.T) {
 			t.Parallel()
@@ -1027,6 +1072,16 @@ func TestStream(t *testing.T) {
 				want: []string{
 					"run [] at 0", "open 4", "len 4", "value [08 01] at 3", "value [] at 6", "run [] at 6 end",
 					"Open: EOF",
+				},
+			},
+			{
+				name:   "returns kanon.ErrMax for an element past the bound that the caller skips",
+				schema: &boundedSchema,
+				enc:    []byte{0x22, 0x03, 0x00, 0x00, 0x00},
+				skip:   true,
+				want: []string{
+					"run [] at 0", "open 4", "len 3", "value [] at 3", "value [] at 4",
+					"Value: kanon: Box.Items (field 4) at offset 4: more elements than the max of 2",
 				},
 			},
 			{
@@ -1226,6 +1281,17 @@ func TestStream(t *testing.T) {
 			want := []string{"run [08 01] at 0", "open 2", "len 1", "read [61]", "run [] at 5 end", "Open: EOF"}
 			expect.Equal(t, got, want, "the stream reads the next encoding from its first byte")
 		})
+		t.Run("sets the counts of the elements of the bounded slices to 0", func(t *testing.T) {
+			t.Parallel()
+			enc := []byte{0x22, 0x02, 0x00, 0x00}
+			s := start(streamCase{schema: &boundedSchema, enc: enc})
+			_, err := transcript(s, &boundedSchema, false)
+			assert.Equal(t, err, io.EOF, "the stream reads the elements up to the bound", assert.ByIdentity())
+			s.Reset(bytes.NewReader(enc), int64(len(enc)))
+			_, err = transcript(s, &boundedSchema, false)
+			assert.Equal(t, err, io.EOF, "the stream reads the elements up to the bound again after Reset",
+				assert.ByIdentity())
+		})
 	})
 	t.Run("Init", func(t *testing.T) {
 		t.Parallel()
@@ -1294,6 +1360,35 @@ func TestStreamAllocs(t *testing.T) {
 			}
 			pass()
 			assert.MaxAllocs(t, pass, 0, "a stream reads an encoding that it read before without an allocation")
+		})
+	}
+	t.Run("Next/allocates nothing for the elements of a bounded slice that the stream read before", func(t *testing.T) {
+		enc := []byte{0x22, 0x02, 0x00, 0x00}
+		r := bytes.NewReader(enc)
+		var s wire.Stream
+		s.Init(&boundedSchema, kanon.StreamOptions{})
+		pass := func() {
+			r.Reset(enc)
+			s.Reset(r, int64(len(enc)))
+			sinkErr = drain(&s, func(*wire.Stream) error { return nil })
+		}
+		pass()
+		assert.MaxAllocs(t, pass, 0, "a stream counts the elements of a bounded slice without an allocation")
+	})
+	inits := []struct {
+		name   string
+		schema *wire.StreamSchema
+		allocs uint64
+	}{
+		{name: "Init/allocates nothing for a schema without a bound", schema: &boxSchema, allocs: 0},
+		{name: "Init/allocates the counts once for a schema with a bound", schema: &boundedSchema, allocs: 1},
+	}
+	for _, c := range inits {
+		t.Run(c.name, func(t *testing.T) {
+			assert.MaxAllocs(t, func() {
+				var s wire.Stream
+				s.Init(c.schema, kanon.StreamOptions{})
+			}, c.allocs, "Init allocates the counts of the elements for a schema with a bound alone")
 		})
 	}
 }

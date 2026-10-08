@@ -30,6 +30,8 @@ const (
 	// errLimit is the buffer limit of a stream decoder that wire.LimitError
 	// names.
 	errLimit = 4096
+	// errBound is the bound of the tag option max that wire.MaxError names.
+	errBound = 65536
 )
 
 // errOwn is the error of a type that encodes or decodes itself.
@@ -226,6 +228,11 @@ func TestError(t *testing.T) {
 			want: &kanon.DecodeError{
 				Type: errType, Offset: errOff, Detail: "value takes the buffer past 4096 bytes", Err: kanon.ErrLimit,
 			},
+		},
+		{
+			name: "MaxError/names the bound at the field of the element",
+			err:  wire.MaxError(errLoc, errNumber, errOff, errBound),
+			want: located(kanon.ErrMax, "more elements than the max of 65536"),
 		},
 	}
 	for _, c := range cases {

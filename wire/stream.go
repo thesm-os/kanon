@@ -47,6 +47,10 @@ type StreamField struct {
 	// the decode of the slice name it, and is empty for a byte slice and a
 	// string.
 	Elem string
+	// Max is the bound of the tag option max of a slice: the most elements
+	// that the slice takes over every occurrence of the field. It is 0 for a
+	// slice without the option, a byte slice and a string.
+	Max int
 }
 
 // StreamSchema describes the struct type of a stream decoder to a [Stream]:
@@ -130,7 +134,9 @@ func (r Run) Slab() string {
 // checks of the decode of the slice that precede the decode of the element.
 // An element of up to 4096 bytes is a slice of the read buffer, and a longer
 // one is in the buffer of the long element, which grows to the longest
-// element.
+// element. A slice whose [StreamField] has a Max counts its elements over
+// every occurrence of the field, and its element past that bound fails with
+// kanon.ErrMax before Element reads its length.
 //
 // # Errors
 //
@@ -150,7 +156,9 @@ func (r Run) Slab() string {
 //
 // # Allocation contract
 //
-// The first Reset allocates the read buffer. Next and Value append to the
+// Init allocates the counts of the elements of the streamed slices when a
+// field of the schema has a Max. The first Reset allocates the read buffer.
+// Next and Value append to the
 // buffer of the decoded fields and to the buffer of the long element, which
 // grow to the decoded fields of an encoding and to its longest element of
 // more than 4096 bytes, and allocate nothing once they have. Reset, Open,
@@ -183,8 +191,14 @@ type Stream struct {
 	// pending is the error of the field after the last run that takes the
 	// decoded fields past the buffer limit, and nil without one.
 	pending error
-	// cur is the streamed field that Open opened last.
-	cur StreamField
+	// cur is the streamed field that Open opened last, and field its index in
+	// the schema.
+	cur   StreamField
+	field int
+	// counts has, per streamed field of the schema, the number of the
+	// elements that Value returned over every occurrence of the field, when a
+	// field of the schema has a Max, and is nil otherwise.
+	counts []int
 	// size is the length of the encoding, and off the offset of the next
 	// byte.
 	size, off int64
@@ -216,26 +230,34 @@ type Stream struct {
 // and the limits of opts. The constructor of a generated stream decoder calls
 // it once, before the first Reset. A Buffer of 0 or less selects
 // kanon.DefaultBuffer, and the Depth selects the nesting limit that
-// kanon.Options.Limit returns for it.
+// kanon.Options.Limit returns for it. Init allocates the counts of the
+// elements of the streamed slices when a field of the schema has a Max.
 func (s *Stream) Init(schema *StreamSchema, opts kanon.StreamOptions) {
 	s.schema = schema
+	bounded := false
 	for _, f := range schema.Fields {
 		s.marks |= 1 << ((f.Tag >> 3) & 63)
+		bounded = bounded || f.Max > 0
+	}
+	if bounded {
+		s.counts = make([]int, len(schema.Fields))
 	}
 	s.limit = cmp.Or(max(opts.Buffer, 0), kanon.DefaultBuffer)
 	s.depth = kanon.Options{Depth: opts.Depth}.Limit()
 }
 
 // Reset makes s read the encoding of size bytes from r, from its first byte,
-// and keeps the buffers of s for it. A size below 0, or above math.MaxInt,
-// the largest offset that a kanon.DecodeError states, makes every later call
-// fail with kanon.ErrStreamSize.
+// and keeps the buffers of s for it. It sets the counts of the elements of
+// the streamed slices to 0. A size below 0, or above math.MaxInt, the largest
+// offset that a kanon.DecodeError states, makes every later call fail with
+// kanon.ErrStreamSize.
 func (s *Stream) Reset(r io.Reader, size int64) {
 	if s.buf == nil {
 		s.buf = make([]byte, bufferSize)
 	}
 	s.lr = io.LimitedReader{R: r, N: size}
 	s.ahead, s.run = s.buf[:0], s.run[:0]
+	clear(s.counts)
 	s.size, s.off, s.shift, s.left, s.length, s.head, s.prior, s.err = size, 0, 0, 0, 0, false, 0, nil
 	if uint64(size) > math.MaxInt {
 		s.err = kanon.ErrStreamSize
@@ -325,7 +347,7 @@ func (s *Stream) Open() (int, error) {
 		return 0, s.stop(AbsentError(f.Loc, num, int(s.tagAt)))
 	}
 	s.skip(n)
-	s.cur, s.left, s.length, s.prior = f, int64(l), int64(l), uint64(num)
+	s.cur, s.field, s.left, s.length, s.prior = f, s.next, int64(l), int64(l), uint64(num)
 	return num, nil
 }
 
@@ -440,8 +462,9 @@ func (s *Stream) WriteTo(w io.Writer) (int64, error) {
 // slice, and returns it without reading the element. It returns the same
 // length until Value reads the element, and io.EOF after the last element
 // and when the current field is a byte slice or a string. It returns the
-// error of the decode of the slice for a length that does not read or that
-// runs past the field, at the offset of the length, and in a canonical
+// error of the decode of the slice at the offset of the length: for an
+// element past the Max of the field, before it reads the length, then for a
+// length that does not read or that runs past the field, and in a canonical
 // decode for a length longer than its shortest form.
 func (s *Stream) Element() (int64, error) {
 	if s.err != nil {
@@ -454,6 +477,9 @@ func (s *Stream) Element() (int64, error) {
 		return 0, io.EOF
 	}
 	at, num := s.off, int(s.cur.Tag>>3)
+	if s.cur.Max > 0 && s.counts[s.field] >= s.cur.Max {
+		return 0, s.stop(MaxError(s.cur.Loc, num, int(at), s.cur.Max))
+	}
 	failed := s.fill(int(min(binary.MaxVarintLen64, s.left)))
 	l, n := Uvarint(s.ahead[:min(int64(len(s.ahead)), s.left)])
 	if n == 0 && failed != nil {
@@ -477,10 +503,11 @@ func (s *Stream) Element() (int64, error) {
 // reads it. It checks the nesting limit of the struct of the element, at the
 // offset of its first byte, and then the length of the element against the
 // buffer limit, at the offset of the length. It returns io.EOF after the last
-// element and when the current field is another field. The bytes of the run
-// are valid until the next call of Next, Element or Value: a slice of the
-// read buffer for an element of up to 4096 bytes, and of the buffer of the
-// long element for a longer one.
+// element and when the current field is another field. It counts the element
+// that it returns for the Max of the field. The bytes of the run are valid
+// until the next call of Next, Element or Value: a slice of the read buffer
+// for an element of up to 4096 bytes, and of the buffer of the long element
+// for a longer one.
 func (s *Stream) Value(num int) (Run, error) {
 	if s.err == nil && int(s.cur.Tag>>3) != num {
 		return Run{}, io.EOF
@@ -510,6 +537,9 @@ func (s *Stream) Value(num int) (Run, error) {
 		elem = s.elem
 	}
 	s.left, s.head = s.left-l, false
+	if s.counts != nil {
+		s.counts[s.field]++
+	}
 	return Run{Data: elem, Depth: s.depth - 2}, nil
 }
 
