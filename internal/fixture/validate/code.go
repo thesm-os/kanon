@@ -16,14 +16,6 @@ var ErrCodeUTF8 = errors.New("validate: code is not valid UTF-8")
 // ValidateKanon makes kanon encode it as a string instead.
 type Code string
 
-// valid returns ErrCodeUTF8 for a Code that is not valid UTF-8.
-func (c Code) valid() error {
-	if !utf8.ValidString(string(c)) {
-		return ErrCodeUTF8
-	}
-	return nil
-}
-
 // AppendText appends the bytes of c to b. It fails with ErrCodeUTF8 for a
 // Code that is not valid UTF-8.
 func (c Code) AppendText(b []byte) ([]byte, error) {
@@ -41,5 +33,13 @@ func (c *Code) UnmarshalText(data []byte) error {
 		return err
 	}
 	*c = v
+	return nil
+}
+
+// valid returns ErrCodeUTF8 for a Code that is not valid UTF-8.
+func (c Code) valid() error {
+	if !utf8.ValidString(string(c)) {
+		return ErrCodeUTF8
+	}
 	return nil
 }

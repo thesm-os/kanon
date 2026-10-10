@@ -25,21 +25,16 @@ var (
 // Its ValidateKanon makes kanon encode it as a zigzag varint instead.
 type Amount int64
 
-// valid returns ErrAmountRange for math.MinInt64.
-func (a Amount) valid() error {
-	if a == math.MinInt64 {
-		return ErrAmountRange
-	}
-	return nil
-}
-
 // AppendBinary appends the eight big-endian bytes of the two's complement
 // of a to b. It fails with ErrAmountRange for math.MinInt64.
 func (a Amount) AppendBinary(b []byte) ([]byte, error) {
 	if err := a.valid(); err != nil {
 		return b, err
 	}
-	return binary.Append(b, binary.BigEndian, int64(a))
+	// binary.Append fails only for a value without a fixed size, and an int64
+	// has a fixed size.
+	out, _ := binary.Append(b, binary.BigEndian, int64(a))
+	return out, nil
 }
 
 // UnmarshalBinary sets a to the int64 whose two's complement is the eight
@@ -55,5 +50,13 @@ func (a *Amount) UnmarshalBinary(data []byte) error {
 		return err
 	}
 	*a = Amount(v)
+	return nil
+}
+
+// valid returns ErrAmountRange for math.MinInt64.
+func (a Amount) valid() error {
+	if a == math.MinInt64 {
+		return ErrAmountRange
+	}
 	return nil
 }

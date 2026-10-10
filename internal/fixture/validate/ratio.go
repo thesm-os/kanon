@@ -27,14 +27,6 @@ var (
 // as a float64 instead.
 type Ratio float64
 
-// valid returns ErrRatioNaN for a NaN.
-func (r Ratio) valid() error {
-	if math.IsNaN(float64(r)) {
-		return ErrRatioNaN
-	}
-	return nil
-}
-
 // GobEncode returns the eight little-endian bytes of the bits of r. It
 // fails with ErrRatioNaN for a NaN.
 func (r Ratio) GobEncode() ([]byte, error) {
@@ -56,5 +48,13 @@ func (r *Ratio) GobDecode(data []byte) error {
 		return err
 	}
 	*r = v
+	return nil
+}
+
+// valid returns ErrRatioNaN for a NaN.
+func (r Ratio) valid() error {
+	if math.IsNaN(float64(r)) {
+		return ErrRatioNaN
+	}
 	return nil
 }

@@ -24,6 +24,7 @@ type Sealed struct {
 	Next  *int32
 	Count int32
 	Rest  []byte `kanon:",unknown"`
+	//nolint:unused // No code of another package can name the field. kanontest sets it through reflection.
 	state string
 }
 
@@ -31,7 +32,8 @@ type Sealed struct {
 // with an unexported field, which a fixture uses as a map key, whose field
 // the code file of the fixture cannot read.
 type Badge struct {
-	Name   string
+	Name string
+	//nolint:unused // No code of another package can read the field. kanontest sets it through reflection.
 	serial int32
 }
 
