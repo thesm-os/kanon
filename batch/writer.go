@@ -16,12 +16,6 @@ import (
 // appends the index and the count to the buffer. The zero Writer is empty
 // and ready to use. A Writer is not safe for concurrent use.
 type Writer struct {
-	// Wide selects 8-byte offsets, for a batch whose encodings are longer
-	// than 2^32-1 bytes. The writer reads it at the first successful
-	// Append, or at Bytes for a batch without messages, and keeps that
-	// width until Reset.
-	Wide bool
-
 	// buf is the header and the encodings, and after Bytes the index and
 	// the count. It is empty before the first successful Append or Bytes,
 	// and after Reset.
@@ -30,6 +24,13 @@ type Writer struct {
 	index []byte
 	// count is the number of messages.
 	count int
+
+	// Wide selects 8-byte offsets, for a batch whose encodings are longer
+	// than 2^32-1 bytes. The writer reads it at the first successful
+	// Append, or at Bytes for a batch without messages, and keeps that
+	// width until Reset.
+	Wide bool
+
 	// flags is the flags byte that the first successful Append or Bytes
 	// wrote.
 	flags byte
