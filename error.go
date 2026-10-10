@@ -100,6 +100,12 @@ var ErrMax = errors.New("kanon: more elements than the max of the field")
 // starts, and why it is malformed. The generated code returns one for every
 // failure, as a *DecodeError.
 type DecodeError struct {
+	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
+	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
+	// [ErrRepeatedView], [ErrNotCanonical], [ErrLimit], [ErrMax], the error
+	// of a type that decodes itself, or the error of the ValidateKanon of a
+	// [Validator].
+	Err error
 	// Type names the struct whose encoding contains the malformed input: a
 	// struct type name, a package-qualified name for a struct of another
 	// package, or the path of an anonymous struct type, such as Order.Meta.
@@ -108,20 +114,14 @@ type DecodeError struct {
 	// for an error in the sequence of fields itself: a tag that does not
 	// read, an invalid tag, and a struct nested deeper than the limit.
 	Field string
+	// Detail states what is malformed, and is empty when Err states it.
+	Detail string
 	// Number is the field number of Field, and 0 when Field is empty.
 	Number int
 	// Offset is the offset of the malformed input in the slab of the
 	// decode. A stream decoder counts it from the first byte of the
 	// encoding.
 	Offset int
-	// Detail states what is malformed, and is empty when Err states it.
-	Detail string
-	// Err is the cause: io.ErrUnexpectedEOF, [ErrMalformed], [ErrRange],
-	// [ErrDepth], [ErrUnknownType], [ErrInvalidKey], [ErrAmbiguousKey],
-	// [ErrRepeatedView], [ErrNotCanonical], [ErrLimit], [ErrMax], the error
-	// of a type that decodes itself, or the error of the ValidateKanon of a
-	// [Validator].
-	Err error
 }
 
 // Error returns "kanon: Type.Field (field Number) at offset Offset: Detail",
@@ -153,16 +153,16 @@ func (e *DecodeError) Unwrap() error {
 // EncodeError is the error of an encode: the field whose value failed to
 // encode, and why. The generated code returns one as an *EncodeError.
 type EncodeError struct {
+	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
+	// [ErrAmbiguousKey], [ErrSize], [ErrMax], the error of a type that
+	// encodes itself, or the error of the ValidateKanon of a [Validator].
+	Err error
 	// Type names the struct that declares Field, as in [DecodeError].
 	Type string
 	// Field names the field whose value failed to encode.
 	Field string
 	// Number is the field number of Field.
 	Number int
-	// Err is the cause: [ErrUnlistedType], [ErrInvalidKey],
-	// [ErrAmbiguousKey], [ErrSize], [ErrMax], the error of a type that
-	// encodes itself, or the error of the ValidateKanon of a [Validator].
-	Err error
 }
 
 // Error returns "kanon: Type.Field (field Number): " followed by the
