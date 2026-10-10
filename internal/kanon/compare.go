@@ -163,9 +163,9 @@ func (e *emitter) compareVariant(w variant) {
 
 // orderedField is a field of the struct type of a map key, with its number.
 type orderedField struct {
+	val  *value
 	name string
 	num  int
-	val  *value
 }
 
 // orderedFields returns the fields of the struct key v that order it, in

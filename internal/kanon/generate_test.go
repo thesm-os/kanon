@@ -4,6 +4,7 @@
 package kanon_test
 
 import (
+	"context"
 	"io"
 	"io/fs"
 	"os"
@@ -47,7 +48,8 @@ type generation struct {
 // fixtureRuns runs the generator on the kanon directive of every fixture
 // file, once per test binary, in the order of a walk of fixtureDir. It
 // fails when a file does not read or a directive does not parse. The runs
-// of Generate record their errors.
+// of Generate record their errors. The tests share the runs, so the runs
+// take the background context and no test's own.
 var fixtureRuns = sync.OnceValues(func() ([]generation, error) {
 	var out []generation
 	err := filepath.WalkDir(fixtureDir, func(path string, d fs.DirEntry, err error) error {
@@ -77,7 +79,7 @@ var fixtureRuns = sync.OnceValues(func() ([]generation, error) {
 				return err
 			}
 			dir, file := filepath.Split(path)
-			files, err := kanon.Generate(dir, file, opts)
+			files, err := kanon.Generate(context.Background(), dir, file, opts)
 			out = append(out, generation{dir: dir, file: file, opts: opts, files: files, err: err})
 		}
 		return nil
@@ -145,7 +147,7 @@ func module(t *testing.T, sources map[string]string) string {
 // that types names, from file in dir, by name, and the error of Generate.
 func generate(t *testing.T, dir, file, types string) (map[string]string, error) {
 	t.Helper()
-	generated, err := kanon.Generate(dir, file, kanon.Options{Types: strings.Split(types, ",")})
+	generated, err := kanon.Generate(t.Context(), dir, file, kanon.Options{Types: strings.Split(types, ",")})
 	out := make(map[string]string, len(generated))
 	for _, f := range generated {
 		out[f.Name] = string(f.Src)
@@ -275,7 +277,7 @@ func TestGenerate(t *testing.T) {
 					types = []string{tt.types}
 				}
 				opts := kanon.Options{Types: types, Validate: tt.validate}
-				_, err := kanon.Generate(module(t, tt.files), tt.file, opts)
+				_, err := kanon.Generate(t.Context(), module(t, tt.files), tt.file, opts)
 				assert.HasError(t, err, "Generate fails")
 				assert.Equal(t, err.Error(), tt.want, "Generate states why it fails")
 			})

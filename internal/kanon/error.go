@@ -21,8 +21,8 @@ type sourceError struct {
 	// err is the cause. Its message starts with errPrefix, which Error
 	// drops so the prefix appears once.
 	err     error
-	pos     token.Position
 	subject string
+	pos     token.Position
 }
 
 // Error renders the position, the subject and the cause after a single

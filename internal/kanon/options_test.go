@@ -78,7 +78,7 @@ func TestOptions(t *testing.T) {
 			},
 			{
 				name: "returns an error for an unknown flag", args: []string{"-bogus"},
-				want: "flag provided but not defined: -bogus",
+				want: "kanon: flag provided but not defined: -bogus",
 			},
 		}
 		for _, tt := range failures {

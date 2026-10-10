@@ -55,7 +55,7 @@ func checkFiles(t *testing.T, files, base map[string]string) error {
 	for name, content := range base {
 		code[name] = []byte(pkgClause + content)
 	}
-	return kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, code)
+	return kanon.Check(t.Context(), dir, "a.go", kanon.Options{Types: []string{"A"}}, code)
 }
 
 func TestCheck(t *testing.T) {
@@ -182,7 +182,7 @@ func TestCheck(t *testing.T) {
 			reserved := "//kanon:numbers A X=1 ~2\n"
 			dir := module(t, map[string]string{"a.go": checkX, codeName: reserved})
 			base := map[string][]byte{codeName: []byte(pkgClause + reserved)}
-			assert.NoError(t, kanon.Check(dir, "a.go", kanon.Options{Types: []string{"A"}}, base),
+			assert.NoError(t, kanon.Check(t.Context(), dir, "a.go", kanon.Options{Types: []string{"A"}}, base),
 				"Check passes the reserved number")
 		})
 		codecs := []struct {
@@ -252,7 +252,7 @@ func TestCheck(t *testing.T) {
 		}
 		t.Run("returns the error of Generate for options without a type", func(t *testing.T) {
 			t.Parallel()
-			err := kanon.Check(module(t, map[string]string{"a.go": checkXY}), "a.go", kanon.Options{}, nil)
+			err := kanon.Check(t.Context(), module(t, map[string]string{"a.go": checkXY}), "a.go", kanon.Options{}, nil)
 			assert.HasError(t, err, "Check fails without -type")
 			assert.Equal(t, err.Error(), "kanon: -type is required: name the types to generate code for",
 				"Check states why the generation fails")

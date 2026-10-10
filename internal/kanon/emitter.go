@@ -100,11 +100,8 @@ type emitter struct {
 	p *printer
 	// prefix begins the name of every helper that the file declares.
 	prefix string
-	// names maps each helper that the code calls to its name, and pending
-	// lists the helpers that the file does not declare yet, in the order in
-	// which the code first calls them.
-	names   map[helperKey]string
-	pending []helper
+	// names maps each helper that the code calls to its name.
+	names map[helperKey]string
 	// words maps the id of a value to the word that names its helpers, and
 	// owners maps each word to that id.
 	words  map[string]string
@@ -137,16 +134,19 @@ type emitter struct {
 	// entries, as [shortMaps] collects them.
 	bounded map[string]bool
 	short   map[string]bool
+	// keyTargets maps the id of each struct with a kanon codec in a map key
+	// that contains a float to the target that writes its projection field by
+	// field, as [emitter.keyTarget] builds it.
+	keyTargets map[string]*target
+	// pending lists the helpers that the file does not declare yet, in the
+	// order in which the code first calls them.
+	pending []helper
 	// inKey reports that the emitter writes the size or the encoding of a
 	// map key, whose projection writes every float component of -0.0 as
 	// +0.0: a float field is present when it is not zero, and a value that
 	// contains a float, as [emitter.floats] reports, takes the helpers of
 	// opKeySize, opKeyPut and opKeyPresent.
 	inKey bool
-	// keyTargets maps the id of each struct with a kanon codec in a map key
-	// that contains a float to the target that writes its projection field by
-	// field, as [emitter.keyTarget] builds it.
-	keyTargets map[string]*target
 	// canonical makes the decode of every struct of the file accept only the
 	// canonical encoding of a value, as [emitter.fieldsBody] and
 	// [emitter.read] check it.

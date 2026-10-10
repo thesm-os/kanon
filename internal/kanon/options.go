@@ -37,12 +37,12 @@ type Options struct {
 	// Types lists the types that -type names, in flag order: struct types,
 	// and named types that are not structs.
 	Types []string
-	// Args lists the arguments after the flags.
-	Args []string
 	// Validate names the method, of signature func() error, that the
 	// ValidateKanon method of each named type of Types that is not a struct
 	// calls. It is empty when ValidateKanon accepts every value.
 	Validate string
+	// Args lists the arguments after the flags.
+	Args []string
 	// Views reports that -views requests a view type per struct type.
 	Views bool
 	// Canonical reports that -canonical makes the decode of each struct type
@@ -55,9 +55,10 @@ type Options struct {
 
 // ParseOptions parses the command-line arguments args of kanon and writes
 // the usage and any flag error to output. It fails for an unknown flag, for
-// -h and -help with [flag.ErrHelp], and for a -type value that names an
-// empty type or one type twice. It does not require -type, which
-// [Generate] and [Check] require.
+// -h and -help with an error that wraps [flag.ErrHelp], and for a -type
+// value with an empty name or with one name twice. Every error message
+// starts with "kanon: ". It does not require -type, which [Generate] and
+// [Check] require.
 func ParseOptions(args []string, output io.Writer) (Options, error) {
 	var opts Options
 	var types string
@@ -75,7 +76,7 @@ func ParseOptions(args []string, output io.Writer) (Options, error) {
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
-		return Options{}, err
+		return Options{}, fmt.Errorf("kanon: %w", err)
 	}
 	opts.Args = flags.Args()
 	if types == "" {

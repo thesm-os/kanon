@@ -38,11 +38,11 @@ type value struct {
 	// variants lists the ones that the value can store, in tag order.
 	list     *typeList
 	variants []variant
+	// self names the methods through which a kindBinary value encodes itself.
+	self selfCodec
 	// size is the length of a kindByteArray or kindArray value.
 	size int64
 	kind kind
-	// self names the methods through which a kindBinary value encodes itself.
-	self selfCodec
 	// fails reports that encoding the value can fail: it is or contains a
 	// kindBinary value of a type that is no kanon.Appender, a kanon.Validator
 	// whose ValidateKanon the generated code calls, an interface, or a struct

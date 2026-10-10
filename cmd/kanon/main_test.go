@@ -139,13 +139,15 @@ func module(t *testing.T, extra files.Tree) string {
 	return filepath.Join(files.Workspace(t, tree), sourceName)
 }
 
-// invoke runs run with the arguments args, the environment vars, a map from
-// the name of each variable to its value, and the standard input stdin, and
-// returns the exit status and what run writes to its standard output and its
-// standard error.
-func invoke(args []string, vars map[string]string, stdin string) (int, string, string) {
+// invoke runs run under the context of t with the arguments args, the
+// environment vars, a map from the name of each variable to its value, and
+// the standard input stdin, and returns the exit status and what run writes
+// to its standard output and its standard error.
+func invoke(t *testing.T, args []string, vars map[string]string, stdin string) (int, string, string) {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := run(args, func(name string) string { return vars[name] }, strings.NewReader(stdin), &stdout, &stderr)
+	getenv := func(name string) string { return vars[name] }
+	code := run(t.Context(), args, getenv, strings.NewReader(stdin), &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
 
@@ -153,7 +155,7 @@ func invoke(args []string, vars map[string]string, stdin string) (int, string, s
 // writes the generated files of A.
 func generated(t *testing.T, path string) {
 	t.Helper()
-	code, _, stderr := invoke([]string{typeFlag, path}, nil, "")
+	code, _, stderr := invoke(t, []string{typeFlag, path}, nil, "")
 	assert.Equal(t, code, exitOK, "run generates the files: "+stderr)
 }
 
@@ -311,7 +313,7 @@ func TestKanon(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				code, stdout, stderr := invoke(tt.args, nil, tt.stdin)
+				code, stdout, stderr := invoke(t, tt.args, nil, tt.stdin)
 				assert.Equal(t, code, tt.wantCode, "run returns the exit status")
 				assert.Equal(t, stdout, tt.wantStdout, "run writes its standard output")
 				assert.HasPrefix(t, stderr, tt.wantStderr, "run writes its standard error")
@@ -319,7 +321,7 @@ func TestKanon(t *testing.T) {
 		}
 		t.Run("returns exitFail for a type that the package does not declare", func(t *testing.T) {
 			t.Parallel()
-			code, _, stderr := invoke([]string{missingFlag, module(t, nil)}, nil, "")
+			code, _, stderr := invoke(t, []string{missingFlag, module(t, nil)}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.Equal(t, stderr, "kanon: -type names Missing, which package m does not declare\n",
 				"run writes the error of the generation")
@@ -327,7 +329,7 @@ func TestKanon(t *testing.T) {
 		t.Run("writes the generated files beside the file that GOFILE names", func(t *testing.T) {
 			t.Parallel()
 			path := module(t, nil)
-			code, _, stderr := invoke([]string{typeFlag}, map[string]string{fileEnv: path}, "")
+			code, _, stderr := invoke(t, []string{typeFlag}, map[string]string{fileEnv: path}, "")
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 			for _, name := range []string{codeName, testName} {
 				files.IsFile(t, filepath.Join(filepath.Dir(path), name), "run writes "+name)
@@ -348,7 +350,7 @@ func TestKanon(t *testing.T) {
 			t.Parallel()
 			path := module(t, files.Tree{testName: files.Dir()})
 			test := filepath.Join(filepath.Dir(path), testName)
-			code, _, stderr := invoke([]string{typeFlag, path}, nil, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: read "+test+": ", "run writes the error of the read")
 		})
@@ -359,7 +361,7 @@ func TestKanon(t *testing.T) {
 			}
 			path := module(t, files.Tree{testName: files.Text("").WithMode(readOnlyMode)})
 			test := filepath.Join(filepath.Dir(path), testName)
-			code, _, stderr := invoke([]string{typeFlag, path}, nil, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, nil, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: write "+test+": ", "run writes the error of the write")
 		})
@@ -382,7 +384,7 @@ func TestKanonEnv(t *testing.T) {
 			path := module(t, nil)
 			generated(t, path)
 			commit(t, filepath.Dir(path))
-			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: headRevision}, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, map[string]string{checkEnv: headRevision}, "")
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 		})
 		t.Run("returns exitFail for a field that the source renumbers", func(t *testing.T) {
@@ -391,7 +393,7 @@ func TestKanonEnv(t *testing.T) {
 			commit(t, filepath.Dir(path))
 			assert.NoError(t, os.Remove(filepath.Join(filepath.Dir(path), codeName)), "the code file removes")
 			assert.NoError(t, os.WriteFile(path, []byte(renumbered), sourceMode), "the source file renumbers Y")
-			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: headRevision}, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, map[string]string{checkEnv: headRevision}, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.Equal(t, stderr, "kanon: field Y of A has number 5, and the base revision gives it number 2\n",
 				"run writes the rule that the number breaks")
@@ -405,13 +407,13 @@ func TestKanonEnv(t *testing.T) {
 			other := filepath.Join(sub, sourceName)
 			assert.NoError(t, os.WriteFile(other, []byte(subSource), sourceMode),
 				"the source file of the package writes")
-			code, _, stderr := invoke([]string{typeFlag, other}, map[string]string{checkEnv: headRevision}, "")
+			code, _, stderr := invoke(t, []string{typeFlag, other}, map[string]string{checkEnv: headRevision}, "")
 			assert.Equal(t, code, exitOK, "run returns exitOK: "+stderr)
 		})
 		t.Run("returns exitFail for a revision that git does not know", func(t *testing.T) {
 			path := module(t, nil)
 			commit(t, filepath.Dir(path))
-			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: unknownRevision}, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, map[string]string{checkEnv: unknownRevision}, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: git ls-tree: ", "run writes the git command that fails")
 		})
@@ -419,7 +421,7 @@ func TestKanonEnv(t *testing.T) {
 			path := module(t, nil)
 			generated(t, path)
 			commit(t, filepath.Dir(path))
-			code, _, stderr := invoke([]string{typeFlag, path}, map[string]string{checkEnv: treeRevision}, "")
+			code, _, stderr := invoke(t, []string{typeFlag, path}, map[string]string{checkEnv: treeRevision}, "")
 			assert.Equal(t, code, exitFail, "run returns exitFail")
 			assert.HasPrefix(t, stderr, "kanon: git show: ", "run writes the git command that fails")
 		})

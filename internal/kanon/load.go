@@ -5,6 +5,7 @@ package kanon
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -69,20 +70,21 @@ const cgoImport = "C"
 // identifiers, which the type checker makes.
 const sourceMode = parser.ParseComments | parser.SkipObjectResolution
 
-// listed is one package of the output of go list.
+// listed is one package of the output of go list. Each field takes the key
+// of its name in the JSON of go list.
 type listed struct {
 	// Error is set when go list could not load the package completely.
 	Error *struct {
-		Err string
-	}
-	ImportPath string
-	Name       string
-	Dir        string
+		Err string `json:"Err"`
+	} `json:"Error"`
+	ImportPath string `json:"ImportPath"`
+	Name       string `json:"Name"`
+	Dir        string `json:"Dir"`
 	// Export is the path of the compiled export data of the package. It is
 	// empty when the package failed to compile.
-	Export  string
-	GoFiles []string
-	Imports []string
+	Export  string   `json:"Export"`
+	GoFiles []string `json:"GoFiles"`
+	Imports []string `json:"Imports"`
 }
 
 // pkg is the type-checked package of a directory, with the kanon directives
@@ -93,9 +95,6 @@ type pkg struct {
 	// files maps the base name of each Go file of the package, except the
 	// code files, to its syntax tree with its comments.
 	files map[string]*ast.File
-	// codes lists the base names of the code files of the package, in the
-	// order of go list.
-	codes []string
 	// directives maps the base name of each file with a kanon directive to
 	// the options of the directive, and the file that kanon generates for to
 	// the options of the generation.
@@ -110,6 +109,9 @@ type pkg struct {
 	remote map[string]map[string]Options
 	// dir is the directory of the package, as go list reports it.
 	dir string
+	// codes lists the base names of the code files of the package, in the
+	// order of go list.
+	codes []string
 }
 
 // load lists the package in dir with go list, parses its Go files other than
@@ -129,9 +131,10 @@ type pkg struct {
 // load fails when go list fails, when the package has no Go files, when a
 // file does not parse, and when the kanon directives conflict: a file with
 // two of them, a directive whose flags do not parse, and a type that two
-// directives name.
-func load(dir string) (*pkg, error) {
-	targets, err := goList(dir, jsonFlag+targetFields, thisPackage)
+// directives name. Its go list commands run under ctx, and fail when ctx
+// ends.
+func load(ctx context.Context, dir string) (*pkg, error) {
+	targets, err := goList(ctx, dir, jsonFlag+targetFields, thisPackage)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +150,7 @@ func load(dir string) (*pkg, error) {
 	exports := make(map[string]string)
 	deps := make(map[string]listed)
 	if len(imports) != 0 {
-		list, err := goList(dir, append([]string{exportFlag, jsonFlag + depFields, depsFlag}, imports...)...)
+		list, err := goList(ctx, dir, append([]string{exportFlag, jsonFlag + depFields, depsFlag}, imports...)...)
 		if err != nil {
 			return nil, err
 		}
@@ -193,11 +196,11 @@ func load(dir string) (*pkg, error) {
 	return p, nil
 }
 
-// goList runs go list -e with the arguments args in dir and decodes the
-// packages it lists. The error of a failed run ends with what go list wrote
-// to its standard error.
-func goList(dir string, args ...string) ([]listed, error) {
-	cmd := exec.Command(goTool, append([]string{listCommand, tolerantFlag}, args...)...)
+// goList runs go list -e with the arguments args in dir under ctx, and
+// decodes the packages it lists. The error of a failed run ends with what go
+// list wrote to its standard error.
+func goList(ctx context.Context, dir string, args ...string) ([]listed, error) {
+	cmd := exec.CommandContext(ctx, goTool, append([]string{listCommand, tolerantFlag}, args...)...)
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

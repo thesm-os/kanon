@@ -34,11 +34,11 @@ const neverFails = "The error is always nil."
 // of members of one union with consecutive field numbers, which one switch
 // on the discriminator writes.
 type group struct {
+	// disc is the discriminator of a run, and nil for a field of its own.
+	disc *types.Var
 	// fields lists the field, or the members of the run in ascending field
 	// number.
 	fields []*field
-	// disc is the discriminator of a run, and nil for a field of its own.
-	disc *types.Var
 }
 
 // layout returns the fields of m in ascending field number, the order in

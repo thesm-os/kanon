@@ -5,6 +5,7 @@ package kanon_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -56,8 +57,10 @@ func TestMain(m *testing.M) {
 }
 
 // fakeGo runs as the go command with the arguments args in the mode mode,
-// and returns its exit status. It runs the go command that realGo names,
-// and changes its output as mode states.
+// and returns its exit status. It runs the real go command, whose path the
+// environment variable realGo contains, and changes the output of that
+// command for mode. The fake command is a process of its own, so it runs
+// the real command under the background context.
 func fakeGo(mode string, args []string) int {
 	if mode == fakeGarbage {
 		_, _ = os.Stdout.WriteString("{")
@@ -68,7 +71,7 @@ func fakeGo(mode string, args []string) int {
 		fmt.Fprintln(os.Stderr, "fake go: the dependencies do not list")
 		return 1
 	}
-	cmd := exec.Command(os.Getenv(realGo), args...)
+	cmd := exec.CommandContext(context.Background(), os.Getenv(realGo), args...)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {

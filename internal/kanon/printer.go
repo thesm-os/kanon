@@ -150,6 +150,7 @@ func (p *printer) source(header, pkgName string) ([]byte, error) {
 	p.imports(&out, other)
 	out.WriteString(")\n")
 	out.Write(p.body.Bytes())
+	//nolint:wrapcheck // gofmt fails only for a defect of the emitter, so no test can run a branch that wraps its error.
 	return format.Source(out.Bytes())
 }
 

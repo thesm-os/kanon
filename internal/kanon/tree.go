@@ -13,7 +13,7 @@ import (
 // strings, or contains one in its nested structs and composite types. The
 // walk does not enter a type that encodes itself, which decodes without the
 // slab.
-func (c classifier) holdsString(t types.Type) bool {
+func (c *classifier) holdsString(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Basic:
@@ -32,7 +32,7 @@ func (c classifier) holdsString(t types.Type) bool {
 // interface: t is an interface or contains one in its nested structs and
 // composite types. The walk does not enter a type that encodes itself,
 // which a map key orders by its encoding.
-func (c classifier) holdsInterface(t types.Type) bool {
+func (c *classifier) holdsInterface(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Interface:
@@ -54,7 +54,7 @@ func (c classifier) holdsInterface(t types.Type) bool {
 // [classifier.floats] and [classifier.ambiguous] report. A struct fails as
 // [classifier.fieldsMayFail] reports, which counts a field with the tag
 // option max. seen marks the named types visited.
-func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
+func (c *classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 	var match func(types.Type) (bool, bool)
 	match = func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
@@ -83,7 +83,7 @@ func (c classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 // more elements than its bound. A field that is not a union member and whose
 // type declares kanon.Exact, as [exactType] reports, cannot fail, as
 // [exactField] states.
-func (c classifier) fieldsMayFail(st *types.Struct, seen map[*types.Named]bool,
+func (c *classifier) fieldsMayFail(st *types.Struct, seen map[*types.Named]bool,
 	match func(types.Type) (bool, bool),
 ) bool {
 	for fld, tg := range walked(st) {
@@ -122,7 +122,7 @@ func exactField(v *value, t tag) bool {
 // an interface among its encoded fields, at any depth of the structs it
 // nests by value. The walk does not enter a type that encodes itself, which
 // decodes into a zero value.
-func (c classifier) indirect(t types.Type) bool {
+func (c *classifier) indirect(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Pointer, *types.Slice, *types.Map, *types.Interface:
@@ -141,7 +141,7 @@ func (c classifier) indirect(t types.Type) bool {
 // array element, at any depth. The walk does not enter a pointer, a slice, a
 // map or an interface, whose values are elsewhere in memory, nor a time or a
 // type that encodes itself, which a reset sets whole.
-func (c classifier) hidden(t types.Type) bool {
+func (c *classifier) hidden(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Named:
@@ -184,7 +184,7 @@ func leftOutFields(t types.Type) []*types.Var {
 // struct. The walk does not enter an interface, whose concrete types the
 // tag option types lists, a time or a type that encodes itself, nor an
 // array of no elements, which has one value.
-func (c classifier) floats(t types.Type) bool {
+func (c *classifier) floats(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Basic:
@@ -208,7 +208,7 @@ func (c classifier) floats(t types.Type) bool {
 // interface, which can store a type that its list does not name, which
 // orders as nil. The walk does not enter an array of no elements, which has
 // one value.
-func (c classifier) ambiguous(t types.Type) bool {
+func (c *classifier) ambiguous(t types.Type) bool {
 	return c.reaches(t, make(map[*types.Named]bool), func(t types.Type) (bool, bool) {
 		switch t := t.(type) {
 		case *types.Pointer, *types.Interface:
@@ -232,7 +232,7 @@ func (c classifier) ambiguous(t types.Type) bool {
 // time, a type that encodes itself, and a struct with a kanon codec that
 // kanon does not generate have more than one value, as every other type
 // has.
-func (c classifier) hollow(t types.Type) bool {
+func (c *classifier) hollow(t types.Type) bool {
 	t = types.Unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		if isTime(named) || c.binaryType(named) || c.nested(named) && !c.generated(named) {
@@ -263,7 +263,7 @@ func (c classifier) hollow(t types.Type) bool {
 // its pointer has them, and t is neither a nested struct, nor time.Time,
 // which kanon encodes as seconds, nanoseconds and a zone offset, nor a
 // kanon.Validator, which kanon encodes as its underlying type.
-func (c classifier) binaryType(t *types.Named) bool {
+func (c *classifier) binaryType(t *types.Named) bool {
 	if isTime(t) || c.nested(t) || c.validates(t) {
 		return false
 	}
@@ -277,7 +277,7 @@ func (c classifier) binaryType(t *types.Named) bool {
 // element of a pointer, a slice or an array, the key and the value of a
 // map, and the fields of a struct that [walked] returns. seen marks the
 // named types visited, so that a type that contains itself ends the walk.
-func (c classifier) reaches(t types.Type, seen map[*types.Named]bool, match func(types.Type) (bool, bool)) bool {
+func (c *classifier) reaches(t types.Type, seen map[*types.Named]bool, match func(types.Type) (bool, bool)) bool {
 	t = types.Unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		if seen[named] {
@@ -336,7 +336,7 @@ func walked(st *types.Struct) iter.Seq2[*types.Var, tag] {
 // structs, times and types that encode themselves, whose values take
 // options of their own, and at interfaces, whose concrete types the options
 // list. seen marks the named types visited.
-func (c classifier) within(t types.Type, keys bool, seen map[*types.Named]bool, match func(types.Type) bool) bool {
+func (c *classifier) within(t types.Type, keys bool, seen map[*types.Named]bool, match func(types.Type) bool) bool {
 	t = types.Unalias(t)
 	if match(t) {
 		return true

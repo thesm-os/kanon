@@ -4,6 +4,7 @@
 package kanon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"go/types"
@@ -76,9 +77,11 @@ type File struct {
 //   - a declaration of the package has a name that the generated code uses.
 //
 // Every error message starts with "kanon: ", except the error of gofmt for
-// a generated file that it cannot parse, which marks a defect of kanon.
-func Generate(dir, file string, opts Options) ([]File, error) {
-	u, err := newUnit(dir, file, opts)
+// a generated file that it cannot parse, which marks a defect of kanon. The
+// go list commands that load the package run under ctx, and fail when ctx
+// ends.
+func Generate(ctx context.Context, dir, file string, opts Options) ([]File, error) {
+	u, err := newUnit(ctx, dir, file, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -117,9 +120,6 @@ type unit struct {
 	lists []*typeList
 	// prefix begins the name of every helper that the code file declares.
 	prefix string
-	// carried lists the numbers lines that the code file keeps for structs
-	// that it no longer generates, as [carried] returns them.
-	carried []string
 	// keyStructs maps the type string of each struct type with a kanon codec
 	// in the map keys of the targets to the numbers of its fields.
 	keyStructs map[string]keyStruct
@@ -127,6 +127,9 @@ type unit struct {
 	// struct type of another package that the targets encode through the
 	// struct's own kanon codec, as [classifier.codecs] collects them.
 	codecs map[string]*types.Named
+	// carried lists the numbers lines that the code file keeps for structs
+	// that it no longer generates, as [carried] returns them.
+	carried []string
 	// views reports that the code file declares a view type per target.
 	views bool
 	// canonical reports that the decode of every target and inline struct
@@ -141,13 +144,14 @@ type unit struct {
 // files of the package record, the numbers lines that the code file keeps
 // for the structs that it no longer generates, and the named types that are
 // not structs with the method that opts.Validate names. newUnit fails as
-// [Generate] states, apart from the rendering of the files.
-func newUnit(dir, file string, opts Options) (*unit, error) {
+// [Generate] states, apart from the rendering of the files. It loads the
+// package under ctx.
+func newUnit(ctx context.Context, dir, file string, opts Options) (*unit, error) {
 	names := opts.Types
 	if len(names) == 0 {
 		return nil, errors.New("kanon: -type is required: name the types to generate code for")
 	}
-	p, err := load(dir)
+	p, err := load(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +184,7 @@ func newUnit(dir, file string, opts Options) (*unit, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := classifier{
+	c := &classifier{
 		nested:      p.nested,
 		generated:   p.generated,
 		validated:   p.validated,
@@ -394,7 +398,7 @@ func (p *pkg) prefix(file string) (string, error) {
 // as [recordOf] picks them, and new numbers for the fields that they do not
 // record. The inline structs in the types of their fields collect in the
 // inlines of c.
-func (c classifier) targets(named []*types.Named, own records, others map[string][]recordAt) ([]*target, error) {
+func (c *classifier) targets(named []*types.Named, own records, others map[string][]recordAt) ([]*target, error) {
 	out := make([]*target, 0, len(named))
 	for _, n := range named {
 		m, err := c.target(n)

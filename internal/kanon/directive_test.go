@@ -90,6 +90,11 @@ func TestDirective(t *testing.T) {
 				want:  "kanon: a.go:3:1: kanon directive: flag provided but not defined: -bogus",
 			},
 			{
+				name:  "returns an error for a directive whose -type has an empty name",
+				files: map[string]string{source: "//go:generate go tool kanon -type=A,,B\n" + structsAB},
+				want:  "kanon: a.go:3:1: kanon directive: -type \"A,,B\" names an empty type",
+			},
+			{
 				name:  "returns an error for a type that the directives of two files name",
 				files: map[string]string{source: kanonA + structsAB, "b.go": kanonA},
 				want:  "kanon: b.go:3:1: kanon directive: -type names A, which the kanon directive in a.go names too",

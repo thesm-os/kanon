@@ -63,7 +63,7 @@ func newInlines() *inlines {
 // later site of an anonymous struct type adds to the sites of its target. A
 // classifier in lookup mode returns the target it finds, or nil, and adds
 // nothing.
-func (c classifier) inline(t types.Type, at site) (*target, error) {
+func (c *classifier) inline(t types.Type, at site) (*target, error) {
 	id := types.TypeString(t, nil)
 	m := c.inlines.byType[id]
 	if c.lookup {
@@ -100,7 +100,7 @@ func (c classifier) inline(t types.Type, at site) (*target, error) {
 // anonymous struct type occur at the site at, so that two instantiations
 // that differ in an anonymous struct type do not share the site of its
 // fields.
-func (c classifier) newInline(t types.Type, at site) (*target, site) {
+func (c *classifier) newInline(t types.Type, at site) (*target, site) {
 	m := &target{typ: t, fset: c.fset, inline: true, fails: c.mayFail(t, make(map[*types.Named]bool))}
 	named, ok := t.(*types.Named)
 	if !ok {
@@ -122,7 +122,7 @@ func (c classifier) newInline(t types.Type, at site) (*target, site) {
 // numbers the fields of every instantiation of it alike, and creates it on
 // the first call. [genericFields] sets its fields when the inline structs
 // are numbered.
-func (c classifier) genericOf(origin *types.Named) *target {
+func (c *classifier) genericOf(origin *types.Named) *target {
 	g := c.inlines.generics[origin]
 	if g == nil {
 		g = &target{
@@ -140,7 +140,7 @@ func (c classifier) genericOf(origin *types.Named) *target {
 
 // typeName returns the name of the named type t in errors: its type name,
 // qualified by its package name when another package declares it.
-func (c classifier) typeName(t *types.Named) string {
+func (c *classifier) typeName(t *types.Named) string {
 	obj := t.Obj()
 	if q := c.relative(obj.Pkg()); q != "" {
 		return q + fieldStep + obj.Name()
@@ -151,7 +151,7 @@ func (c classifier) typeName(t *types.Named) string {
 // recordKey returns the key of the numbers line of the named struct type t:
 // its type name for a type of the file's package, and its import path and
 // type name for a type of another package.
-func (c classifier) recordKey(t *types.Named) string {
+func (c *classifier) recordKey(t *types.Named) string {
 	obj := t.Obj()
 	if obj.Pkg() == c.pkg {
 		return obj.Name()
@@ -162,7 +162,7 @@ func (c classifier) recordKey(t *types.Named) string {
 // relative is the [types.Qualifier] of the names of structs in errors: the
 // file's package is unqualified, and any other package is qualified by its
 // name.
-func (c classifier) relative(pkg *types.Package) string {
+func (c *classifier) relative(pkg *types.Package) string {
 	if pkg == c.pkg {
 		return ""
 	}

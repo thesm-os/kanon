@@ -85,6 +85,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -151,15 +152,22 @@ const fileMode = 0o666
 // main runs kanon with the arguments, the environment and the standard
 // streams of the process, and exits with the status that run returns.
 func main() {
-	os.Exit(run(os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(run(context.Background(), os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr))
 }
 
 // run executes kanon with the command-line arguments args, reads the
 // environment through getenv, and writes the version to stdout and the
 // diagnostics to stderr. With inspect as the first argument, it runs the
 // inspector on the arguments after it, which reads stdin when they name no
-// file. It returns the exit status.
-func run(args []string, getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
+// file. The go and git commands that it runs end with ctx. It returns the
+// exit status.
+func run(
+	ctx context.Context,
+	args []string,
+	getenv func(string) string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+) int {
 	if len(args) > 0 && args[0] == inspectCommand {
 		return inspect.Command(args[1:], stdin, stdout, stderr)
 	}
@@ -188,9 +196,9 @@ func run(args []string, getenv func(string) string, stdin io.Reader, stdout, std
 		return exitUsage
 	}
 	if rev := getenv(checkEnv); rev != "" {
-		err = check(file, opts, rev)
+		err = check(ctx, file, opts, rev)
 	} else {
-		err = generate(file, opts)
+		err = generate(ctx, file, opts)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -201,20 +209,21 @@ func run(args []string, getenv func(string) string, stdin io.Reader, stdout, std
 
 // check checks the field numbers of the struct types that opts names, from
 // the source file at path, against the numbers that the code files of its
-// package record at the git revision rev.
-func check(path string, opts kanon.Options, rev string) error {
+// package record at the git revision rev. Its commands run under ctx.
+func check(ctx context.Context, path string, opts kanon.Options, rev string) error {
 	dir := filepath.Dir(path)
-	base, err := codeFiles(dir, rev)
+	base, err := codeFiles(ctx, dir, rev)
 	if err != nil {
 		return err
 	}
-	return kanon.Check(dir, filepath.Base(path), opts, base)
+	return kanon.Check(ctx, dir, filepath.Base(path), opts, base)
 }
 
 // codeFiles returns the code files of the package in dir at the git
-// revision rev, by name. A revision without the directory has none.
-func codeFiles(dir, rev string) (map[string][]byte, error) {
-	names, err := git(dir, listTree, nulFlag, nameOnlyFlag, optionsEnd, rev, pathsMark, workingDir)
+// revision rev, by name. A revision without the directory has none. Its git
+// commands run under ctx.
+func codeFiles(ctx context.Context, dir, rev string) (map[string][]byte, error) {
+	names, err := git(ctx, dir, listTree, nulFlag, nameOnlyFlag, optionsEnd, rev, pathsMark, workingDir)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +232,7 @@ func codeFiles(dir, rev string) (map[string][]byte, error) {
 		if !strings.HasSuffix(name, kanon.CodeSuffix) {
 			continue
 		}
-		src, err := git(dir, showCommand, optionsEnd, rev+revisionPath+name)
+		src, err := git(ctx, dir, showCommand, optionsEnd, rev+revisionPath+name)
 		if err != nil {
 			return nil, err
 		}
@@ -232,11 +241,11 @@ func codeFiles(dir, rev string) (map[string][]byte, error) {
 	return out, nil
 }
 
-// git runs the git command args in dir and returns what it writes to its
-// standard output. The error of a failed command names the command and ends
-// with what git writes to its standard error.
-func git(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command(gitTool, args...)
+// git runs the git command args in dir under ctx and returns what it writes
+// to its standard output. The error of a failed command names the command
+// and ends with what git writes to its standard error.
+func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, gitTool, args...)
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -249,10 +258,10 @@ func git(dir string, args ...string) ([]byte, error) {
 
 // generate generates the files of the struct types that opts names from the
 // source file at path, and writes each one whose content differs from the
-// file on disk.
-func generate(path string, opts kanon.Options) error {
+// file on disk. The go list commands of the generation run under ctx.
+func generate(ctx context.Context, path string, opts kanon.Options) error {
 	dir := filepath.Dir(path)
-	files, err := kanon.Generate(dir, filepath.Base(path), opts)
+	files, err := kanon.Generate(ctx, dir, filepath.Base(path), opts)
 	if err != nil {
 		return err
 	}

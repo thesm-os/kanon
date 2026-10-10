@@ -69,7 +69,7 @@ func TestCode(t *testing.T) {
 		t.Run("returns an error for a declaration named like a view type", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{source: structA("X int32") + "\ntype AView []byte\n"})
-			_, err := kanon.Generate(dir, source, kanon.Options{Types: []string{"A"}, Views: true})
+			_, err := kanon.Generate(t.Context(), dir, source, kanon.Options{Types: []string{"A"}, Views: true})
 			assert.HasError(t, err, "Generate fails for the view type")
 			assert.Equal(t, err.Error(),
 				"kanon: a.go:7:6: AView: AView is the name of a declaration of the generated code: rename it",
@@ -78,7 +78,7 @@ func TestCode(t *testing.T) {
 		t.Run("returns an error for a declaration named like an index type", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{source: structA("X int32") + "\ntype AIndex struct{}\n"})
-			_, err := kanon.Generate(dir, source, kanon.Options{Types: []string{"A"}, Views: true})
+			_, err := kanon.Generate(t.Context(), dir, source, kanon.Options{Types: []string{"A"}, Views: true})
 			assert.HasError(t, err, "Generate fails for the index type")
 			assert.Equal(t, err.Error(),
 				"kanon: a.go:7:6: AIndex: AIndex is the name of a declaration of the generated code: rename it",

@@ -4,6 +4,7 @@
 package kanon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -44,9 +45,10 @@ const (
 // Generate fails, apart from the rendering of the files. It also fails when
 // a code file of base or of the package of such a struct does not parse,
 // and when two code files of base other than the code file of file record
-// different numbers for a struct or a list.
-func Check(dir, file string, opts Options, base map[string][]byte) error {
-	u, err := newUnit(dir, file, opts)
+// different numbers for a struct or a list. The go list commands that load
+// the package run under ctx, and fail when ctx ends.
+func Check(ctx context.Context, dir, file string, opts Options, base map[string][]byte) error {
+	u, err := newUnit(ctx, dir, file, opts)
 	if err != nil {
 		return err
 	}
@@ -99,8 +101,6 @@ func Check(dir, file string, opts Options, base map[string][]byte) error {
 type numbers struct {
 	// key names the struct or the list in its numbers line.
 	key string
-	// noun names the entries in errors: fieldNoun or typeNoun.
-	noun string
 	// nums maps the name of each field or concrete type to its number.
 	nums map[string]int
 	// names maps each number of nums to its field or concrete type.
@@ -109,6 +109,8 @@ type numbers struct {
 	tagged map[int]bool
 	// reserved marks the reserved numbers.
 	reserved map[int]bool
+	// noun names the entries in errors: fieldNoun or typeNoun.
+	noun string
 }
 
 // fieldNumbers returns the numbering of the fields of m.

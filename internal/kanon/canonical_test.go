@@ -45,7 +45,8 @@ const canonicalStructs = "import \"time\"\n\n" +
 // for the types that types names, from a.go in dir, by name, and its error.
 func generateCanonical(t *testing.T, dir, types string) (map[string]string, error) {
 	t.Helper()
-	files, err := kanon.Generate(dir, source, kanon.Options{Types: strings.Split(types, ","), Canonical: true})
+	files, err := kanon.Generate(t.Context(), dir, source,
+		kanon.Options{Types: strings.Split(types, ","), Canonical: true})
 	out := make(map[string]string, len(files))
 	for _, f := range files {
 		out[f.Name] = string(f.Src)

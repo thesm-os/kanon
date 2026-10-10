@@ -5,6 +5,7 @@ package kanon
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"go/types"
@@ -157,10 +158,7 @@ func parseRecords(src []byte) (records, error) {
 		}
 		words, err := lineWords(string(line))
 		if err != nil {
-			return nil, fmt.Errorf(
-				"kanon: the numbers line %q has a quote that does not end",
-				strings.TrimSpace(string(line)),
-			)
+			return nil, err
 		}
 		if len(words) == 1 {
 			return nil, errors.New("kanon: a numbers line names no struct")
@@ -211,9 +209,9 @@ func baseRecords(code string, base map[string][]byte) (records, map[string][]rec
 // recordAt is a record of a code file other than the one that kanon
 // generates.
 type recordAt struct {
+	rec *record
 	// file is the base name of the code file.
 	file string
-	rec  *record
 }
 
 // lineWords returns the words of a numbers line, split at runs of spaces. A
@@ -228,7 +226,10 @@ func lineWords(line string) ([]string, error) {
 		if strings.HasPrefix(rest, quoteMark) {
 			q, err := strconv.QuotedPrefix(rest)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf(
+					"kanon: the numbers line %q has a quote that does not end",
+					strings.TrimSpace(line),
+				)
 			}
 			start = len(q)
 		}
@@ -470,10 +471,7 @@ func (m *target) numbersLine() string {
 func (in *inlines) number(own records, others map[string][]recordAt) ([]*target, error) {
 	var out []*target
 	for _, m := range in.list {
-		n := m
-		if m.generic != nil {
-			n = m.generic
-		}
+		n := cmp.Or(m.generic, m)
 		if !slices.Contains(out, n) {
 			if n != m {
 				genericFields(n)

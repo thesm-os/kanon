@@ -89,7 +89,7 @@ func TestValidator(t *testing.T) {
 		for _, tt := range failures {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				_, err := kanon.Generate(module(t, map[string]string{source: tt.src}), source,
+				_, err := kanon.Generate(t.Context(), module(t, map[string]string{source: tt.src}), source,
 					kanon.Options{Types: strings.Split(tt.types, ","), Validate: tt.validate})
 				assert.HasError(t, err, "Generate fails")
 				assert.Equal(t, err.Error(), tt.want, "Generate states why it fails")

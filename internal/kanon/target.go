@@ -259,7 +259,7 @@ func upperFirst(name string) string {
 
 // target analyses the -type struct type named, as [classifier.analyze]
 // states. [assign] numbers its fields afterwards.
-func (c classifier) target(named *types.Named) (*target, error) {
+func (c *classifier) target(named *types.Named) (*target, error) {
 	name := named.Obj().Name()
 	m := &target{typ: named, decl: named.Obj(), fset: c.fset, name: name, key: name}
 	if err := c.analyze(m, site{key: name, name: name}); err != nil {
@@ -285,7 +285,7 @@ func (c classifier) target(named *types.Named) (*target, error) {
 // slice or a map, for the tag option stream on a field that [streamable]
 // rejects, for an invalid union, and for a field tagged unknown that is
 // unexported, is not a []byte or follows another.
-func (c classifier) analyze(m *target, at site) error {
+func (c *classifier) analyze(m *target, at site) error {
 	st, _ := m.typ.Underlying().(*types.Struct)
 	byName := make(map[string]*types.Var, st.NumFields())
 	for i := range st.NumFields() {

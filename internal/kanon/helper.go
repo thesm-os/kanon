@@ -120,21 +120,21 @@ func (o op) word() string {
 // values of one encoding, the deselector of a union, or the tag error of the
 // canonical decode of a struct.
 type helper struct {
-	name string
-	op   op
-	v    *value
+	v *value
 	// m is the struct of a deselector and of a tag error, and disc the
 	// discriminator of a deselector.
 	m    *target
 	disc *types.Var
+	name string
+	op   op
 }
 
 // helperKey identifies a helper: its operation and the id of its values, the
 // discriminator of a deselector, or the key of the struct of a tag error.
 type helperKey struct {
-	op   op
-	id   string
 	disc *types.Var
+	id   string
+	op   op
 }
 
 // fn returns the name of the helper of o for the values of v, and records

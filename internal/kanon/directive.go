@@ -104,7 +104,7 @@ func (p *pkg) addDirective(name string, c *ast.Comment, args []string) error {
 	}
 	opts, err := ParseOptions(args, io.Discard)
 	if err != nil {
-		return fail(fmt.Errorf("kanon: %w", err))
+		return fail(err)
 	}
 	p.directives[name] = opts
 	for _, t := range opts.Types {

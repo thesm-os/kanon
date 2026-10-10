@@ -57,10 +57,6 @@ type classifier struct {
 	// struct has the -canonical flag, so that its decode accepts only its
 	// canonical encoding.
 	canonicalOf func(*types.Named) bool
-	// canonical reports that the code file decodes its structs canonically,
-	// so that every nested struct of the classified types must decode
-	// canonically too, as canonicalOf reports.
-	canonical bool
 	// pkg is the package of the code file, which names every type the file
 	// encodes.
 	pkg *types.Package
@@ -79,6 +75,10 @@ type classifier struct {
 	// through the struct's own kanon codec. [Check] compares its numbers with
 	// those that a base revision records for it.
 	codecs map[string]*types.Named
+	// canonical reports that the code file decodes its structs canonically,
+	// so that every nested struct of the classified types must decode
+	// canonically too, as canonicalOf reports.
+	canonical bool
 	// lookup makes the classifier find the inline struct of a struct type in
 	// inlines without adding one. The compare functions of map keys classify
 	// the fields of struct keys in this mode, and a struct that the
@@ -114,7 +114,7 @@ type classifier struct {
 // fields fail the analysis. It also fails when fixed applies to no integer
 // of the tree, when the tree has no interface for list, and when a type of
 // list fits no interface of the tree.
-func (c classifier) classify(t types.Type, fixed bool, list *typeList, at site) (*value, error) {
+func (c *classifier) classify(t types.Type, fixed bool, list *typeList, at site) (*value, error) {
 	o := treeOpts{fixed: fixed, used: new(bool), list: list, placed: make(map[*concrete]bool)}
 	v, err := c.tree(t, o, at)
 	if err != nil {
@@ -145,7 +145,7 @@ func (c classifier) classify(t types.Type, fixed bool, list *typeList, at site) 
 // o.used when an integer of the tree takes the fixed-size encoding, and
 // records in o.placed the concrete types that the interfaces of the tree
 // store.
-func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
+func (c *classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 	declared := t
 	t = types.Unalias(t)
 	if b, ok := t.(*types.Basic); ok && b.Kind() == types.Invalid {
@@ -260,7 +260,7 @@ func (c classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 // file, whose decode does not accept only its canonical encoding: a struct
 // whose directive does not set -canonical, and a struct whose kanon codec is
 // written by hand, which no directive names.
-func (c classifier) uncanonical(t *types.Named) error {
+func (c *classifier) uncanonical(t *types.Named) error {
 	name := types.TypeString(t, nil)
 	if c.generated(t) {
 		return fmt.Errorf("kanon: %s decodes without the -canonical flag, which a canonical type cannot contain: "+
@@ -273,7 +273,7 @@ func (c classifier) uncanonical(t *types.Named) error {
 // directive names t, a type that is not a struct, as c.validated reports, or
 // t has the method, as [validatorOf] reports. It fails as validatorOf
 // fails.
-func (c classifier) validator(t *types.Named) (bool, error) {
+func (c *classifier) validator(t *types.Named) (bool, error) {
 	if c.validated(t) {
 		return true, nil
 	}
@@ -288,7 +288,7 @@ func (c classifier) validator(t *types.Named) (bool, error) {
 // out its zero value. It also fails for a type that declares AppendKanon,
 // the method of kanon.Appender, without ExactKanon or with another signature
 // than func([]byte) []byte.
-func (c classifier) exactable(t *types.Named) error {
+func (c *classifier) exactable(t *types.Named) error {
 	name := types.TypeString(t, nil)
 	appends := methodsOf(t).signatureOf(appendKanonName)
 	if !exactType(t) {
@@ -318,7 +318,7 @@ func (c classifier) exactable(t *types.Named) error {
 // validates reports whether the named type t is a kanon.Validator, as
 // [classifier.validator] reports it, without its error, which the
 // classification of a value of t returns.
-func (c classifier) validates(t *types.Named) bool {
+func (c *classifier) validates(t *types.Named) bool {
 	ok, _ := c.validator(t)
 	return ok
 }
@@ -327,7 +327,7 @@ func (c classifier) validates(t *types.Named) bool {
 // named type t on its values: t is a kanon.Validator, as
 // [classifier.validates] reports, other than a type whose generated method
 // returns nil, as c.trivial reports.
-func (c classifier) checks(t *types.Named) bool {
+func (c *classifier) checks(t *types.Named) bool {
 	return c.validates(t) && !c.trivial(t)
 }
 
@@ -338,7 +338,7 @@ func (c classifier) checks(t *types.Named) bool {
 // key change it when t contains an interface. Two values with one id encode
 // alike, so a []string shares its functions across fields with and without
 // options.
-func (c classifier) id(t types.Type, o treeOpts) string {
+func (c *classifier) id(t types.Type, o treeOpts) string {
 	id := types.TypeString(t, nil)
 	iface := c.within(t, true, make(map[*types.Named]bool), types.IsInterface)
 	if o.fixed && (iface || c.within(t, false, make(map[*types.Named]bool), fixable)) {

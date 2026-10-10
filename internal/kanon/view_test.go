@@ -38,7 +38,7 @@ func TestView(t *testing.T) {
 		t.Run("writes an IndexKanon without a scan for a view type that reads no field", func(t *testing.T) {
 			t.Parallel()
 			dir := module(t, map[string]string{source: structA("X []int32")})
-			files, err := kanon.Generate(dir, source, kanon.Options{Types: []string{"A"}, Views: true})
+			files, err := kanon.Generate(t.Context(), dir, source, kanon.Options{Types: []string{"A"}, Views: true})
 			assert.NoError(t, err, "Generate writes the view type")
 			var index, indexType string
 			for _, d := range declarations(t, source, string(files[0].Src)) {

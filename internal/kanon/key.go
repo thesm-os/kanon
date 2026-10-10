@@ -13,8 +13,8 @@ import (
 // compare function of the key's type orders keys by.
 type keyField struct {
 	obj *types.Var
-	tag tag
 	val *value
+	tag tag
 }
 
 // visit is a value that a walk of the map keys of a code file visits, and
@@ -64,12 +64,12 @@ func numsOf(m *target) map[string]int {
 // unexported and t belongs to another package, whose fields the compare
 // function of the file cannot read, and when kanon does not encode the type
 // of a field.
-func (c classifier) keyFields(t types.Type) ([]keyField, error) {
+func (c *classifier) keyFields(t types.Type) ([]keyField, error) {
 	st, ok := t.Underlying().(*types.Struct)
 	if !ok {
 		return nil, fmt.Errorf("kanon: map key type %s has kanon methods and is not a struct: kanon cannot order it", t)
 	}
-	finder := c
+	finder := *c
 	finder.lookup = true
 	var out []keyField
 	for i := range st.NumFields() {
@@ -116,7 +116,7 @@ func (c classifier) keyFields(t types.Type) ([]keyField, error) {
 // interfaces and the fields of structs, is a struct whose fields
 // [classifier.keyFields] accepts. seen marks the values checked by their
 // ids, so that a key type that contains itself ends the walk.
-func (c classifier) orderable(v *value, seen map[string]bool) error {
+func (c *classifier) orderable(v *value, seen map[string]bool) error {
 	if seen[v.id] {
 		return nil
 	}
@@ -152,7 +152,7 @@ func (c classifier) orderable(v *value, seen map[string]bool) error {
 // whose elements have one value, and a struct none of whose encoded fields
 // has more than one value. A map with such a key has one entry at most. The
 // fields of every struct in v classify, as [classifier.orderable] checked.
-func (c classifier) single(v *value) bool {
+func (c *classifier) single(v *value) bool {
 	if v.zeroOnly() {
 		return true
 	}
@@ -172,7 +172,7 @@ func (c classifier) single(v *value) bool {
 // [unit.structNumbers] finds them, by the type string of the struct. A map
 // orders such keys field by field in ascending field number. It fails as
 // structNumbers fails.
-func (u *unit) orderNumbers(c classifier, own records, others map[string][]recordAt) (map[string]keyStruct, error) {
+func (u *unit) orderNumbers(c *classifier, own records, others map[string][]recordAt) (map[string]keyStruct, error) {
 	out := make(map[string]keyStruct)
 	seen := make(map[visitID]bool)
 	var walk func(v *value, key bool) error
@@ -238,7 +238,7 @@ func (u *unit) orderNumbers(c classifier, own records, others map[string][]recor
 // for a record that does not read, and as assign fails. [classifier.orderable]
 // checked the fields of t.
 func (u *unit) structNumbers(
-	c classifier,
+	c *classifier,
 	t types.Type,
 	own records,
 	others map[string][]recordAt,

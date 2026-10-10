@@ -216,7 +216,7 @@ func markNilable(structs []*target) {
 //
 // listOf fails for an expression that is not a type, for an interface type,
 // and for a type that the option lists twice.
-func (c classifier) listOf(m *target, obj *types.Var, t tag) (*typeList, error) {
+func (c *classifier) listOf(m *target, obj *types.Var, t tag) (*typeList, error) {
 	l := &typeList{owner: m, field: obj.Name(), values: make(map[string]*value)}
 	if found := c.lists.byKey[l.key()]; found != nil {
 		return found, nil
@@ -254,7 +254,7 @@ func (c classifier) listOf(m *target, obj *types.Var, t tag) (*typeList, error) 
 // recordQualifier is the [types.Qualifier] of the names of concrete types in
 // the numbers line: the file's package is unqualified, and any other package
 // is qualified by its import path.
-func (c classifier) recordQualifier(pkg *types.Package) string {
+func (c *classifier) recordQualifier(pkg *types.Package) string {
 	if pkg == c.pkg {
 		return ""
 	}
@@ -270,7 +270,7 @@ func (c classifier) recordQualifier(pkg *types.Package) string {
 //
 // iface fails when the field has no list, and when no concrete type of the
 // list fits the interface.
-func (c classifier) iface(v *value, o treeOpts, at site) (*value, error) {
+func (c *classifier) iface(v *value, o treeOpts, at site) (*value, error) {
 	if o.list == nil {
 		return nil, fmt.Errorf(
 			"kanon: interface type %s needs the tag option types, which lists its concrete types",
