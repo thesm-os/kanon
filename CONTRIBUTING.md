@@ -35,7 +35,7 @@ Then set up the repository:
 ```bash
 git clone git@github.com:thesm-os/kanon.git && cd kanon
 
-# Go 1.27.0 or later, as go.mod requires
+# Go 1.27.2 or later, as go.mod requires
 go version
 
 # gofumpt, gci, golangci-lint, govulncheck, go-license, benchstat, gremlins, and

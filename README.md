@@ -28,7 +28,7 @@ A `go:generate` directive names the types:
 
 ## Install
 
-kanon needs Go 1.27 or later.
+kanon needs Go 1.27.2 or later.
 Add the generator to your module as a tool:
 
 ```sh
