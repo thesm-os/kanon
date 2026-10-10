@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0004
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0018: Compression stays with the storage engine
 
 ## Status

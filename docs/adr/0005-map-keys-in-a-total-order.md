@@ -8,6 +8,11 @@ superseded-by: ADR-0019
 rfc: RFC-0001
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0005: Write map entries in a total key order, struct keys by field number
 
 ## Status

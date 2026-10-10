@@ -11,6 +11,11 @@ superseded-by: none
 produces-adr: ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0019, ADR-0020
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # RFC-0001: The kanon wire format
 
 ## Summary

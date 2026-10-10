@@ -11,6 +11,11 @@ superseded-by: none
 produces-adr: ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0021, ADR-0022, ADR-0023, ADR-0024
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # RFC-0002: Generated Go codecs, their runtime and their public interface
 
 ## Summary

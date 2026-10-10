@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0002
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0024: Size an opaque value with SizeKanon and test its presence with IsZero
 
 ## Status

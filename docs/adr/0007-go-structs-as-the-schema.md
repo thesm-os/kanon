@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0002
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0007: Go struct types are the schema, generated in stringer's model
 
 ## Status

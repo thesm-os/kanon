@@ -1,0 +1,11 @@
+# Copyright ThesmOS B.V. 2026
+# SPDX-License-Identifier: Apache-2.0
+
+# The output of builds and of coverage, and the coverage directory of the earlier ergon
+artifacts/
+*.out
+/.ergon/coverage/
+vendor/
+
+# Agents
+superpowers/

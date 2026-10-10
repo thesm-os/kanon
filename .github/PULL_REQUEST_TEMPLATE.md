@@ -1,34 +1,15 @@
-<!--
-Before you submit:
+<!-- Managed by ergon init. Add repository settings to .ergon/local/.github/PULL_REQUEST_TEMPLATE.md and run ergon init sync. -->
 
-  - Production code imports the standard library and kanon alone, and the
-    generated code the standard library and the kanon runtime alone.
-  - Commits follow Conventional Commits and are signed.
-  - CONTRIBUTING.md describes the checks that the CI runs.
--->
+<!-- The title is a commit subject, because the merge uses it as one. -->
 
 ## Summary
 
-<!-- What the pull request changes, and why. -->
+<!-- One bullet for each change, naming the mechanism. -->
 
-## Type of change
+-
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Change of the wire format or of the generated API
-- [ ] Documentation
-- [ ] Refactor
-- [ ] CI or tooling
+## Checklist
 
-## Linked issues and design documents
-
-- Closes #
-- RFC:
-- ADR:
-
-## Verification
-
-- [ ] `make check` passes
-- [ ] `make check-generated` passes: the committed generated files are current
-- [ ] Every change of a golden file is intended
-- [ ] The commits follow Conventional Commits and show as Verified
+- [ ] `make check` passes.
+- [ ] A changeset under `.changeset/` for each package whose consumers notice the change.
+- [ ] An RFC under `docs/rfc/` for a change to a published interface, and an ADR under `docs/adr/` for a decision that constrains later work.

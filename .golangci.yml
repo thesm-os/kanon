@@ -1,71 +1,127 @@
-# golangci-lint configuration for kanon.
+# Managed by ergon init, with .ergon/local/.golangci.yml merged in. Change the repository's settings there and run ergon init sync.
 #
-# Derived from go.thesmos.sh/core's configuration. Production code imports
-# the standard library and kanon itself. Tests and kanontest also import
-# go.dokimi.dev/assert.
+# The configuration of golangci-lint for every module of the repository. It enables each linter
+# that a Go repository of the baseline enables, with the strictest setting that one of them uses.
+# A repository adds its own settings in its local file, which merges into this one: maps key by
+# key, lists appended. The depguard rules of the repository's module boundaries go there.
 
 version: "2"
-
 run:
   timeout: 5m
   modules-download-mode: readonly
   allow-parallel-runners: true
   tests: true
   relative-path-mode: gomod
-
 output:
   show-stats: true
   sort-order:
     - linter
     - severity
     - file
-
 linters:
   default: none
   enable:
-    # Bugs & safety
+    # Correctness
     - copyloopvar
+    - durationcheck
     - errcheck
     - errorlint
     - exhaustive
+    - forcetypeassert
     - gosec
     - govet
+    - ineffassign
+    - makezero
     - nilerr
+    - nilnil
     - predeclared
+    - reassign
     - staticcheck
+    - unconvert
     - unused
     - wastedassign
     # Modernization
     - modernize
     - unparam
     # Performance
+    - bodyclose
     - gocritic
+    - mirror
+    - noctx
     - perfsprint
     - prealloc
-    # Architecture & style
+    # Architecture and style
+    - decorder
     - depguard
+    - dupl
     - dupword
     - forbidigo
+    - funcorder
     - goconst
+    - interfacebloat
     - misspell
-    - nilnil
+    - musttag
+    - nolintlint
     - revive
+    - sloglint
     - usestdlibvars
     - whitespace
+    - wrapcheck
+    # Concurrency
+    - asasalint
+    - containedctx
+    - contextcheck
+    - errname
+    - fatcontext
+    - spancheck
     # Test hygiene
+    - paralleltest
+    - testifylint
+    - testpackage
     - thelper
     - tparallel
-    - paralleltest
     - usetesting
-
+    # The analyzers of go.lint.analyzers and the module plugins of go.lint.plugins, which ergon tool
+    # run builds into golangci-lint
+    - errorprefix
+    - skipexpiry
   settings:
-    # depguard v2.2.1 compares an import with the one allow entry that
-    # sorts just before it. $gostd expands to the directories of
-    # GOROOT/src, among them "go", and go.thesmos.sh/kanon sorts between
-    # "go" and "go/types". Every go/* import then fails unless "go/" is
-    # listed on its own, as each rule below does.
+    asasalint:
+      use-builtin-exclusions: true
+    copyloopvar:
+      check-alias: true
+    # golangci-lint loads each analyzer and module plugin from its program. A repository sets the
+    # settings of a plugin in its local file, under the name of the plugin.
+    custom:
+      errorprefix:
+        type: module
+      skipexpiry:
+        type: module
+    decorder:
+      disable-dec-order-check: true
+      disable-init-func-first-check: false
+    # depguard allows only the standard library in a module without rules, so this rule denies
+    # the packages that the standard library or a successor replaces, and allows everything else.
+    # A repository adds the rules of its module boundaries in its local file.
     depguard:
       rules:
+        replaced:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: io/ioutil$
+              desc: io/ioutil is deprecated, so use io and os
+            - pkg: github.com/pkg/errors
+              desc: wrap with fmt.Errorf and %w, and match with errors.Is and errors.As
+            - pkg: golang.org/x/exp/slices$
+              desc: use slices of the standard library
+            - pkg: golang.org/x/exp/maps$
+              desc: use maps of the standard library
+            - pkg: golang.org/x/net/context$
+              desc: use context of the standard library
+            - pkg: github.com/golang/protobuf
+              desc: github.com/golang/protobuf is deprecated, so use google.golang.org/protobuf
         main:
           list-mode: strict
           files:
@@ -94,161 +150,167 @@ linters:
             - go/
             - go.dokimi.dev/assert
             - go.thesmos.sh/kanon
-
-    forbidigo:
-      analyze-types: true
-      forbid:
-        - pattern: ^panic$
-          msg: "panic() is forbidden in library code; return errors explicitly."
-        - pattern: ^fmt\.(Print|Printf|Println)$
-          msg: "Library code does not print. The kanon command writes through its io.Writer."
-
     exhaustive:
       default-signifies-exhaustive: true
       check:
         - switch
-
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^panic$
+          msg: return an error instead of a panic
+        - pattern: ^(fmt\.(Print|Printf|Println)|print|println)$
+          msg: write to an io.Writer that the caller passes, or log through log/slog
+    funcorder:
+      constructor: true
+      struct-method: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - ifElseChain
+    govet:
+      enable-all: true
+    interfacebloat:
+      max: 10
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      severity: error
+      confidence: 0.1
+      rules:
+        - name: blank-imports
+        # thelper requires the test first in a helper, so a helper takes its context second.
+        - name: context-as-argument
+          arguments:
+            - allowTypesBefore: "*testing.T"
+        - name: early-return
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: if-return
+        - name: indent-error-flow
+        - name: modifies-value-receiver
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redundant-import-alias
+        - name: time-naming
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: unused-receiver
+        - name: var-naming
+    # revive checks the package comments and the names, so staticcheck runs every other check.
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+    # Every test file declares the package x_test, so a test calls only what its package exports.
+    # The pattern matches no file name, and an empty pattern would match every one.
+    testpackage:
+      skip-regexp: "^$"
     usetesting:
       context-background: true
       context-todo: true
       os-setenv: true
       os-mkdir-temp: true
       os-temp-dir: true
-
-    gocritic:
-      enabled-tags:
-        - performance
-        - diagnostic
-      disabled-checks:
-        - ifElseChain
-        - commentedOutCode
-      settings:
-        hugeParam:
-          sizeThreshold: 256
-        rangeValCopy:
-          sizeThreshold: 256
-
-    revive:
-      severity: error
-      confidence: 0.1
-      rules:
-        - name: context-as-argument
-        - name: var-naming
-        - name: package-comments
-        - name: receiver-naming
-        - name: exported
-          severity: warning
-        - name: error-return
-        - name: error-naming
-        - name: error-strings
-        - name: errorf
-        - name: if-return
-        - name: indent-error-flow
-        - name: early-return
-        - name: unexported-return
-        - name: redundant-import-alias
-        - name: range
-        - name: empty-block
-        - name: unnecessary-stmt
-        - name: modifies-value-receiver
-        - name: time-naming
-        - name: unused-receiver
-
-    govet:
-      enable-all: true
-
     whitespace:
       multi-if: true
       multi-func: false
-
+    # An error that the constructor of an error, a wrap, a join or a context returns already
+    # carries its cause, and a walk of a file tree returns the error of the caller's own function,
+    # so neither needs a second wrap.
+    wrapcheck:
+      ignore-sig-regexps:
+        - \.New.*Error\(
+        - \.(Wrap|Wrapf)\(
+        - errors\.(Join|Unwrap)\(
+        - \.Err\(
+        - context\.Cause\(
+        - (fs|filepath)\.WalkDir\(
+        - filepath\.Walk\(
+      ignore-package-globs:
+        - go.thesmos.sh/kanon
+        - go.thesmos.sh/kanon/*
   exclusions:
     generated: lax
-    paths:
-      - docs
     presets:
       - std-error-handling
       - common-false-positives
+    paths:
+      - (^|/)testdata($|/)
     rules:
-      # Packages wire, frame and batch and these files build and read the
-      # wire format, and convert between integer widths on purpose: a field
-      # number becomes the high bits of a uint64 tag, a signed value becomes
-      # the uint64 of its varint, a length arrives as a uint64, the int
-      # length of a frame becomes a uvarint and a read uvarint length becomes
-      # an int, the int offsets and count of a batch become fixed-width
-      # words and read words become ints, and the generator and the
-      # reference encoder and decoder of kanontest size, write and read a
-      # field number, a type number, a length and the bits of a number as the
-      # uint64 varints and fixed-width words they encode as. The stream checks
-      # of kanontest read the lengths of an encoding that decodes, and look up
-      # a field by the number that a stream decoder returns. Every conversion
-      # is bounded by a preceding check or is the conversion the wire format
-      # defines. The wide samples of sample.go count up from 0 and convert the
-      # count to every integer type of a sample. The text and the JSON of the
-      # inspector read the bits of a fixed-width value as a signed integer,
-      # which is one of the readings they print.
-      - path: '^(wire/[a-z]+|frame/[a-z]+|batch/[a-z]+|internal/kanon/(emitter|decode|size)|kanontest/(encode|decode|sample|stream)|internal/inspect/(text|json))\.go$'
+      # A table or a fixture of a test exists once per test, so its layout and its size do not
+      # matter.
+      - path: _test\.go$
+        linters: [govet]
+        text: "fieldalignment:"
+      - path: _test\.go$
+        linters: [gocritic]
+        text: "(hugeParam|rangeValCopy):"
+      # A test states its values inline, because the value is the assertion.
+      - path: _test\.go$
+        linters: [goconst, gosec]
+      # A failed type assertion or an unused parameter in a test fails the test, which is the
+      # signal these linters exist for.
+      - path: _test\.go$
+        linters: [forcetypeassert, unparam]
+      # A test file puts its fakes and helpers below the tests that use them, in reading order.
+      - path: _test\.go$
+        linters: [funcorder]
+      # A fake of a test returns a nil value with a nil error on purpose, to prove the guard
+      # against a broken value-or-error contract.
+      - path: _test\.go$
+        linters: [nilnil]
+      # A spec mirrors its source file, so the specs of two similar files repeat each other.
+      - path: _test\.go$
+        linters: [dupl]
+      # A test and the code of a generator return the errors of the code that they call unchanged.
+      # A test checks such an error with errors.Is, and a generator has no context to add.
+      - path: (_test|[._]gen)\.go$
+        linters: [wrapcheck]
+      # A test of an allocation ceiling, of an environment variable or of the test binary as a
+      # process runs serially, and its name ends in Allocs, Env or Process.
+      # testing.AllocsPerRun and t.Setenv panic in a parallel test, and two processes that exit
+      # in the same nanosecond write one coverage file.
+      - path: _test\.go$
+        linters: [paralleltest, tparallel]
+        text: 'Test\w*(Allocs|Env|Process)\b'
+      # The wire format defines the integer conversions of these files. A signed value becomes the
+      # uint64 of its zigzag varint, and the bits of a fixed-width value read as a signed and as an
+      # unsigned number. A varint byte takes the low seven bits of a value. A length or an offset
+      # converts between an int and a uint64 or a fixed-width word after a check bounds it.
+      - path: '^((wire|frame|batch)/[a-z]+|internal/kanon/(emitter|size)|kanontest/(encode|decode|sample|stream)|internal/inspect/(text|json))\.go$'
         linters: [gosec]
         text: "G115:"
-
-      # wire.MustExact panics for a type that declares kanon.Exact and breaks
-      # its guarantee. The generated code checks the guarantee without an
-      # error path, and a wrong length would write a corrupt encoding without
-      # an error, so the breach panics, as bufio.Reader panics for a reader
-      # that returns a negative count.
-      - path: '^wire/error\.go$'
-        linters: [forbidigo]
-        text: "use of `panic` forbidden"
-
-      # The fixtures declare unexported fields that the generated code
-      # leaves out of the encoding, which no code reads: leaving them out is
-      # what the generated tests of such a fixture check.
-      - path: '^internal/fixture/'
-        linters: [unused]
-        text: "field \\w+ is unused"
-
-      # The loader runs `go list` in the package directory kanon was
-      # given. The command is fixed, and the arguments are fixed flags,
-      # the pattern "." and the import paths that go list itself reported
-      # for the package.
+      # The loader runs go list in the directory of the package that kanon generates for. The
+      # command is fixed, and its arguments are fixed flags and the import paths that go list
+      # itself reported for the package.
       - path: '^internal/kanon/load\.go$'
         linters: [gosec]
         text: "G204:"
-
-      # fieldalignment is noise outside hot-path structs.
-      - linters: [govet]
+      # The reference codec of kanontest returns the errors of the methods of the type under test
+      # unchanged. Its checks compare them with the errors of the generated codec.
+      - path: '^kanontest/(binary|stream)\.go$'
+        linters: [wrapcheck]
+      # The layout of a fixture is part of what its tests check, such as the padding of a map key
+      # and the order of the fields of a struct. A fixture keeps the field order that it declares.
+      - path: '^internal/fixture/'
+        linters: [govet]
         text: "fieldalignment:"
-
-      # Test files state literal values inline; the value is the
-      # assertion.
-      - path: '_test\.go'
-        linters: [goconst, gosec]
-
-      # A test of an allocation ceiling calls assert.MaxAllocs, which
-      # counts through testing.AllocsPerRun, and AllocsPerRun panics while
-      # a parallel test runs. Such a test runs serially, and its name ends
-      # in Allocs.
-      - path: '_test\.go'
-        linters: [paralleltest, tparallel]
-        text: 'Test\w*Allocs\b'
-
-      # A test that sets an environment variable of the process with
-      # t.Setenv, which panics in a parallel test, runs serially, and its
-      # name ends in Env.
-      - path: '_test\.go'
-        linters: [paralleltest, tparallel]
-        text: 'Test\w*Env\b'
-
-      # A test that runs the test binary again as a command runs its
-      # processes serially, and its name ends in Process. Each process
-      # writes the coverage meta-data file of the binary into the one
-      # GOCOVERDIR under a temporary name that Go 1.27 makes from the time
-      # in nanoseconds alone, so two processes that exit in the same
-      # nanosecond collide, and one of them writes the failure to its
-      # standard error.
-      - path: '_test\.go'
-        linters: [paralleltest, tparallel]
-        text: 'Test\w*Process\b'
-
+      # encoding/json writes the fields of a struct in declaration order. A JSON document type of
+      # the inspector declares its fields in the order of the output.
+      - path: '^internal/inspect/(json|container)\.go$'
+        linters: [govet]
+        text: 'fieldalignment: \w+(JSON|Doc) has'
 formatters:
   enable:
     - gci
@@ -256,24 +318,26 @@ formatters:
     - gofumpt
     - goimports
     - golines
-
+  # gci groups the standard library apart from every other import. A repository puts its own
+  # modules in a group of their own by adding gci's sections in its local file, such as standard,
+  # default and the prefix of its module paths.
   settings:
+    gofumpt:
+      extra:
+        group-params: true
+    golines:
+      max-len: 120
+    # The packages of kanon form an import group of their own.
     gci:
       sections:
         - standard
         - default
         - prefix(go.thesmos.sh/kanon)
       custom-order: true
-    golines:
-      max-len: 120
-    gofumpt:
-      extra:
-        group-params: true
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  uniq-by-line: false
   fix: false
-
 severity:
   default: error

@@ -1,14 +1,12 @@
 // Copyright ThesmOS B.V. 2026
 // SPDX-License-Identifier: Apache-2.0
 
-// Package version reports the build metadata that the linker stamps into
-// the kanon command. A release build sets three variables:
-// -ldflags "-X go.thesmos.sh/kanon/internal/version.buildVersion=v1.2.3"
-// sets the version, and buildCommit and buildDate take the commit and its
-// date the same way. A build without them reports "dev".
+// Package version reports the version of the kanon command from the build information that the go
+// command records in it. A build at a tag records the tag, such as v1.2.3, with the commit and the
+// time of the commit, and go install of a version records the version. A build without a version,
+// such as a test binary, reports "dev". The command needs no -X flag of the linker.
 //
 // # Dependency position
 //
-// version imports no package. The kanon command imports it for its
-// -version flag.
+// version imports runtime/debug. The kanon command imports it for its -version flag.
 package version

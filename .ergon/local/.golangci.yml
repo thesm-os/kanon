@@ -1,0 +1,90 @@
+# Copyright ThesmOS B.V. 2026
+# SPDX-License-Identifier: Apache-2.0
+
+# The settings of kanon, which ergon init merges into .golangci.yml. kanon takes every rule of the
+# baseline, with the exclusions below. Each exclusion states the property of the code that the rule
+# does not fit.
+
+linters:
+  settings:
+    # Production code imports the standard library and kanon itself. Tests and kanontest also
+    # import go.dokimi.dev/assert. depguard v2.2.1 compares an import with the one allow entry that
+    # sorts just before it. $gostd expands to the directories of GOROOT/src, among them "go", and
+    # go.thesmos.sh/kanon sorts between "go" and "go/types". Every go/* import then fails unless
+    # "go/" is listed on its own, as each rule below does.
+    depguard:
+      rules:
+        main:
+          list-mode: strict
+          files:
+            - "$all"
+            - "!$test"
+            - "!**/kanontest/**"
+          allow:
+            - $gostd
+            - go/
+            - go.thesmos.sh/kanon
+        tests:
+          list-mode: strict
+          files:
+            - "$test"
+          allow:
+            - $gostd
+            - go/
+            - go.dokimi.dev/assert
+            - go.thesmos.sh/kanon
+        kanontest:
+          list-mode: strict
+          files:
+            - "**/kanontest/**"
+          allow:
+            - $gostd
+            - go/
+            - go.dokimi.dev/assert
+            - go.thesmos.sh/kanon
+    # A *kanon.DecodeError and a *kanon.EncodeError contain the type, the field, the field number
+    # and the offset, and every other error of the module starts with the name of its package. A
+    # caller in the module returns such an error unchanged.
+    wrapcheck:
+      ignore-package-globs:
+        - go.thesmos.sh/kanon
+        - go.thesmos.sh/kanon/*
+  exclusions:
+    rules:
+      # The wire format defines the integer conversions of these files. A signed value becomes the
+      # uint64 of its zigzag varint, and the bits of a fixed-width value read as a signed and as an
+      # unsigned number. A varint byte takes the low seven bits of a value. A length or an offset
+      # converts between an int and a uint64 or a fixed-width word after a check bounds it.
+      - path: '^((wire|frame|batch)/[a-z]+|internal/kanon/(emitter|size)|kanontest/(encode|decode|sample|stream)|internal/inspect/(text|json))\.go$'
+        linters: [gosec]
+        text: "G115:"
+      # The loader runs go list in the directory of the package that kanon generates for. The
+      # command is fixed, and its arguments are fixed flags and the import paths that go list
+      # itself reported for the package.
+      - path: '^internal/kanon/load\.go$'
+        linters: [gosec]
+        text: "G204:"
+      # The reference codec of kanontest returns the errors of the methods of the type under test
+      # unchanged. Its checks compare them with the errors of the generated codec.
+      - path: '^kanontest/(binary|stream)\.go$'
+        linters: [wrapcheck]
+      # The layout of a fixture is part of what its tests check, such as the padding of a map key
+      # and the order of the fields of a struct. A fixture keeps the field order that it declares.
+      - path: '^internal/fixture/'
+        linters: [govet]
+        text: "fieldalignment:"
+      # encoding/json writes the fields of a struct in declaration order. A JSON document type of
+      # the inspector declares its fields in the order of the output.
+      - path: '^internal/inspect/(json|container)\.go$'
+        linters: [govet]
+        text: 'fieldalignment: \w+(JSON|Doc) has'
+
+formatters:
+  settings:
+    # The packages of kanon form an import group of their own.
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(go.thesmos.sh/kanon)
+      custom-order: true

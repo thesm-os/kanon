@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # RFCs
 
 An RFC argues for a design. An ADR under `../adr` records the decision it produces.

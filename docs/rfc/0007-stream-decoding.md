@@ -11,6 +11,11 @@ superseded-by: none
 produces-adr: tbd
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # RFC-0007: Decoding a message from a stream, one field at a time
 
 ## Summary

@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0001
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0020: Leave out the zero value of an opaque type whose equality compares every bit
 
 ## Status

@@ -1,116 +1,258 @@
-name: CI
+# Managed by ergon init, with .ergon/local/.github/workflows/ci.yml merged in. Change the repository's settings there and run ergon init sync.
+#
+# The gate of the repository, with the jobs that each producer of ergon init contributes. A check
+# of text runs on the Linux runner of the section github of .ergon.yaml, and every other job on a
+# matrix of runners. A job that sets up a toolchain runs its steps once the repository has the
+# files of the toolchain, and sets the toolchain up before ergon. A job that runs tools keeps the
+# tools of ergon in the cache of GitHub Actions, and removes the tools that the options do not name
+# before the cache saves them. version.yml opens the version pull request after the run of a push
+# to main passes, and release.yml publishes a commit only when a run of the gate passed on its
+# content. A new run of a pull request cancels its earlier run, and every other run has a
+# concurrency group of its own.
+#
+# The job skip runs first. Every other job skips when a passed run already covers the content of
+# the run: a push whose content passed, such as the merge of a pull request whose run passed, and a
+# version commit whose parent passed, which version.yml marks with the status ergon/version. The
+# job result passes when every job passed or skipped, so it is the one check that a branch requires.
 
+name: CI
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
-
+permissions: {}
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
-# The properties of the conformance suite take their seeds from their
-# contracts under the ci profile, so that a failed job belongs to the commit
-# under test. A local run draws new seeds.
-env:
-  DOKIMI_ASSERT_PROP_PROFILE: ci
-
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# Every command runs in bash, which is Git Bash on Windows.
+defaults:
+  run:
+    shell: bash
 jobs:
-  # Build, vet and the race tests run on every supported OS. The other
-  # jobs check properties of the source that do not depend on the
-  # runner's OS, so they run on Linux only.
-  vet-build:
-    name: Vet + Build (${{ matrix.os }})
+  skip:
+    name: Skip a tested commit
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      skip: ${{ steps.skip.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ergon
+      - name: Find a passed run that covers the content
+        id: skip
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          ergon release ci skip --commit "$COMMIT"
+  docs:
+    name: Docs
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        with:
+          globs: "**/*.md\n#node_modules"
+  commits:
+    name: Commits
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true' && (github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]')"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ergon
+      - name: Keep the tools of ergon
+        id: ergon-tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: "ergon-tools-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('.ergon.yaml', '.ergon/init.lock') }}"
+          path: "${{ runner.os == 'Windows' && '~/AppData/Local/ergon/tools' || runner.os == 'macOS' && '~/Library/Caches/ergon/tools' || '~/.cache/ergon/tools' }}"
+          restore-keys: "ergon-tools-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-"
+      - name: Check the commit messages
+        env:
+          BASE: "${{ github.event.pull_request.base.sha }}"
+          HEAD: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          status=0
+          for commit in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            git log -1 --format=%B "$commit" | ergon tool run common.commitlint -- lint || status=1
+          done
+          exit "$status"
+      - name: Prune the tools of ergon
+        if: "steps.ergon-tools.outputs.cache-hit != 'true'"
+        run: |
+          ergon tool prune
+  changeset:
+    name: Changeset
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true' && (github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]' && !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == format('ergon-release/{0}', github.base_ref)))"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ergon
+      - name: Check the changesets
+        env:
+          BASE: "${{ github.event.pull_request.base.sha }}"
+        run: |
+          ergon release status --since "$BASE"
+  baseline:
+    name: Baseline
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ergon
+      - name: Check the managed files
+        run: |
+          ergon init check
+  license:
+    name: License
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ergon
+      - name: Check the license headers
+        run: |
+          ergon license check
+  check-go:
+    name: "Go (${{ matrix.os }})"
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-26, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.mod
-      - uses: ./.github/actions/setup-ergon
-      - run: make lint-vet
-      - run: make build
-
-  test:
-    name: Test (race, ${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+          persist-credentials: false
+      - if: "hashFiles('**/go.mod') != ''"
+        uses: ./.github/actions/setup-make
+      - name: Require go.work
+        if: "hashFiles('**/go.mod') != '' && (hashFiles('go.work') == '')"
+        run: |
+          echo "::error::The targets of Go run in the modules of go.work, which the repository lacks."
+          exit 1
+      - name: Set up Go
+        if: "hashFiles('**/go.mod') != ''"
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          cache-dependency-path: "**/go.sum"
+          go-version-file: go.work
+      - if: "hashFiles('**/go.mod') != ''"
+        uses: ./.github/actions/setup-ergon
+      - name: Keep the tools of ergon
+        id: ergon-tools
+        if: "hashFiles('**/go.mod') != ''"
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: "ergon-tools-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('.ergon.yaml', '.ergon/init.lock', 'go.work') }}"
+          path: "${{ runner.os == 'Windows' && '~/AppData/Local/ergon/tools' || runner.os == 'macOS' && '~/Library/Caches/ergon/tools' || '~/.cache/ergon/tools' }}"
+          restore-keys: "ergon-tools-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-"
+      - name: Check Go
+        if: "hashFiles('**/go.mod') != ''"
+        run: |
+          make --keep-going check-go
+      - name: Prune the tools of ergon
+        if: "hashFiles('**/go.mod') != '' && (steps.ergon-tools.outputs.cache-hit != 'true')"
+        run: |
+          ergon tool prune
+  result:
+    name: Result
+    if: always()
+    needs: [skip, docs, commits, changeset, baseline, license, check-go, test-386, numbers]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions: {}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: ./.github/actions/setup-ergon
-      - run: make test-race
-
-  # int, uint and uintptr are 32 bits wide on 386, where the decode rejects
-  # a value outside their range and a time zone offset outside the range of
-  # int. The race detector needs a 64-bit platform, so these tests run
-  # without it.
+      - name: Require every job to pass or to skip
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+  # int, uint and uintptr are 32 bits wide on 386, where the decode rejects a value outside their
+  # range and a time zone offset outside the range of int. The race detector needs a 64-bit
+  # platform, so these tests run without it.
   test-386:
     name: Test (386)
-    runs-on: ubuntu-latest
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.mod
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
       - run: make test-386
-
-  gate:
-    name: Check (mod, lint, test, coverage)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: ./.github/actions/setup-ergon
-      - run: make bootstrap
-      - run: make check
-
-  generated:
-    name: Generated code is current
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: ./.github/actions/setup-ergon
-      - run: make check-generated
-
-  # A pull request must not renumber a field that its base branch records,
-  # since data that the base branch encoded would decode into another
-  # field. The full history makes the base branch available as a remote
-  # branch.
+  # A pull request must not renumber a field that its base branch records, since data that the
+  # base branch encoded would decode into another field. The full history makes the base branch
+  # available as a remote branch.
   numbers:
     name: Field numbers are kept
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
       - env:
           BASE: origin/${{ github.base_ref }}
         run: make check-numbers BASE="$BASE"
+# The properties of the conformance suite take their seeds from their contracts under the ci
+# profile, so that a failed job belongs to the commit under test. A local run draws new seeds.
+env:
+  DOKIMI_ASSERT_PROP_PROFILE: ci

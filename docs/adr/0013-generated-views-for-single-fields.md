@@ -8,6 +8,11 @@ superseded-by: ADR-0021
 rfc: RFC-0002
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0013: Generate view types that read one field from an encoding
 
 ## Status

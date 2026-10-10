@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0002
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0022: Encode a named type other than a struct with ValidateKanon as its underlying type
 
 ## Status

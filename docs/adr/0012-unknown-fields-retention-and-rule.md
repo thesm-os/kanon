@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0002
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0012: Keep unknown fields through an opt-in field, and rewrite records as opaque bytes otherwise
 
 ## Status

@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # kanon
 
 [![CI](https://github.com/thesm-os/kanon/actions/workflows/ci.yml/badge.svg)](https://github.com/thesm-os/kanon/actions/workflows/ci.yml)
@@ -626,15 +631,12 @@ The design is in RFCs under [docs/rfc](docs/rfc/README.md), and the decisions ar
 
 ## Development
 
-The build, test, lint and release targets come from [ergon](https://go.thesmos.sh/ergon):
+The build, test, lint and release targets come from [ergon](https://github.com/dokimasia/ergon):
 
 ```sh
-make bootstrap      # install dev tools
-make install        # go mod download
-make check          # full pre-merge gate (mod verify + lint + test + checks)
+make check          # the gate: lint, test, race, generate and audit
 make test-386       # run the tests where int, uint and uintptr are 32 bits wide
 make check-numbers  # fail when a change renumbers a field of BASE (default origin/main)
-make build          # compile every module's source
 ```
 
 `make help` lists every target. [CONTRIBUTING.md](CONTRIBUTING.md) describes how to propose a change, and [SECURITY.md](SECURITY.md) how to report a vulnerability.

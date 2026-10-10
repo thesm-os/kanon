@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0003
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0014: Frame messages on a stream with length, version, flags, type ID and optional CRC-32C
 
 ## Status

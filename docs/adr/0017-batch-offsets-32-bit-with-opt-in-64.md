@@ -8,6 +8,11 @@ superseded-by: none
 rfc: RFC-0004
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADR-0017: Batch offsets are 32 bits wide, with 64 bits as an opt-in
 
 ## Status

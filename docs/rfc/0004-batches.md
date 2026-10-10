@@ -11,6 +11,11 @@ superseded-by: none
 produces-adr: ADR-0016, ADR-0017, ADR-0018
 ---
 
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # RFC-0004: Batches of messages for storage blocks
 
 ## Summary

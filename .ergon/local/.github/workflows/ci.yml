@@ -1,0 +1,53 @@
+# Copyright ThesmOS B.V. 2026
+# SPDX-License-Identifier: Apache-2.0
+
+# The properties of the conformance suite take their seeds from their contracts under the ci
+# profile, so that a failed job belongs to the commit under test. A local run draws new seeds.
+env:
+  DOKIMI_ASSERT_PROP_PROFILE: ci
+
+jobs:
+  # int, uint and uintptr are 32 bits wide on 386, where the decode rejects a value outside their
+  # range and a time zone offset outside the range of int. The race detector needs a 64-bit
+  # platform, so these tests run without it.
+  test-386:
+    name: Test (386)
+    needs: skip
+    if: "needs.skip.outputs.skip != 'true'"
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+      - run: make test-386
+
+  # A pull request must not renumber a field that its base branch records, since data that the
+  # base branch encoded would decode into another field. The full history makes the base branch
+  # available as a remote branch.
+  numbers:
+    name: Field numbers are kept
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+      - env:
+          BASE: origin/${{ github.base_ref }}
+        run: make check-numbers BASE="$BASE"
+
+  result:
+    needs: [test-386, numbers]

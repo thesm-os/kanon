@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # Contributing to kanon
 
 kanon generates binary codecs for Go struct types. Every change keeps these rules:
@@ -12,38 +17,35 @@ kanon generates binary codecs for Go struct types. Every change keeps these rule
 3. **Warm paths allocate nothing.** An encode into a buffer with room for the encoding, and a
    decode into a receiver that decoded before, allocate nothing. The allocation checks of
    `kanontest` fail on every allocation.
-4. **The code keeps 100% statement coverage and a 100% mutation score**, per layer as
-   `.ergon.yaml` sets them. `make check` enforces the coverage, and `make check-mutation` runs
-   gremlins.
+4. **The code keeps 100% statement coverage and a 100% mutation score.** `make mutate-go` runs
+   dokimi-mutate-go over the module, and nightly.yml runs it each night.
 5. **Apache 2.0 by submission.** A pull request asserts that you may license its contribution
    under the Apache License 2.0.
 
 ## Development setup
 
-The Makefile runs [ergon](https://github.com/thesm-os/ergon), which you install first:
+The Makefile runs [ergon](https://github.com/dokimasia/ergon), which you install first:
 
 ```bash
 # Homebrew (macOS, Linux)
-brew install thesm-os/tap/ergon
+brew install --cask dokimasia/tap/ergon
 
 # Go toolchain
-go install go.thesmos.sh/ergon/cmd/ergon@latest
+go install go.dokimi.dev/ergon/cmd/ergon@latest
 ```
 
-Then set up the repository:
+The targets of the Makefile run their tools through `ergon tool run`, which installs each tool at
+the version that `.ergon.yaml` pins. Then set up the repository:
 
 ```bash
 git clone git@github.com:thesm-os/kanon.git && cd kanon
 
-# Go 1.27.2 or later, as go.mod requires
+# Go 1.27.2 or later, as go.work requires
 go version
 
-# gofumpt, gci, golangci-lint, govulncheck, go-license, benchstat, gremlins, and
-# markdownlint-cli2 through npm when it is missing
-make bootstrap
-
-# make check before each commit, and ergon check commit-msg on each message
-pre-commit install --hook-type pre-commit --hook-type commit-msg
+# make lint and make test before each commit, make check before each push, and commitlint on
+# each message
+pre-commit install
 
 make check
 ```
@@ -59,7 +61,7 @@ For a fix, documentation or a small improvement:
    files, declaration by declaration.
 4. When a change alters samples or probes on purpose, update the golden files with
    `go test ./kanontest/ ./internal/fixture/... -update`, and read their diff before you commit.
-5. Run `make check` and `make check-generated`.
+5. Run `make check`, which also checks that the generated files are current.
 6. Open a pull request against `main`.
 
 For a change to the wire format, to the generated API or to the options of the generator:
@@ -84,12 +86,12 @@ For a change to the wire format, to the generated API or to the options of the g
 ## Testing
 
 ```bash
-make check            # the gate that CI runs: mod, lint, test and coverage
-make test-race        # the tests under the race detector
-make test-386         # the tests where int, uint and uintptr are 32 bits wide
-make check-generated  # fail when go generate changes a committed generated file
-make check-numbers    # fail when a change renumbers a field that main records
-make check-mutation   # gremlins on every layer, with go test ./... for every mutant
+make check               # the gate that CI runs: lint, test, race, generate and audit
+make race-go             # the tests under the race detector
+make test-386            # the tests where int, uint and uintptr are 32 bits wide
+make verify-generate-go  # fail when go generate changes a tracked file or writes a new one
+make check-numbers       # fail when a change renumbers a field that main records
+make mutate-go           # dokimi-mutate-go over the module
 ```
 
 ## Commit messages
@@ -104,7 +106,7 @@ docs: record the zero rule of opaque values and their views
 
 The types are `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `chore`, `perf`, `build` and
 `revert`. A subject has 72 bytes at most, and a line of the body 100 bytes. The `commit-msg`
-hook and the CI check every commit with `ergon check commit-msg`.
+hook and the CI check every commit with commitlint and `.commitlint.yaml`.
 
 Sign your commits, so that GitHub shows them as **Verified**. For SSH signing:
 
@@ -120,13 +122,12 @@ GitHub's [guide to signing commits][sign] covers GPG and sigstore.
 
 - A maintainer, as [CODEOWNERS](.github/CODEOWNERS) lists them, reviews every pull request.
 - These jobs of the CI must pass:
-  - Vet and build on Linux, macOS and Windows.
-  - The gate, which runs mod, lint, test and coverage.
-  - The race tests on Linux, macOS and Windows.
+  - The gate of Go on Linux, macOS and Windows: lint, the tests, the race tests, the check that
+    the generated code is current, and govulncheck.
   - The tests on 386.
-  - The check that the generated code is current.
   - The check of the field numbers, on a pull request.
   - The check of the commit messages.
+  - The checks of the changesets, the license headers, the Markdown files and the managed files.
 - A pull request that changes the wire format or the generated API also needs its RFC or ADR.
 
 [sign]: https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification

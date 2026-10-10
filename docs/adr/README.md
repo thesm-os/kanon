@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # ADRs
 
 An ADR records one decision. The argument for it is in the RFC that its frontmatter names,

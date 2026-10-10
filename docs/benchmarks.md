@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright ThesmOS B.V. 2026
+  ~ SPDX-License-Identifier: Apache-2.0
+-->
+
 # Benchmarks
 
 [go_serialization_benchmarks](https://github.com/alecthomas/go_serialization_benchmarks) measures kanon and 54 other serializers on one small struct.
