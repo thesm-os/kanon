@@ -7,29 +7,34 @@
 
 [![CI](https://github.com/thesm-os/kanon/actions/workflows/ci.yml/badge.svg)](https://github.com/thesm-os/kanon/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/go.thesmos.sh/kanon.svg)](https://pkg.go.dev/go.thesmos.sh/kanon)
+[![Release](https://img.shields.io/github/v/release/thesm-os/kanon)](https://github.com/thesm-os/kanon/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/thesm-os/kanon)](go.mod)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-kanon generates binary codecs for Go struct types, as stringer generates `String` methods.
-A `go:generate` directive names the types:
+kanon generates binary codecs for Go struct types.
+You name the types in a `go:generate` directive, as you name them for stringer:
 
 ```go
 //go:generate go tool kanon -type=Order,Line
 ```
 
-- The Go types are the schema, so you do not write a schema in another language.
-- The generated code does not use reflection.
+kanon writes the encode, decode, copy and reset methods of each type, and a test that checks them against a reference codec.
+
+## Features
+
+- The Go types are the schema. You do not write a schema in another language, and the generated code does not use reflection.
 - kanon encodes every type that `encoding/gob` and `encoding/json` encode: slices and maps nested to any depth, maps with any comparable key type, struct keys included, arrays, pointers, complex numbers, `time.Time`, and interfaces with a list of their concrete types.
 - A type with binary, gob or text methods, such as `MarshalBinary` and `UnmarshalBinary`, encodes through them.
-- A named type that is not a struct can encode as its underlying type instead, with an optional check of its values that kanon calls on every encode and decode.
-- Equal values encode to identical bytes, because map keys are sorted and absent fields are left out.
 - Each field encodes under a number that the generated file records, so a struct can gain and lose fields between an encode and a decode.
-- An encode into a buffer with spare capacity does not allocate.
-- A decode into a value that decoded before allocates one copy of its input when the type contains a string, and nothing when you pass a slab. `kanon.Message` lists the values that allocate in either case.
+- Equal values encode to identical bytes, because map keys are sorted and absent fields are left out.
+- An encode into a buffer with room for the encoding does not allocate.
+- A decode into a value that decoded before does not allocate when you pass the input as the slab.
 - A decode error contains the struct type, the field, the field number and the offset of the malformed input.
-- A type with a field that has the tag option `stream` gets a stream decoder, which reads an encoding too large for memory from an `io.Reader`, one field at a time.
-- A slice or a map field with the tag option `max` has a bound on its elements, which the decode checks before it allocates for an element past it.
-- kanon writes a conformance test per type. The test compares the codec with a reference encoder and decoder on fixed samples and on generated values, and checks the allocation contract. A fuzz target runs the comparison on the values and inputs that the fuzzer searches, arbitrary input included.
+- A view reads one field of an encoding without a decode of the others.
+- The `-canonical` flag makes a decode accept only the bytes that the encode writes for the value.
+- A stream decoder reads an encoding too large for memory from an `io.Reader`, one field at a time.
+- The tag option `max` bounds the elements of a slice or a map before a decode allocates for them.
+- The generated test compares each codec with a reference encoder and decoder on fixed samples, on generated values and on malformed input, and checks its allocations.
 
 ## Install
 
@@ -40,55 +45,59 @@ Add the generator to your module as a tool:
 go get -tool go.thesmos.sh/kanon/cmd/kanon@latest
 ```
 
-The module also contains the packages that the generated code imports: `kanon`, `kanon/wire`, and `kanon/kanontest` for the generated tests.
+The module also contains the packages that the generated code imports: `go.thesmos.sh/kanon` and `go.thesmos.sh/kanon/wire`, and `go.thesmos.sh/kanon/kanontest` for the generated tests.
 
-## Generate a codec
+## Quick start
 
-Name the struct types in a directive in the file that declares them:
+1. Name the struct types in a directive in the file that declares them, here `shop/order.go`:
 
-```go
-package shop
+   ```go
+   package shop
 
-import "time"
+   import "time"
 
-//go:generate go tool kanon -type=Order,Line
+   //go:generate go tool kanon -type=Order,Line
 
-type Order struct {
-	ID     string
-	Lines  []Line
-	Placed time.Time
-	Note   *string
-}
+   type Order struct {
+   	ID     string
+   	Lines  []Line
+   	Placed time.Time
+   	Note   *string
+   }
 
-type Line struct {
-	SKU      string
-	Quantity int
-	Cents    int64 `kanon:",fixed"`
-}
-```
+   type Line struct {
+   	SKU      string
+   	Quantity int
+   	Cents    int64 `kanon:",fixed"`
+   }
+   ```
 
-Run `go generate ./...`.
-kanon writes two files beside `order.go`:
+2. Run the generator, and add the requirements of the generated tests to `go.mod`:
 
-- `order.kanon.go` contains the methods of `*Order` and `*Line`.
-- `order.kanon_test.go` runs the conformance suite on each type.
+   ```sh
+   go generate ./...
+   go mod tidy
+   ```
 
-The conformance suite compares the encodings of its samples with golden files.
-Create them with the first run:
+   kanon writes `order.kanon.go`, with the methods of `*Order` and `*Line`, and `order.kanon_test.go`, which runs the conformance test of each type.
 
-```sh
-go test -run '^TestKanon' ./shop -update
-```
+3. Write the golden files of the conformance tests:
 
-Commit the generated files and `testdata/golden` with `order.go`:
+   ```sh
+   go test -run '^TestKanon' ./shop -update
+   ```
 
-- `order.kanon.go` records the field numbers. Regeneration reads them, and deleting the file loses them.
-- The golden files pin the encoding of every sample. A change that alters an encoding fails the tests until you run the command with `-update` again.
+4. Commit `order.kanon.go`, `order.kanon_test.go` and `shop/testdata` with `order.go`.
 
-The suite also checks generated values, which `go.dokimi.dev/assert/prop` draws from a new seed on each run.
-A generated case that fails is shrunk to the smallest case that fails the same check, and stored in `testdata/prop` beside `testdata/golden`.
+`order.kanon.go` records the field numbers, and regeneration reads them, so a deleted file loses them.
+The golden files pin the encoding of every sample.
+A change that alters an encoding fails the tests until you run the command with `-update` again.
+
+The conformance test also checks values that [`go.dokimi.dev/assert/prop`](https://pkg.go.dev/go.dokimi.dev/assert/prop) generates from a new seed on each run.
+prop shrinks a failing case to the smallest case that fails the same check, and stores it in `testdata/prop`.
 Every later run tries a stored case first, until you delete its file.
-Set `DOKIMI_ASSERT_PROP_PROFILE=ci` in CI, so that each run takes its seed from the property and a failure belongs to the commit under test.
+In CI, set `DOKIMI_ASSERT_PROP_PROFILE=ci`.
+Each run then takes its seed from the property, and every run of a commit checks the same values.
 
 ## Encode and decode
 
@@ -118,23 +127,23 @@ To encode without an allocation, append to a buffer that you reuse:
 buf, err = order.AppendBinary(buf[:0])
 ```
 
-For each type `T` of the directive, `*T` implements `kanon.Message` and `kanon.Cloner[T]`:
+For each struct type `T` of the directive, `*T` implements [`kanon.Message`](https://pkg.go.dev/go.thesmos.sh/kanon#Message) and [`kanon.Cloner[T]`](https://pkg.go.dev/go.thesmos.sh/kanon#Cloner):
 
 | Method | Contract |
 |---|---|
 | `SizeKanon() int` | Returns the length of the encoding in bytes. |
-| `EncodeKanon(buf []byte) (int, error)` | Writes the encoding into the last `SizeKanon()` bytes of `buf` and returns their count. |
+| `EncodeKanon(buf []byte) (int, error)` | Writes the encoding into the last `SizeKanon()` bytes of `buf`, and returns their count. |
 | `AppendBinary(b []byte) ([]byte, error)` | Appends the encoding to `b`. |
 | `MarshalBinary() ([]byte, error)` | Returns the encoding in a new slice. |
-| `DecodeKanon(data []byte, opts kanon.Options) error` | Sets the receiver to the value in `data` and reuses the memory of its slices, maps and pointers. |
-| `UnmarshalBinary(data []byte) error` | Calls `DecodeKanon` with the zero `kanon.Options`, which copy `data` once. |
-| `MergeKanon(data []byte, opts kanon.Options) error` | Decodes `data` into the receiver without clearing it first. Slices append, and maps add entries. |
-| `Reset()` | Clears every field and keeps the storage of slices and maps for the next decode. |
-| `CloneKanon() *T` | Returns a deep copy that shares no memory with the receiver or with the input it decoded from. |
+| `DecodeKanon(data []byte, opts kanon.Options) error` | Sets the receiver to the value in `data`, and reuses the memory of its slices, maps and pointers. |
+| `UnmarshalBinary(data []byte) error` | Decodes as `DecodeKanon` does with the zero `kanon.Options`, with one copy of `data`. |
+| `MergeKanon(data []byte, opts kanon.Options) error` | Decodes `data` into the receiver without a reset. A slice appends, and a map adds entries. |
+| `Reset()` | Clears every field, and keeps the storage of slices and maps for the next decode. |
+| `CloneKanon() *T` | Returns a deep copy that shares no memory with the receiver or with the input that it decoded from. |
 
-`kanon.Options` sets the slab of a decode, as [Decoding without a copy](#decoding-without-a-copy) describes, and the nesting limit, which is 100 levels by default.
+`kanon.Options` sets the slab of a decode, as [Decode without a copy](#decode-without-a-copy) describes, and the nesting limit, which is 100 levels by default.
 
-## Errors
+## Handle errors
 
 A decode returns a `*kanon.DecodeError`.
 For the order of the preceding example without its last byte, the error is:
@@ -146,7 +155,7 @@ fmt.Println(err)
 ```
 
 Truncated input unwraps to `io.ErrUnexpectedEOF`, so a stream reader can wait for more bytes without a check of its own.
-The other causes are the sentinel errors of package kanon, such as `kanon.ErrMalformed` and `kanon.ErrRange`, and the errors of types that decode themselves.
+Every other cause is a sentinel error of package kanon, such as `kanon.ErrMalformed` and `kanon.ErrRange`, or the error of a type that decodes itself.
 Classify an error with `errors.Is` and `errors.AsType`:
 
 ```go
@@ -169,8 +178,9 @@ An encode returns a `*kanon.EncodeError` in seven cases:
 - A slice or a map has more elements than the tag option `max` of its field allows, and the error wraps `kanon.ErrMax`.
 
 A value of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
+[The documentation of package kanon](https://pkg.go.dev/go.thesmos.sh/kanon#pkg-variables) lists every sentinel error.
 
-## Field numbers
+## Add, remove and rename fields
 
 A field without a tag takes the smallest free number in declaration order.
 `order.kanon.go` records the numbers of each type:
@@ -184,13 +194,12 @@ Regeneration keeps the recorded numbers, so data that you encoded before an edit
 
 - A field keeps its number when you add, remove or reorder fields.
 - A new field takes the smallest number that is neither taken nor reserved.
-- kanon reserves the number of a removed field and gives it to no other field.
+- kanon reserves the number of a removed field, and gives it to no other field.
 - A tag that gives a recorded field another number fails the generation.
 - A renamed field is a new field. To keep decoding the data of the old name, tag the field with the old number.
 
 To check the numbers against a git revision, such as the branch that a change merges into, set `KANON_CHECK`.
-The check does not write files.
-The `-run` flag keeps the other generators of your module from running:
+The check does not write a file, and `-run` keeps the other generators of your module from running:
 
 ```sh
 KANON_CHECK=origin/main go generate -run 'go tool kanon' ./...
@@ -200,9 +209,9 @@ The check fails in three cases:
 
 - A field has another number than at the revision.
 - A number that the revision reserves, or gives a field that the change removes, is neither reserved nor taken by a field whose tag names it.
-- A struct of another package that the revision records as an inline struct now has a kanon codec of its own, and the code file of its package breaks one of these rules against that record, or records no numbers for it.
+- A struct of another package that the revision records as an inline struct now has a kanon codec of its own, and the code file of its package breaks one of these rules against that record, or does not record numbers for it.
 
-## Tags
+## Tag fields
 
 Tags are optional.
 A tag is a comma-separated list of at most one field number and any of the options, as in `kanon:"7,fixed"`:
@@ -216,44 +225,24 @@ A tag is a comma-separated list of at most one field number and any of the optio
 | `kanon:",union=Kind"` | Makes the field a member of the union whose discriminator is the field `Kind`. |
 | `kanon:",types=Circle\|*Square"` | Lists the concrete types of the interfaces in the type of the field, as `gob.Register` registers types. |
 | `kanon:",unknown"` | Marks the `[]byte` field in which a decode keeps the fields that it does not know. |
-| `kanon:",stream"` | Makes the stream decoder of the struct return the value of the field to its caller, as [Stream decoding](#stream-decoding) describes. |
-| `kanon:",max=1024"` | Bounds the elements of a slice or a map field at 1024, as [Bounds](#bounds) describes. |
+| `kanon:",stream"` | Makes the stream decoder of the struct return the value of the field to its caller, as [Decode an encoding too large for memory](#decode-an-encoding-too-large-for-memory) describes. |
+| `kanon:",max=1024"` | Bounds the elements of a slice or a map field at 1024, as [Bound slices and maps](#bound-slices-and-maps) describes. |
 
-The constant that selects a union member is named after the type of the discriminator and the member.
-When `Kind` has type `Kind`, the constant `KindText` selects the member `Text`.
+The discriminator of a union is a field of a named integer type, which the encoding leaves out.
+Declare one constant of that type per member, named after the type and the member.
+For a discriminator of type `Kind`, the constant `KindText` selects the member `Text`.
+The constants must differ.
+None of them can be 0, because 0 does not select a member.
 
-kanon leaves out a field of a function or a channel type, as gob does.
-An embedded struct encodes as one field named after its type, as in gob.
-kanon does not promote the fields of an embedded struct, which `encoding/json` does.
+gob and kanon both leave out a field of a function or a channel type.
+They both encode an embedded struct as one field named after its type.
+Unlike `encoding/json`, kanon does not promote the fields of an embedded struct.
 
-## Types with methods of their own
+## Validate a named type
 
-A type with binary, gob or text methods encodes as the bytes that the first of those families returns.
-Such a type can also declare these methods, which make its encode cheaper:
-
-- `SizeKanon() int` returns the length of that encoding. kanon sizes the value with it instead of encoding it twice, and appends the encoding into its buffer in place.
-- `IsZero() bool` reports whether the value is the zero value, which kanon leaves out of a field. kanon calls it instead of comparing the whole value with `==`, so it must report true for the zero value alone.
-- `ExactKanon()` declares `kanon.Exact` for a type with an append method, `SizeKanon` and an `==` that compares every bit. kanon then writes a field of the type without error handling, and a canonical decode does not encode its values again.
-- `AppendKanon(dst []byte) []byte` declares `kanon.Appender` for a `kanon.Exact` type whose append method never fails, its zero value included. It appends the bytes of the append method without an error result, and kanon writes the type without error handling in every position.
-
-A type that declares `kanon.Exact` keeps two guarantees:
-
-- `SizeKanon` returns no negative value. The append method returns no error for a value other than the zero value, and appends `SizeKanon` bytes whenever it returns no error.
-- The decode method accepts only the bytes that the append method writes for the decoded value.
-
-In a slice, a map, a pointer, a union or an interface, kanon writes the zero value too, and the error of its append method fails the encode.
-A `kanon.Appender` has no such error, so a struct whose other fields cannot fail encodes without one.
-An append method that fails for a field, or that appends another length than `SizeKanon`, panics the encode.
-Check both guarantees, and the bytes that `AppendKanon` appends, in a test of the package that declares the type:
-
-```go
-func TestDigest(t *testing.T) {
-	kanontest.RunExact[Digest](t)
-}
-```
-
-A named type that is not a struct can encode as its underlying type instead.
-Name it in the directive, and name a method that checks a value with `-validate`:
+A named type that is not a struct can encode as its underlying type.
+Name it in a directive.
+Name the method that checks a value with `-validate`:
 
 ```go
 type Fixed64 int64
@@ -268,15 +257,46 @@ func (f Fixed64) valid() error {
 }
 ```
 
-kanon generates `ValidateKanon() error`, which calls `valid`, and calls it on every value that it encodes or decodes.
-The encode or the decode of a value that it rejects fails.
-Without `-validate`, the generated `ValidateKanon` returns nil, and the code of a struct encodes and decodes a field of the type without calling it.
-kanon reads the directive of the type when it generates the code of the struct.
-If a dependency adds `-validate` to the directive of such a type, run `go generate` again after you upgrade it, so that your code calls the method.
-Adding `ValidateKanon` to a type with binary, gob or text methods, or removing it, changes the encoding of every field of the type.
-A check of the field numbers does not detect that change.
+The generated method `ValidateKanon() error` calls `valid`.
+The generated code calls it on every value of the type that it encodes or decodes.
+A value that it rejects fails the encode or the decode.
+Without `-validate`, the generated `ValidateKanon` returns nil, and the generated code does not call it.
 
-## Views
+kanon reads the directive of the type when it generates the code of a struct with a field of that type.
+After you upgrade a dependency whose directive adds `-validate`, run `go generate` again.
+Code generated before the upgrade does not call the method.
+
+> [!NOTE]
+> Adding `ValidateKanon` to a type with binary, gob or text methods, or removing it, changes the encoding of every field of the type.
+> A check of the field numbers does not detect that change.
+
+## Encode a type through its own methods
+
+A type with binary, gob or text methods encodes as the bytes that the first of those families returns.
+To make its encode cheaper, declare these methods:
+
+- `SizeKanon() int` returns the length of that encoding. kanon sizes the value with it instead of an encode, and appends the encoding into its buffer in place. The type is then a [`kanon.Sizer`](https://pkg.go.dev/go.thesmos.sh/kanon#Sizer).
+- `IsZero() bool` reports whether the value is the zero value, which a field leaves out. kanon calls it in place of `==`, so it must report true for the zero value alone.
+- `ExactKanon()` declares [`kanon.Exact`](https://pkg.go.dev/go.thesmos.sh/kanon#Exact) for a type with an append method, `SizeKanon` and an `==` that compares every bit. kanon then writes a field of the type without an error path, and a canonical decode does not encode its values again.
+- `AppendKanon(dst []byte) []byte` declares [`kanon.Appender`](https://pkg.go.dev/go.thesmos.sh/kanon#Appender) for an Exact type whose append method does not return an error for any value. kanon writes such a type without an error path in every position.
+
+An Exact type keeps two guarantees:
+
+- `SizeKanon` does not return a negative value. The append method does not return an error for a value other than the zero value, and appends `SizeKanon` bytes whenever it succeeds.
+- The decode method accepts only the bytes that the append method writes for the decoded value.
+
+kanon writes the zero value of an Exact type in a slice, a map, a pointer, a union or an interface.
+In those positions the error of its append method fails the encode.
+An append method that fails for a field, or that appends another length than `SizeKanon`, panics the encode.
+Check both guarantees, and the bytes that `AppendKanon` appends, in a test of the package that declares the type:
+
+```go
+func TestDigest(t *testing.T) {
+	kanontest.RunExact[Digest](t)
+}
+```
+
+## Read one field with a view
 
 Add `-views` to the directive to generate a view type per struct type:
 
@@ -285,16 +305,16 @@ Add `-views` to the directive to generate a view type per struct type:
 ```
 
 A view is the encoding of a value.
-Each method of a view reads one field without decoding the rest:
+Each method of a view reads one field without a decode of the others:
 
 ```go
 id, err := shop.OrderView(data).ID() // id aliases data
 ```
 
-A string or byte slice field returns its bytes, which alias the view.
-Slices, maps, interfaces and union members have no method.
+A string or a byte slice field returns its bytes, which alias the view.
+A slice, a map, an interface and a union member do not have a method.
 
-Each method call scans the encoding from its start.
+Each method scans the encoding from its start.
 To read two or more fields, index the view once:
 
 ```go
@@ -305,41 +325,41 @@ if err != nil {
 id, err := index.ID()
 ```
 
-`IndexKanon` scans the encoding once and records the offset of every field that the view reads.
-Each method of the index returns what the method of the view with the same name returns. The
-view of a struct without a field that a view reads has no such method, and its `IndexKanon`
-returns the index without a scan and without an error.
+`IndexKanon` scans the encoding once, and records the offset of every field that the view reads.
+Each method of the index returns what the method of the view with the same name returns.
+The view of a struct without a field that a view reads does not have such a method.
+Its `IndexKanon` returns the index without a scan and without an error.
 
-## Canonical decoding
+## Accept only canonical encodings
 
-Add `-canonical` to the directive to make the decode of its struct types accept only the canonical encoding of a value, the bytes that `EncodeKanon` writes for it:
+Add `-canonical` to the directive, so that the decode of its struct types accepts only the bytes that `EncodeKanon` writes for a value:
 
 ```go
 //go:generate go tool kanon -type=Header,State -canonical
 ```
 
 A canonical decode rejects every other input that a default decode accepts.
-The error is a `*kanon.DecodeError` that wraps `kanon.ErrNotCanonical` and names the field and the offset of the first byte that breaks a rule:
+The error is a `*kanon.DecodeError` that wraps `kanon.ErrNotCanonical`, at the field and the offset of the first byte that breaks one of these rules:
 
-- a varint that is not in its shortest form
-- a field below the field before it, or a field written twice
-- a field number that the struct does not declare
-- a second member of a union
-- a bool above 1
-- a field at a value that the encoding leaves out, such as an integer of 0 or an empty string
-- a map key that is not above the key before it, or a key with a float component of -0.0
-- a time that the encoder writes in other bytes
-- bytes of a type with methods of its own that its encode method does not write for the value that its decode method returns
+- A varint is in its shortest form.
+- Each field number is above the one before it, so no field occurs twice.
+- The struct declares every field number of the input.
+- A union has one member at most.
+- A bool is 0 or 1.
+- A field at a value that the encoding leaves out is absent, such as an integer of 0 or an empty string.
+- Each map key is above the key before it, and does not have a float component of -0.0.
+- A time has the bytes that the encoder writes for it.
+- A type with methods of its own has the bytes that its encode method writes for the value that its decode method returns.
 
 Use the flag for data whose bytes are evidence, such as a hashed record.
-Each value then has one encoding, so the hash of a record changes only when its value changes.
+The hash of such a record then changes only when its value changes.
 The flag changes the decode of the named types alone, and their encode and their views do not change.
 
 A canonical reader rejects a field that its struct does not declare.
 Upgrade every canonical reader before a writer sets a new field.
 The generation fails for a canonical type that contains a struct with a kanon codec whose directive does not set `-canonical`, a struct whose codec is written by hand, or a field tagged `unknown`.
 
-## Bounds
+## Bound slices and maps
 
 A decode makes a slice with room for every element that it counts in its input, before it decodes the first one.
 An empty element takes one byte of input, so 1 MiB of untrusted input can make a slice of a million elements.
@@ -362,11 +382,12 @@ The bound counts the elements of every occurrence of the field in the encoding, 
 It applies to the field itself, and not to the slices and maps in its elements.
 The option applies to a slice and a map, other than a byte slice and a type that encodes itself.
 
-The option does not change the encoding.
-Adding it, or lowering the bound, makes a reader reject what an older writer can write, so upgrade every writer first.
-Removing it, or raising the bound, makes a writer write what an older reader rejects, so upgrade every reader first.
+The option does not change the encoding, but it changes what a reader accepts:
 
-## Stream decoding
+- To add the option or to lower the bound, upgrade every writer first.
+- To remove the option or to raise the bound, upgrade every reader first.
+
+## Decode an encoding too large for memory
 
 A decode reads the whole encoding from one byte slice.
 For an encoding too large to read into memory, such as an object of 4 GiB, mark its large fields with the tag option `stream`:
@@ -383,8 +404,9 @@ type Bundle struct {
 
 The option applies to a byte slice, a string and a slice of a struct type with a kanon codec.
 It changes neither the encoding nor the other methods of the type.
-kanon writes a stream decoder for the type, `BundleStream`, which reads an encoding of a known length from an `io.Reader`.
-It decodes the other fields into the receiver, and stops at each streamed field:
+kanon writes the stream decoder `BundleStream` for the type.
+The stream reads an encoding of a known length from an `io.Reader`.
+It decodes the other fields into the receiver and stops at each streamed field:
 
 ```go
 s := NewBundleStream(r, size, &b, kanon.StreamOptions{})
@@ -422,13 +444,13 @@ for {
 ```
 
 - `Len` returns the declared length of the current field before the stream reads its value.
-- `Read` reads the bytes of a streamed byte slice or string, and `WriteTo` writes them to an `io.Writer`. `io.Copy` calls `WriteTo`, so the copy allocates nothing.
+- `Read` reads the bytes of a streamed byte slice or string, and `WriteTo` writes them to an `io.Writer`. `io.Copy` calls `WriteTo`, so the copy does not allocate.
 - `Element` returns the length of the next element of a streamed slice, and the decode method of the slice, here `DecodeMembers`, decodes it.
-- `Next` discards the bytes that you do not read, and decodes the elements that you skip, so that their checks run.
+- `Next` discards the bytes that you do not read. It also decodes the elements that you skip, so that their checks run.
 
 The stream applies the checks of `DecodeKanon` and returns its errors at the same offsets.
-It returns a streamed value before it reads the rest of the encoding, so a later byte can still fail.
-Act on the values only after `Next` returns `io.EOF`.
+It returns a streamed value before it reads the rest of the encoding.
+A later byte can still fail the stream, so act on the values only after `Next` returns `io.EOF`.
 
 `kanon.StreamOptions` sets the nesting limit and the buffer limit, which is 16 MiB by default.
 The decoded fields together, and each element, must fit within the buffer limit, or the stream fails with `kanon.ErrLimit`.
@@ -436,7 +458,49 @@ A streamed slice with the tag option `max` fails with `kanon.ErrMax` at the elem
 The strings of the receiver alias the buffer of the stream until the next `Reset`.
 The strings of an element alias it until the next call of `Next`, `Element` or a decode method.
 
-## Frames and batches
+## Decode without a copy
+
+The slab of a decode is the string `opts.Slab`, which contains `data` at the offset `opts.Offset`.
+Every string that the decode returns is a substring of the slab.
+With an empty `Slab`, `DecodeKanon` copies `data` into a slab of its own, as `UnmarshalBinary` does.
+For a type with strings, that copy is one allocation per decode.
+If you control the input buffer, pass the slab yourself.
+
+To alias the input buffer, pass the slab that `unsafe.String` returns, which shares the memory of `data`:
+
+```go
+slab := unsafe.String(unsafe.SliceData(data), len(data))
+if err := m.DecodeKanon(data, kanon.Options{Slab: slab}); err != nil {
+	return err
+}
+```
+
+Leave `data` unchanged while `m` or a string decoded from it is in use.
+
+To decode many values from one buffer, copy the buffer into one slab, and pass the offset of each value:
+
+```go
+slab := string(batch)
+for _, r := range records { // r.off and r.n locate one encoding in batch
+	if err := m.DecodeKanon(batch[r.off:r.off+r.n], kanon.Options{Slab: slab, Offset: r.off}); err != nil {
+		return err
+	}
+}
+```
+
+The batch then allocates one slab, and the offset in an error is the offset in `batch`.
+Package `batch` decodes this way.
+
+> [!WARNING]
+> An aliased buffer must not change while a value decoded from it is in use:
+>
+> - A change to an aliased buffer changes every string decoded from it, without an error. A reuse of the buffer for the next read changes the values of the previous read.
+> - A string map key changes with the buffer. The map hashed the key with its old bytes, so a lookup by the old bytes or by the new ones can miss it.
+> - The garbage collector frees a slab only after every string decoded from it is unreachable. One short string that a value retains keeps the whole batch in memory. Retain the copy that `strings.Clone` returns instead.
+
+Decoded byte slices do not share memory with `data`, because `DecodeKanon` copies each one into the memory of the receiver.
+
+## Write messages to a stream
 
 Package `frame` writes messages to a byte stream, one frame per message.
 A frame contains its length, a version byte, a flags byte, a type ID that you assign and the encoding.
@@ -461,10 +525,13 @@ if id == orderType {
 }
 ```
 
-The strings of a decoded message alias the reader's buffer until the next call of `Next`.
+The strings of a decoded message alias the buffer of the reader until the next call of `Next`.
 A `frame.Registry` maps type IDs to constructors.
 
-Package `batch` stores many messages in one buffer with an index of their offsets, so that a storage engine can read message i without reading the others:
+## Store messages in blocks
+
+Package `batch` stores many messages in one buffer with an index of their offsets.
+A storage engine then reads message i without the others:
 
 ```go
 var w batch.Writer
@@ -485,12 +552,17 @@ if err := b.Decode(42, &m); err != nil {
 }
 ```
 
+`batch.Parse` copies a batch into one slab.
+`Batch.Decode` passes the offset of each message in it.
+`batch.ParseAlias` uses the buffer of the batch as the slab and does not allocate.
+The buffer must then not change while its messages are in use.
 Package `batch` does not compress.
 Compress a batch as a block with the compressor of your choice.
 
 ## Inspect an encoding
 
-`kanon inspect` prints the fields of an encoding without its Go types, in the text notation of [protoscope](https://github.com/protocolbuffers/protoscope), or as JSON with `-json`:
+`kanon inspect` prints the fields of an encoding without its Go types.
+It prints them in the text notation of [protoscope](https://github.com/protocolbuffers/protoscope), or as JSON with `-json`:
 
 ```sh
 echo '0a 01 78 10 0e' | go tool kanon inspect -hex
@@ -501,145 +573,62 @@ echo '0a 01 78 10 0e' | go tool kanon inspect -hex
 2: 14  # zigzag 7
 ```
 
-The command reads the file that you name, or the standard input without one.
+The command reads the file that you name.
+Without a file, it reads the standard input.
 It reads one struct encoding, a stream of frames with `-frames`, or a batch with `-batch`.
 With `-hex`, it reads hexadecimal digits instead of bytes.
 
 ## Performance
 
-We ran the following benchmarks on 2026-09-29 at commit `c5af2b0`, on an AMD Ryzen 9 9950X3D with Go 1.27.1 and `GOMAXPROCS=4`.
-[docs/benchmarks.md](docs/benchmarks.md) has the full tables, the encoded sizes and the method.
+These numbers come from an AMD Ryzen 9 9950X3D with Go 1.27.1 and `GOMAXPROCS=4`:
 
-### A small struct
+- In [go_serialization_benchmarks](https://github.com/alecthomas/go_serialization_benchmarks), with a struct of six fields, `AppendBinary` into a reused buffer takes 40.4 ns and `DecodeKanon` with the input as the slab 40.7 ns, without an allocation. 5 of the 58 serializers do not allocate in either.
+- `MarshalBinary` takes 56.1 ns and `UnmarshalBinary` 53.1 ns, with one allocation each.
+- In a harness of 13 codec variants on four shapes of data, kanon with the input as the slab has the lowest time of an encode and a warm decode on slices and maps, and the second lowest on nested structs and on a page of 4 KB.
+- The warm decode of kanon with the input as the slab does not allocate in any of the four shapes.
+- kanon encodes nested structs in as many bytes as protobuf, and slices, maps and the page in fewer.
 
-[go_serialization_benchmarks](https://github.com/alecthomas/go_serialization_benchmarks) encodes and decodes a struct of six fields, one of them a `time.Time`, with 58 serializers.
-The following rows are a selection of the 58, ranked by the total time of the encode and the decode.
-Times are in nanoseconds per operation.
-Allocs counts the allocations of the encode and the decode together.
+[docs/benchmarks.md](docs/benchmarks.md) has the setup, the method, every table and the encoded sizes.
 
-| # | Serializer | Encode ns | Decode ns | Allocs | Bytes |
-|---:|---|---:|---:|---:|---:|
-| 1 | baseline/unsafe_reuse | 17.0 | 10.5 | 0 | 47.0 |
-| 2 | mus/unsafe_reuse | 18.4 | 17.0 | 0 | 49.0 |
-| 18 | gogo/protobuf | 38.3 | 41.5 | 3 | 53.0 |
-| 19 | **kanon/unsafe_reuse** | 40.4 | 40.7 | 0 | 57.8 |
-| 21 | **kanon/unixns** | 46.2 | 40.8 | 2 | 51.6 |
-| 22 | msgp | 43.0 | 54.1 | 3 | 97.0 |
-| 26 | **kanon** | 56.1 | 53.1 | 2 | 58.6 |
-| 30 | protobuf-go | 87.5 | 92.3 | 3 | 51.6 |
-| 33 | flatbuffers | 200 | 51.7 | 8 | 95.1 |
-| 50 | json | 322 | 585 | 2 | 151.8 |
-| 58 | gob | 1,288 | 6,210 | 199 | 172.6 |
+## Compatibility
 
-- `kanon` encodes into a new slice and decodes with one copy of the input.
-- `kanon/unsafe_reuse` appends to a reused buffer and decodes strings that alias the input.
-- `kanon/unixns` encodes the time as `int64` Unix nanoseconds instead of a `time.Time`.
-- `kanon` and `kanon/unsafe_reuse` write the same encoding. Their Bytes differ because each benchmark sets every time to `time.Now()` when it starts, and kanon writes the nanoseconds of a time as a varint of 4 or 5 bytes.
-- Of the 18 serializers ahead of `kanon/unsafe_reuse`, 10 need code written by hand per struct, and 8 generate it. Four of the 18 encode the time with its zone offset, as kanon does.
+| Concern | Rule |
+|---|---|
+| Go | kanon needs Go 1.27.2 or later. CI runs the tests on Linux, macOS and Windows, and on 386, where `int`, `uint` and `uintptr` are 32 bits wide. |
+| Generated code | Each generated file states the version of the generator that wrote it, and does not compile against a runtime that lacks support for that version. If a build fails this way after an upgrade, run `go generate ./...` again. |
+| Wire format | [The kanon wire format](docs/rfc/0001-wire-format.md) specifies every byte, with test vectors. A change to it needs an RFC, and the data that earlier releases encode must still decode. |
+| Field numbers | Regeneration keeps the number of every field, as [Add, remove and rename fields](#add-remove-and-rename-fields) describes. |
+| Versions | Releases follow [Semantic Versioning](https://semver.org). Before 1.0.0, a minor release can change the API of the runtime and of the generated code. |
 
-### Four shapes
+## Packages
 
-A second harness compares 13 codec variants on four shapes of data: nested structs, slices, maps, and a page of about 4 KB.
-Each cell is the time of an encode and a warm decode in nanoseconds, with the rank among the 13 in parentheses.
-A warm decode decodes into a value that decoded another sample before.
-The `/alias` variants decode strings that alias the input.
-
-| Codec | nested | slices | maps | large |
-|---|---:|---:|---:|---:|
-| **kanon/alias** | 83 (2) | 389 (1) | 896 (1) | 1,974 (2) |
-| **kanon** | 105 (3) | 447 (3) | 949 (3) | 2,373 (4) |
-| benc/alias | 61 (1) | 402 (2) | 918 (2) | 1,457 (1) |
-| vtprotobuf/alias | 124 (4) | 491 (4) | 1,505 (8) | 2,273 (3) |
-| msgp | 186 (7) | 671 (7) | 952 (4) | 3,189 (7) |
-| mus/alias | 127 (5) | 781 (8) | 1,036 (5) | 3,622 (8) |
-| protobuf-go | 548 (10) | 2,196 (10) | 6,238 (12) | 9,942 (10) |
-| cbor | 1,008 (11) | 4,219 (11) | 2,735 (10) | 19,554 (11) |
-| json | 1,580 (12) | 8,338 (12) | 4,591 (11) | 33,771 (13) |
-| gob | 9,821 (13) | 11,683 (13) | 9,548 (13) | 21,559 (12) |
-
-- `kanon/alias` ranks first on slices and maps. On nested and large it ranks second, behind `benc/alias`. The harness's benc functions are written by hand and write the fields in order, without field numbers.
-- The warm decode of `kanon/alias` allocates nothing in any shape. The warm decode of `kanon` allocates one copy of the input.
-- kanon encodes the four shapes in 139, 535, 373 and 4,101 bytes on average, and protobuf in 139, 554, 463 and 4,154 bytes.
-
-## Decoding without a copy
-
-The codec that kanon generates for a struct type has a `DecodeKanon(data []byte, opts kanon.Options) error` method.
-`opts.Slab` is a string that contains `data` at offset `opts.Offset`.
-Every string that `DecodeKanon` decodes is a substring of the slab.
-With an empty `Slab`, `DecodeKanon` copies `data` into a slab of its own, and `UnmarshalBinary` decodes this way.
-For a type with strings, that copy is one allocation per decode.
-If you control the input buffer, pass the slab yourself.
-
-### Alias the input buffer
-
-`unsafe.String` returns a slab that shares the memory of `data`.
-The decode then does not allocate a slab:
-
-```go
-slab := unsafe.String(unsafe.SliceData(data), len(data))
-if err := m.DecodeKanon(data, kanon.Options{Slab: slab}); err != nil {
-	return err
-}
-```
-
-Leave `data` unchanged while `m` or a string decoded from it is in use.
-
-### Share one slab across a batch
-
-If you decode many values from one buffer, copy the buffer into one slab and pass the offset of each value:
-
-```go
-slab := string(batch)
-for _, r := range records { // r.off and r.n locate one encoding in batch
-	if err := m.DecodeKanon(batch[r.off:r.off+r.n], kanon.Options{Slab: slab, Offset: r.off}); err != nil {
-		return err
-	}
-}
-```
-
-The batch then allocates one slab.
-The offset in an error is the offset in `batch`.
-Package `batch` decodes this way: `batch.Parse` copies a batch into one slab, and `Batch.Decode` passes the offset of each message.
-`batch.ParseAlias` uses the buffer of the batch itself as the slab and does not allocate.
-The records and the decoded strings then alias that buffer, which must not change while they are in use.
-
-### Hazards
-
-- A change to an aliased buffer changes every string decoded from it.
-  If you reuse the buffer for the next read, the values of the previous read change without an error.
-- A string map key decoded from an aliased buffer changes with the buffer.
-  The map computed the hash of the key from its old bytes, so a lookup by the old bytes or by the new ones can miss it.
-- The garbage collector frees a slab only after every string decoded from it is unreachable.
-  A value that retains one short string from a batch prevents the collector from freeing the whole batch.
-  If you retain a decoded string, retain the copy that `strings.Clone` returns.
-
-Decoded byte slices do not share memory with `data`.
-`DecodeKanon` copies each one into the memory of the receiver.
+| Package | Contents |
+|---|---|
+| [`go.thesmos.sh/kanon`](https://pkg.go.dev/go.thesmos.sh/kanon) | The method set of a generated codec, the decode options, the errors and the version constants |
+| [`go.thesmos.sh/kanon/wire`](https://pkg.go.dev/go.thesmos.sh/kanon/wire) | The primitives that the generated code calls. Applications use package `kanon` instead. |
+| [`go.thesmos.sh/kanon/frame`](https://pkg.go.dev/go.thesmos.sh/kanon/frame) | Messages on a byte stream, one frame per message |
+| [`go.thesmos.sh/kanon/batch`](https://pkg.go.dev/go.thesmos.sh/kanon/batch) | Many messages in one buffer, with an index of their offsets |
+| [`go.thesmos.sh/kanon/kanontest`](https://pkg.go.dev/go.thesmos.sh/kanon/kanontest) | The conformance checks that the generated tests run, and `RunExact` |
+| [`go.thesmos.sh/kanon/cmd/kanon`](https://pkg.go.dev/go.thesmos.sh/kanon/cmd/kanon) | The generator and `kanon inspect` |
 
 ## Design documents
 
-The design is in RFCs under [docs/rfc](docs/rfc/README.md), and the decisions are in ADRs under [docs/adr](docs/adr/README.md):
+RFCs under [docs/rfc](docs/rfc/README.md) specify the design, and ADRs under [docs/adr](docs/adr/README.md) record the decisions:
 
 - [The kanon wire format](docs/rfc/0001-wire-format.md) specifies the encoding, with test vectors as exact bytes for an implementation in another language.
 - [Generated Go codecs](docs/rfc/0002-go-codec-generation.md) specifies the generator, the runtime and the public interface.
 - [Frames](docs/rfc/0003-frames.md) specifies messages on a stream.
 - [Batches](docs/rfc/0004-batches.md) specifies messages in storage blocks.
-- [Inspection](docs/rfc/0005-inspection.md), a draft, specifies `kanon inspect`.
-- [Canonical decoding](docs/rfc/0006-canonical-decoding.md), a draft, specifies the `-canonical` flag.
-- [Stream decoding](docs/rfc/0007-stream-decoding.md), a draft, specifies the tag option `stream` and the stream decoder.
-- [Element bounds](docs/rfc/0008-element-bounds.md), a draft, specifies the tag option `max`.
+- [Inspection](docs/rfc/0005-inspection.md) specifies `kanon inspect`.
+- [Canonical decoding](docs/rfc/0006-canonical-decoding.md) specifies the `-canonical` flag.
+- [Stream decoding](docs/rfc/0007-stream-decoding.md) specifies the tag option `stream` and the stream decoder.
+- [Element bounds](docs/rfc/0008-element-bounds.md) specifies the tag option `max`.
 
-## Development
+## Contributing
 
-The build, test, lint and release targets come from [ergon](https://github.com/dokimasia/ergon):
-
-```sh
-make check          # the gate: lint, test, race, generate and audit
-make test-386       # run the tests where int, uint and uintptr are 32 bits wide
-make check-numbers  # fail when a change renumbers a field of BASE (default origin/main)
-```
-
-`make help` lists every target. [CONTRIBUTING.md](CONTRIBUTING.md) describes how to propose a change, and [SECURITY.md](SECURITY.md) how to report a vulnerability.
+The Makefile runs the build, the tests, the linters and the release through [ergon](https://github.com/dokimasia/ergon), and `make check` runs the gate that CI runs.
+[CONTRIBUTING.md](CONTRIBUTING.md) describes the setup, the rules of a change and the review.
+To report a vulnerability, follow [SECURITY.md](SECURITY.md).
 
 ## License
 
