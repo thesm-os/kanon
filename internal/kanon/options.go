@@ -53,12 +53,15 @@ type Options struct {
 	Version bool
 }
 
-// ParseOptions parses the command-line arguments args of kanon and writes
-// the usage and any flag error to output. It fails for an unknown flag, for
-// -h and -help with an error that wraps [flag.ErrHelp], and for a -type
-// value with an empty name or with one name twice. Every error message
-// starts with "kanon: ". It does not require -type, which [Generate] and
-// [Check] require.
+// ParseOptions parses the command-line arguments args of kanon. It fails for
+// an unknown flag, for -h and -help with an error that wraps
+// [flag.ErrHelp], and for a -type value with an empty name or with one name
+// twice. Every error that it returns starts with "kanon: ". It does not
+// require -type, which [Generate] and [Check] require.
+//
+// The usage and every error appear in output once. The flag package writes
+// the usage for -h and -help, and a flag error with the usage. An error of
+// -type comes from ParseOptions itself.
 func ParseOptions(args []string, output io.Writer) (Options, error) {
 	var opts Options
 	var types string
@@ -84,11 +87,15 @@ func ParseOptions(args []string, output io.Writer) (Options, error) {
 	}
 	seen := make(map[string]bool)
 	for name := range strings.SplitSeq(types, typeSeparator) {
+		var err error
 		if name == "" {
-			return Options{}, fmt.Errorf("kanon: -type %q names an empty type", types)
+			err = fmt.Errorf("kanon: -type %q names an empty type", types)
+		} else if seen[name] {
+			err = fmt.Errorf("kanon: -type %q names %s twice", types, name)
 		}
-		if seen[name] {
-			return Options{}, fmt.Errorf("kanon: -type %q names %s twice", types, name)
+		if err != nil {
+			fmt.Fprintln(output, err)
+			return Options{}, err
 		}
 		seen[name] = true
 		opts.Types = append(opts.Types, name)

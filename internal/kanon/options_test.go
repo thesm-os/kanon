@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
 
 	"go.thesmos.sh/kanon/internal/kanon"
 )
@@ -67,26 +68,33 @@ func TestOptions(t *testing.T) {
 			name string
 			args []string
 			want string
+			// wantOutput is the beginning of what ParseOptions writes to output.
+			wantOutput string
 		}{
 			{
 				name: "returns an error for an empty type", args: []string{"-type=A,,B"},
-				want: "kanon: -type \"A,,B\" names an empty type",
+				want:       "kanon: -type \"A,,B\" names an empty type",
+				wantOutput: "kanon: -type \"A,,B\" names an empty type\n",
 			},
 			{
 				name: "returns an error for a type that -type names twice", args: []string{"-type=A,B,A"},
-				want: "kanon: -type \"A,B,A\" names A twice",
+				want:       "kanon: -type \"A,B,A\" names A twice",
+				wantOutput: "kanon: -type \"A,B,A\" names A twice\n",
 			},
 			{
 				name: "returns an error for an unknown flag", args: []string{"-bogus"},
-				want: "kanon: flag provided but not defined: -bogus",
+				want:       "kanon: flag provided but not defined: -bogus",
+				wantOutput: "flag provided but not defined: -bogus\nusage: kanon ",
 			},
 		}
 		for _, tt := range failures {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				_, err := kanon.ParseOptions(tt.args, &bytes.Buffer{})
+				var out bytes.Buffer
+				_, err := kanon.ParseOptions(tt.args, &out)
 				assert.HasError(t, err, "ParseOptions fails for the arguments")
-				assert.Equal(t, err.Error(), tt.want, "ParseOptions states why the arguments fail")
+				expect.Equal(t, err.Error(), tt.want, "ParseOptions returns the reason in the error")
+				expect.HasPrefix(t, out.String(), tt.wantOutput, "ParseOptions writes the error to output")
 			})
 		}
 		t.Run("returns flag.ErrHelp for -h", func(t *testing.T) {

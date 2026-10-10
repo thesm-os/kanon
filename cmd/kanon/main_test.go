@@ -18,6 +18,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/files"
 
+	"go.thesmos.sh/kanon/internal/kanon"
 	"go.thesmos.sh/kanon/internal/version"
 )
 
@@ -65,14 +66,22 @@ const (
 
 // Arguments of kanon in the tests.
 const (
-	typeFlag    = "-type=A"
-	missingFlag = "-type=Missing"
-	helpFlag    = "-h"
-	unknownFlag = "-bogus"
-	versionFlag = "-version"
-	otherName   = "b.go"
+	typeFlag      = "-type=A"
+	missingFlag   = "-type=Missing"
+	emptyTypeFlag = "-type=A,,B"
+	helpFlag      = "-h"
+	unknownFlag   = "-bogus"
+	versionFlag   = "-version"
+	otherName     = "b.go"
 	// inspectHex runs the inspector on hexadecimal digits.
 	inspectHex = "-hex"
+)
+
+// The errors of the arguments unknownFlag and emptyTypeFlag, as run writes
+// them to its standard error.
+const (
+	unknownFlagError = "flag provided but not defined: -bogus\n"
+	emptyTypeError   = "kanon: -type \"A,,B\" names an empty type\n"
 )
 
 // The input of the inspector in the tests, the encoding of a varint field 1
@@ -284,7 +293,7 @@ func TestKanon(t *testing.T) {
 				name:       "returns exitUsage for a flag that kanon does not define",
 				args:       []string{unknownFlag},
 				wantCode:   exitUsage,
-				wantStderr: "flag provided but not defined: -bogus\n",
+				wantStderr: unknownFlagError,
 			},
 			{
 				name:       "writes the version for -version",
@@ -319,6 +328,20 @@ func TestKanon(t *testing.T) {
 				assert.HasPrefix(t, stderr, tt.wantStderr, "run writes its standard error")
 			})
 		}
+		t.Run("writes a flag error and the usage once", func(t *testing.T) {
+			t.Parallel()
+			var usage bytes.Buffer
+			_, _ = kanon.ParseOptions([]string{helpFlag}, &usage)
+			code, _, stderr := invoke(t, []string{unknownFlag}, nil, "")
+			assert.Equal(t, code, exitUsage, "run returns exitUsage")
+			assert.Equal(t, stderr, unknownFlagError+usage.String(), "run writes the flag error and the usage once")
+		})
+		t.Run("writes an error of -type once", func(t *testing.T) {
+			t.Parallel()
+			code, _, stderr := invoke(t, []string{emptyTypeFlag}, nil, "")
+			assert.Equal(t, code, exitUsage, "run returns exitUsage")
+			assert.Equal(t, stderr, emptyTypeError, "run writes the error of -type once")
+		})
 		t.Run("returns exitFail for a type that the package does not declare", func(t *testing.T) {
 			t.Parallel()
 			code, _, stderr := invoke(t, []string{missingFlag, module(t, nil)}, nil, "")

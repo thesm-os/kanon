@@ -176,7 +176,6 @@ func run(
 		return exitOK
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
 	if opts.Version {
