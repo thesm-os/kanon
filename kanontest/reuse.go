@@ -157,7 +157,8 @@ func (s *suite[T, P]) clones(tb assert.TB, xs []sample[T]) {
 // at, with its fingerprint, and returns the copy.
 func (s *suite[T, P]) copies(tb assert.TB, name string, p *T) *T {
 	tb.Helper()
-	cp := any(P(p)).(kanon.Cloner[T]).CloneKanon()
+	c, _ := any(P(p)).(kanon.Cloner[T])
+	cp := c.CloneKanon()
 	assert.Equal(tb, s.r.fingerprint(s.l, reflect.ValueOf(cp).Elem()), s.r.fingerprint(s.l, reflect.ValueOf(p).Elem()),
 		name+": CloneKanon returns a copy of the receiver")
 	return cp
@@ -234,7 +235,7 @@ func (r *resolver) prepare(root *shape) {
 		}
 		layouts[l] = true
 		for sf := range l.typ.Fields() {
-			if _, ok := r.taints[sf.Type]; leftOut(sf) && !ok {
+			if _, ok := r.taints[sf.Type]; leftOut(&sf) && !ok {
 				r.taints[sf.Type], _ = r.taintOf(sf.Type)
 			}
 		}
@@ -323,7 +324,7 @@ func (r *resolver) taintOf(t reflect.Type) (reflect.Value, bool) {
 // reflection cannot set in place.
 func (r *resolver) leftOutFields(l *layout, v reflect.Value, visit func(reflect.Value)) {
 	for sf := range l.typ.Fields() {
-		if leftOut(sf) {
+		if leftOut(&sf) {
 			visit(v.FieldByIndex(sf.Index))
 		}
 	}

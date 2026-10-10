@@ -91,8 +91,7 @@ const blankName = "_"
 
 // shape is the encoding of the values of one Go type.
 type shape struct {
-	typ  reflect.Type
-	kind kind
+	typ reflect.Type
 	// elem is the shape of the elements of a slice or an array, of the
 	// values of a map, and of the value that a pointer points at.
 	elem *shape
@@ -103,6 +102,7 @@ type shape struct {
 	// variants lists the concrete types that an interface stores, in the
 	// order of the Types of its field.
 	variants []variant
+	kind     kind
 	// zeroAbsent reports that a value of a type that encodes itself is
 	// absent exactly when it is the zero value of its type, since == compares
 	// every bit of the type, as [bitwiseType] reports.
@@ -119,8 +119,8 @@ type shape struct {
 
 // variant is a concrete type that an interface stores, and its number.
 type variant struct {
-	num   int
 	shape *shape
+	num   int
 }
 
 // wire returns the wire format of a value of s after the tag of a field: a
@@ -191,16 +191,17 @@ type layout struct {
 
 // field is an encoded field of a layout.
 type field struct {
-	Field
 	// index is the index path of the field in its struct type.
 	index []int
-	// exported reports that the field is exported, which reflection reads
-	// and sets.
-	exported bool
 	// shape is the encoding of the type of the field.
 	shape *shape
 	// disc is the index path of the discriminator of a union member.
 	disc []int
+	// Field is the field as the Spec describes it.
+	Field
+	// exported reports that the field is exported, which reflection reads
+	// and sets.
+	exported bool
 }
 
 // loc returns the location of f of l in the errors of the codec:
@@ -243,10 +244,6 @@ type resolver struct {
 	// loose maps each other struct type whose fields a sample fills to its
 	// layout.
 	loose map[reflect.Type]*layout
-	// concretes lists the concrete types that the Spec lists for any field,
-	// once each, among which a sample finds a type that an interface of
-	// another field does not list.
-	concretes []reflect.Type
 	// bad caches the ways to make the keys of a map of each key shape fail
 	// its encode, as [resolver.badKeys] finds them.
 	bad map[*shape][]badKey
@@ -262,6 +259,10 @@ type resolver struct {
 	// entries maps each type that encodes itself that a sample builds to the
 	// selfEntries that [resolver.selfEntriesOf] finds for it.
 	entries map[reflect.Type]selfEntries
+	// concretes lists the concrete types that the Spec lists for any field,
+	// once each, among which a sample finds a type that an interface of
+	// another field does not list.
+	concretes []reflect.Type
 	// canonical reports that the Spec is canonical, so that the reference
 	// decode applies the rules of a canonical decode.
 	canonical bool
@@ -283,12 +284,12 @@ func resolverFor(pkg string) *resolver {
 
 // opts are the options of a field that apply to the shapes of its type.
 type opts struct {
-	// types lists the concrete types of the interfaces of the field.
-	types []ConcreteType
 	// seen maps each type of the field that the resolution met, with the
 	// options that change its shape, to its shape, so that a type that
 	// contains itself ends the resolution.
 	seen map[seenKey]*shape
+	// types lists the concrete types of the interfaces of the field.
+	types []ConcreteType
 	// fixed selects the fixed-size encoding of the 32- and 64-bit integers.
 	fixed bool
 	// key reports a value inside a map key, whose interfaces store the
@@ -523,7 +524,7 @@ func (r *resolver) looseLayout(t reflect.Type) *layout {
 	l := &layout{typ: t, name: t.String()}
 	r.loose[t] = l
 	for sf := range t.Fields() {
-		if !encoded(sf) {
+		if !encoded(&sf) {
 			continue
 		}
 		// A loose resolution fails for no type that a generated codec
@@ -578,7 +579,7 @@ func (r *resolver) iface(s *shape, o opts) error {
 // or has a kanon tag, which opts an unexported field in, it is neither a
 // blank field nor a field that [unsent] reports, and its kanon tag neither
 // skips it nor keeps unknown fields.
-func encoded(sf reflect.StructField) bool {
+func encoded(sf *reflect.StructField) bool {
 	tag, tagged := sf.Tag.Lookup(tagKey)
 	if !sf.IsExported() && !tagged || sf.Name == blankName || unsent(sf.Type) {
 		return false
@@ -628,7 +629,7 @@ func bitwiseType(t reflect.Type) bool {
 // value Reset and a decode clear and a merge keeps: a field that kanon does
 // not encode, as [encoded] reports, other than a blank field, which no code
 // reads or writes, and the field that keeps unknown fields.
-func leftOut(sf reflect.StructField) bool {
+func leftOut(sf *reflect.StructField) bool {
 	return sf.Name != blankName && !encoded(sf) && !keepsUnknown(sf.Tag.Get(tagKey))
 }
 

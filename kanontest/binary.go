@@ -70,8 +70,9 @@ type methods struct {
 // kanon.Appender, and records the methods in methodSets. Every later call
 // returns the recorded methods. It is safe for concurrent use.
 func methodsOf(t reflect.Type) methods {
-	if m, ok := methodSets.Load(t); ok {
-		return m.(methods)
+	if found, ok := methodSets.Load(t); ok {
+		m, _ := found.(methods)
+		return m
 	}
 	p := reflect.PointerTo(t)
 	has := func(i reflect.Type) bool { return p.Implements(i) }
@@ -176,13 +177,16 @@ func marshal(v reflect.Value) ([]byte, error) {
 	}
 	p := reflect.New(v.Type())
 	p.Elem().Set(v)
-	switch x := p.Interface(); m.family {
+	switch m.family {
 	case familyBinary:
-		return x.(encoding.BinaryMarshaler).MarshalBinary()
+		x, _ := reflect.TypeAssert[encoding.BinaryMarshaler](p)
+		return x.MarshalBinary()
 	case familyGob:
-		return x.(gob.GobEncoder).GobEncode()
+		x, _ := reflect.TypeAssert[gob.GobEncoder](p)
+		return x.GobEncode()
 	default:
-		return x.(encoding.TextMarshaler).MarshalText()
+		x, _ := reflect.TypeAssert[encoding.TextMarshaler](p)
+		return x.MarshalText()
 	}
 }
 
@@ -193,9 +197,11 @@ func appendTo(v reflect.Value, b []byte) ([]byte, error) {
 	p := reflect.New(v.Type())
 	p.Elem().Set(v)
 	if methodsOf(v.Type()).family == familyBinary {
-		return p.Interface().(encoding.BinaryAppender).AppendBinary(b)
+		a, _ := reflect.TypeAssert[encoding.BinaryAppender](p)
+		return a.AppendBinary(b)
 	}
-	return p.Interface().(encoding.TextAppender).AppendText(b)
+	a, _ := reflect.TypeAssert[encoding.TextAppender](p)
+	return a.AppendText(b)
 }
 
 // unmarshal sets x, an addressable value of a type that encodes itself, to
@@ -204,13 +210,16 @@ func appendTo(v reflect.Value, b []byte) ([]byte, error) {
 // method.
 func unmarshal(x reflect.Value, data []byte) error {
 	x.SetZero()
-	p := x.Addr().Interface()
+	p := x.Addr()
 	switch methodsOf(x.Type()).family {
 	case familyBinary:
-		return p.(encoding.BinaryUnmarshaler).UnmarshalBinary(data)
+		u, _ := reflect.TypeAssert[encoding.BinaryUnmarshaler](p)
+		return u.UnmarshalBinary(data)
 	case familyGob:
-		return p.(gob.GobDecoder).GobDecode(data)
+		u, _ := reflect.TypeAssert[gob.GobDecoder](p)
+		return u.GobDecode(data)
 	default:
-		return p.(encoding.TextUnmarshaler).UnmarshalText(data)
+		u, _ := reflect.TypeAssert[encoding.TextUnmarshaler](p)
+		return u.UnmarshalText(data)
 	}
 }

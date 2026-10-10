@@ -19,9 +19,9 @@ import (
 
 // edit is a change that a probe makes to one byte of an encoding.
 type edit struct {
-	// name names the change in the name of a probe.
-	name   string
 	change func(b byte) byte
+	// name names the change in the name of a probe.
+	name string
 }
 
 // edits lists the changes of the probes: the next value and the previous
@@ -30,9 +30,9 @@ type edit struct {
 // continuation bit flipped, which joins a varint to the byte after it or
 // ends it early.
 var edits = [...]edit{
-	{"plus 1", func(b byte) byte { return b + 1 }},
-	{"minus 1", func(b byte) byte { return b - 1 }},
-	{"with its continuation bit flipped", func(b byte) byte { return b ^ 0x80 }},
+	{func(b byte) byte { return b + 1 }, "plus 1"},
+	{func(b byte) byte { return b - 1 }, "minus 1"},
+	{func(b byte) byte { return b ^ 0x80 }, "with its continuation bit flipped"},
 }
 
 // unknownFields is an unknown field of each wire format, with the field
@@ -73,10 +73,10 @@ type piece struct {
 
 // probeFamily is a family of probes and the check that decodes them.
 type probeFamily struct {
+	probes func() []probe
 	// check names the check, which also labels the digest of the family in
 	// the golden file.
-	check  string
-	probes func() []probe
+	check string
 }
 
 // families returns the families of the probes of the decode checks, and for
@@ -97,23 +97,23 @@ func (s *suite[T, P]) decodeFamilies() []probeFamily {
 	var past []probeFamily
 	if len(s.overs) > 0 {
 		past = []probeFamily{{
-			"DecodeKanon/decodes a field with one element past its bound as the reference decode", s.pasts,
+			s.pasts, "DecodeKanon/decodes a field with one element past its bound as the reference decode",
 		}}
 	}
 	return slices.Concat([]probeFamily{
-		{"DecodeKanon/decodes each prefix of " + field + " as the reference decode", s.prefixes},
-		{"DecodeKanon/decodes " + field + " with one value written wrong as the reference decode", s.faults},
+		{s.prefixes, "DecodeKanon/decodes each prefix of " + field + " as the reference decode"},
+		{s.faults, "DecodeKanon/decodes " + field + " with one value written wrong as the reference decode"},
 		{
-			"DecodeKanon/decodes " + field + " with a value that its ValidateKanon rejects as the reference decode",
 			s.rejections,
+			"DecodeKanon/decodes " + field + " with a value that its ValidateKanon rejects as the reference decode",
 		},
-		{"DecodeKanon/decodes " + field + " with one changed byte as the reference decode", s.changes},
-		{"DecodeKanon/decodes " + field + " with its tag in another wire format as the reference decode", s.formats},
-		{"DecodeKanon/decodes " + field + " written twice as the reference decode", s.repeats},
-		{"DecodeKanon/decodes " + field + " under each depth limit as the reference decode", s.limits},
-		{"DecodeKanon/decodes an encoding that writes every field twice as the reference decode", s.redundancies},
-		{"DecodeKanon/decodes two concatenated encodings as the reference decode", s.concatenations},
-		{"DecodeKanon/decodes an encoding in a slab at its offset as the reference decode", s.slabs},
+		{s.changes, "DecodeKanon/decodes " + field + " with one changed byte as the reference decode"},
+		{s.formats, "DecodeKanon/decodes " + field + " with its tag in another wire format as the reference decode"},
+		{s.repeats, "DecodeKanon/decodes " + field + " written twice as the reference decode"},
+		{s.limits, "DecodeKanon/decodes " + field + " under each depth limit as the reference decode"},
+		{s.redundancies, "DecodeKanon/decodes an encoding that writes every field twice as the reference decode"},
+		{s.concatenations, "DecodeKanon/decodes two concatenated encodings as the reference decode"},
+		{s.slabs, "DecodeKanon/decodes an encoding in a slab at its offset as the reference decode"},
 	}, past)
 }
 
@@ -136,36 +136,36 @@ func (s *suite[T, P]) pasts() []probe {
 func (s *suite[T, P]) breachFamilies() []probeFamily {
 	return []probeFamily{
 		{
-			"DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode",
 			s.longForms,
+			"DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode",
 			s.breaching(breachFields),
+			"DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode",
 			s.breaching(breachKeys),
+			"DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode",
 			s.breaching(breachUnknown),
+			"DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode",
 			s.breaching(breachZero),
+			"DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode",
 			s.breaching(breachTag),
+			"DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode",
 			s.breaching(breachNegZero),
+			"DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode",
 		},
 		{
-			"DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode",
 			s.breaching(breachZeroBytes),
+			"DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode",
 		},
 	}
 }
@@ -254,7 +254,7 @@ func (s *suite[T, P]) margin() int {
 // every slice and map, for n from 0 until the encoding stops changing,
 // each as [suite.wrap] places it: in one of them, every field, element and
 // entry comes first in the order of the decode.
-func (s *suite[T, P]) thinned(p piece) [][]byte {
+func (s *suite[T, P]) thinned(p *piece) [][]byte {
 	out := [][]byte{p.enc}
 	last, _ := s.pieceField(p.f, p.x, nil, 0)
 	for n := 1; ; n++ {
@@ -290,7 +290,8 @@ func (s *suite[T, P]) prefixes() []probe {
 // reads a value outside its type.
 func (s *suite[T, P]) faults() []probe {
 	var out []probe
-	for _, p := range s.pieces {
+	for k := range s.pieces {
+		p := &s.pieces[k]
 		all := &fault{}
 		_, _ = s.pieceField(p.f, p.x, all, 0)
 		for t, n := range all.lengths {
@@ -309,7 +310,7 @@ func (s *suite[T, P]) faults() []probe {
 
 // faulty returns the probe of the piece p whose value t, counted from 0 in
 // the order of a fault, a fault writes with at bytes, named after change.
-func (s *suite[T, P]) faulty(p piece, t, at int, change string) probe {
+func (s *suite[T, P]) faulty(p *piece, t, at int, change string) probe {
 	enc, _ := s.pieceField(p.f, p.x, &fault{target: t + 1, at: at}, 0)
 	return probe{name: p.name + " with value " + strconv.Itoa(t) + " " + change, data: s.wrap(enc)}
 }
@@ -320,8 +321,8 @@ func (s *suite[T, P]) faulty(p piece, t, at int, change string) probe {
 // index meet a value that the encode never writes.
 func (s *suite[T, P]) rejections() []probe {
 	each := make([][]probe, len(s.pieces))
-	for k, p := range s.pieces {
-		each[k] = s.pieceRejections(p)
+	for k := range s.pieces {
+		each[k] = s.pieceRejections(&s.pieces[k])
 	}
 	return slices.Concat(each...)
 }
@@ -329,7 +330,7 @@ func (s *suite[T, P]) rejections() []probe {
 // pieceRejections returns the probes of the piece p with one value of a
 // kanon.Validator written as a value that its ValidateKanon rejects, as a
 // rejection writes it: one probe per such value of the piece.
-func (s *suite[T, P]) pieceRejections(p piece) []probe {
+func (s *suite[T, P]) pieceRejections(p *piece) []probe {
 	all := &rejection{}
 	s.rejectedField(p, all)
 	out := make([]probe, all.met)
@@ -345,7 +346,7 @@ func (s *suite[T, P]) pieceRejections(p piece) []probe {
 // rejectedField returns the field of the piece p as the encoder of the
 // pieces writes it, with the value that rj targets rejected, as a rejection
 // writes it.
-func (s *suite[T, P]) rejectedField(p piece, rj *rejection) []byte {
+func (s *suite[T, P]) rejectedField(p *piece, rj *rejection) []byte {
 	e := &encoder{r: s.r, mode: s.pieceMode(), reject: rj}
 	return e.appendField(nil, s.l.loc(p.f), p.f, p.x, true)
 }
@@ -408,7 +409,7 @@ func (s *suite[T, P]) repeats() []probe {
 func (s *suite[T, P]) limits() []probe {
 	var out []probe
 	for _, x := range s.piecesOf(slices.Concat(s.samples, s.bulk)) {
-		for n, enc := range s.thinned(x) {
+		for n, enc := range s.thinned(&x) {
 			for _, d := range []int{math.MinInt, 1, 2, 3, 4} {
 				name := x.name + " without the first " + strconv.Itoa(n) + " values under depth " + strconv.Itoa(d)
 				out = append(out, probe{name: name, data: enc, opts: kanon.Options{Depth: d}})
@@ -463,15 +464,15 @@ func (s *suite[T, P]) slabs() []probe {
 // elements.
 func (s *suite[T, P]) longForms() []probe {
 	each := make([][]probe, len(s.pieces))
-	for k, p := range s.pieces {
-		each[k] = s.pieceLongForms(p)
+	for k := range s.pieces {
+		each[k] = s.pieceLongForms(&s.pieces[k])
 	}
 	return slices.Concat(each...)
 }
 
 // pieceLongForms returns the probes of the piece p with one varint one byte
 // longer than its shortest form, one probe per varint.
-func (s *suite[T, P]) pieceLongForms(p piece) []probe {
+func (s *suite[T, P]) pieceLongForms(p *piece) []probe {
 	all := &fault{breach: breachLong}
 	_, _ = s.pieceField(p.f, p.x, all, 0)
 	out := make([]probe, len(all.lengths))

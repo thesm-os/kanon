@@ -68,10 +68,14 @@ const keyLoc = "map.key"
 // source supplies the values of a sample. The builder decides the
 // structure of the sample, and the source decides every value in it.
 type source interface {
-	// part returns the source of part k of a composite value: element k of
-	// a sequence, entry k of a map, field k of a struct, or the value of a
-	// pointer or an interface.
-	part(k int) source
+	scalarSource
+	partSource
+	failSource
+}
+
+// scalarSource is the part of a source that supplies the value of each Go
+// kind that is not composite.
+type scalarSource interface {
 	boolean() bool
 	signed(bits int) int64
 	unsigned(bits int) uint64
@@ -80,14 +84,24 @@ type source interface {
 	// bytes returns a byte slice, and nil for a nil one.
 	bytes() []byte
 	instant() time.Time
+}
+
+// partSource is the part of a source that supplies the parts of a composite
+// value, its length, its presence and the choices of its interfaces and
+// unions.
+type partSource interface {
+	// part returns the source of part k of a composite value: element k of
+	// a sequence, entry k of a map, field k of a struct, or the value of a
+	// pointer or an interface.
+	part(k int) source
 	// count returns the number of elements of a slice, and -1 for a nil
 	// one. A byte array is zero for -1.
 	count() int
 	// entries returns the number of entries of a map, and -1 for a nil one.
 	entries() int
 	// most returns the most elements of a slice, and entries of a map, that
-	// the builder gives the value of the source: the bound of the field of a
-	// [bounded] source, and math.MaxInt for any other source.
+	// the builder gives the value of the source. It is the bound of the
+	// field for a [bounded] source, and math.MaxInt for any other source.
 	most() int
 	// set reports whether a pointer is not nil.
 	set() bool
@@ -96,6 +110,11 @@ type source interface {
 	// keyed reports that every map takes the keys of the key sample, as
 	// [resolver.buildMap] builds them.
 	keyed() bool
+}
+
+// failSource is the part of a source that reports which value of a sample
+// fails to encode.
+type failSource interface {
 	// fail reports whether the value that can fail to encode, which the
 	// builder is about to build, fails. The builder calls it once per way to
 	// fail such a value: a value of a type that encodes itself once per way
@@ -342,14 +361,14 @@ func (side mapSide) shape() *shape {
 // [resolver.addFailingEntry] adds it.
 type entryFailing struct {
 	source
-	side mapSide
 	// done records that a map took the entry that fails. The parts of a
 	// source share it.
 	done *bool
+	side mapSide
 }
 
 // part returns part k of src, which fails at the same side.
-func (f entryFailing) part(k int) source { return entryFailing{f.source.part(k), f.side, f.done} }
+func (f entryFailing) part(k int) source { return entryFailing{f.source.part(k), f.done, f.side} }
 
 // failEntry reports whether s and key are the shape and the side of f, for
 // the first map that meets them.

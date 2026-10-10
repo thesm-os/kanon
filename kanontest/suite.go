@@ -22,6 +22,8 @@ import (
 // Check is one check of the codec of a struct type, of the ValidateKanon
 // method of a kanon.Validator, or of the guarantees of a kanon.Exact type.
 type Check struct {
+	// Run fails tb when the codec breaks the contract that Name states.
+	Run func(tb assert.TB)
 	// Name names the check as the subtest that [Run], [RunValue] or
 	// [RunExact] runs it in: the method whose contract the check states, a
 	// slash, and the behaviour.
@@ -29,8 +31,6 @@ type Check struct {
 	// Serial reports that the check counts allocations, which the testing
 	// package counts while no parallel test runs.
 	Serial bool
-	// Run fails tb when the codec breaks the contract that Name states.
-	Run func(tb assert.TB)
 }
 
 // Names of checks that [Checks] returns for some Specs only.
@@ -288,16 +288,16 @@ type suite[T any, P Codec[T]] struct {
 	bench T
 	// view is the view type of T, and nil when the Spec names none.
 	view reflect.Type
-	// index reports that the view type has IndexKanon.
-	index bool
-	// cloner reports that P implements kanon.Cloner, which the clone check
-	// requires of the codec.
-	cloner bool
 	// stream is the constructor of the stream decoder of T, and nil when T
 	// has none, and streamFields lists its streamed fields in ascending field
 	// number.
 	stream       func(r io.Reader, size int64, m *T, opts kanon.StreamOptions) Stream[T]
 	streamFields []*field
+	// index reports that the view type has IndexKanon.
+	index bool
+	// cloner reports that P implements kanon.Cloner, which the clone check
+	// requires of the codec.
+	cloner bool
 }
 
 // sample is a value of T that the checks run on.
@@ -305,10 +305,10 @@ type sample[T any] struct {
 	// name names the sample in failures.
 	name  string
 	value T
-	// enc is the reference encoding of value, and err the error of the
-	// codec for it.
-	enc []byte
+	// err is the error of the codec for value, and enc the reference
+	// encoding of value.
 	err error
+	enc []byte
 }
 
 // probe is an input of the decode checks: the bytes that a decode reads,
@@ -444,7 +444,7 @@ func (s *suite[T, P]) bound(f *field) (sample[T], sample[T], bool) {
 func (s *suite[T, P]) entryFailed(side mapSide, wide int) (x sample[T], ok bool) {
 	for n := range wide {
 		done := false
-		x = s.sample(entryFailingName(n, side), s.fill(entryFailing{counting(n), side, &done}, wideNesting))
+		x = s.sample(entryFailingName(n, side), s.fill(entryFailing{counting(n), &done, side}, wideNesting))
 		if ok = done && x.err != nil; ok {
 			break
 		}

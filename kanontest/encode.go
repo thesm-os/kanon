@@ -116,21 +116,21 @@ var (
 // methods, a type that encodes itself through the methods of its family,
 // and a time through package wire.
 type encoder struct {
-	r    *resolver
-	mode mode
+	r *resolver
 	// fault writes one value of the encoding wrong when it is not nil.
 	fault *fault
 	// reject writes one value of a kanon.Validator as a value that its
 	// ValidateKanon rejects when it is not nil.
 	reject *rejection
-	// from leaves out the first from fields of every inline struct, and the
-	// first from elements of every slice and entries of every map, so that
-	// the next one comes first in the order of the decode.
-	from int
 	// err is the error of the last value in the order of the encoding that
 	// fails to encode. The generated code writes backward and returns the
 	// first failure that it meets, which is this one.
 	err error
+	// from leaves out the first from fields of every inline struct, and the
+	// first from elements of every slice and entries of every map, so that
+	// the next one comes first in the order of the decode.
+	from int
+	mode mode
 	// key reports that the encoder writes a map key, whose projection
 	// writes every float component of -0.0 as +0.0: a float field of -0.0
 	// is absent, and a struct with a kanon codec that contains a float
@@ -154,11 +154,11 @@ type encoder struct {
 // meets the sites of the breach, and leaves the bytes of every other site as
 // the encoding writes them.
 type fault struct {
-	target, at int
-	breach     breach
 	// lengths records the length of every value that the fault counts, and
 	// -1 for a varint and for a site of a breach.
-	lengths []int
+	lengths    []int
+	target, at int
+	breach     breach
 }
 
 // rejection makes an encoder write one value of a kanon.Validator as the

@@ -227,11 +227,11 @@ func (s *suite[T, P]) streams(tb assert.TB, p probe) {
 func (s *suite[T, P]) streamCuts(tb assert.TB, xs []sample[T]) {
 	tb.Helper()
 	runs := []struct {
-		chunk int
 		how   string
+		chunk int
 	}{
-		{chunk: readChunk, how: ", read through Read"},
-		{chunk: writeTo, how: ", read through WriteTo"},
+		{how: ", read through Read", chunk: readChunk},
+		{how: ", read through WriteTo", chunk: writeTo},
 	}
 	for _, x := range s.decodable(xs) {
 		for k := range len(x.enc) {

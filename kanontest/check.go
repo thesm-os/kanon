@@ -51,14 +51,14 @@ var causes = [...]error{
 // identities are. The zero value is the identity of no error, and ==
 // compares two identities.
 type errorIdentity struct {
-	// Present reports whether there is an error.
-	Present bool
 	// Message is the text of the error, which states the location, the
 	// offset and the cause.
 	Message string
 	// Causes lists the messages of the causes that the error wraps, in the
 	// order of [causes], separated by causeSeparator.
 	Causes string
+	// Present reports whether there is an error.
+	Present bool
 }
 
 // identityOf returns the identity of err. It allocates the message of err
