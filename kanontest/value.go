@@ -179,7 +179,7 @@ func ValueChecks[T kanon.Validator]() []Check {
 		tb.Helper()
 		valueAllocs[T](tb, vs)
 	}}}
-	if familyOf(typ) != 0 {
+	if methodsOf(typ).family != 0 {
 		checks = append(checks,
 			Check{Name: valueDomainCheck, Run: vs.domain},
 			Check{Name: valuePropertyCheck, Run: vs.property},

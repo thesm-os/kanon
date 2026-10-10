@@ -99,8 +99,8 @@ type source interface {
 	// fail reports whether the value that can fail to encode, which the
 	// builder is about to build, fails. The builder calls it once per way to
 	// fail such a value: a value of a type that encodes itself once per way
-	// that [resolver.failures] finds, a value of a kanon.Validator and an
-	// interface once each, and a map once per way to fail its keys that
+	// that [resolver.selfEntriesOf] finds, a value of a kanon.Validator and
+	// an interface once each, and a map once per way to fail its keys that
 	// [resolver.badKeys] finds.
 	fail() bool
 	// failEntry reports whether the map of the shape s, which the builder has
@@ -493,10 +493,14 @@ func (r *resolver) shaped(src source, s *shape, depth int) reflect.Value {
 		r.buildInterface(src, s, v, depth)
 	case kindBinary:
 		r.self(src, v, depth)
-		if x, ok := failure(src, r.failures(s.typ)); ok {
-			v.Set(x)
+		e := r.selfEntriesOf(s.typ)
+		if k, ok := failure(src, e.fails); ok {
+			v.Set(r.selfValue(s.typ, k))
 		} else if _, err := encodeSelf(v); err != nil {
-			v.Set(r.success(s.typ))
+			v.SetZero()
+			if e.encodes >= 0 {
+				v.Set(r.selfValue(s.typ, e.encodes))
+			}
 		}
 	default:
 		r.scalar(src, v, depth)
@@ -827,53 +831,74 @@ func other(f float64) float64 {
 	return table[0]
 }
 
-// failures returns values of t, a type that encodes itself, that fail to
-// encode: per way to fail, as [failModeOf] tells them apart, the first value
-// that [resolver.self] builds from the value tables that fails that way, in
-// the order of the ways. A value other than the zero value takes the place of
-// the zero value, when the tables give one that fails the same way: a field
-// leaves out the zero value of a type whose == compares every bit, so that it
-// fails in no field.
-func (r *resolver) failures(t reflect.Type) []reflect.Value {
+// selfEntries are table entries of a type that encodes itself. The builder
+// builds the value of an entry in place of a value that a source builds. A
+// source that fails a value picks an entry of fails. A value that fails to
+// encode where no source fails it takes the value of encodes instead. A
+// sample then fails to encode only where a failing source fails it.
+type selfEntries struct {
+	// fails lists one table entry per way to fail, in the order of the ways
+	// that [failModeOf] tells apart. Each is the first entry whose value
+	// fails that way. An entry of a value other than the zero value takes
+	// the place of an entry of the zero value when it fails the same way. A
+	// field leaves out the zero value of a type whose == compares every bit,
+	// and that zero value then fails in no field.
+	fails []int
+	// encodes is the first table entry whose value [encodeSelf] encodes
+	// without an error. It is -1 when no entry encodes, and the zero value
+	// then takes the place of a value that fails.
+	encodes int
+}
+
+// selfEntriesOf returns the selfEntries of the type t that encodes itself.
+// It searches the values that [resolver.selfValue] builds from the value
+// tables, and records the entries of each type, so the search runs once per
+// type. The builder builds each value from its entry anew, and no two
+// values share memory.
+func (r *resolver) selfEntriesOf(t reflect.Type) selfEntries {
+	if e, ok := r.entries[t]; ok {
+		return e
+	}
+	e := selfEntries{encodes: -1}
 	var first [failsLength + 1]reflect.Value
+	var entry [failsLength + 1]int
 	for i := range drawCount {
-		v := reflect.New(t).Elem()
-		r.self(table(i), v, 0)
+		v := r.selfValue(t, i)
 		m := failModeOf(v)
+		if m == 0 && e.encodes < 0 {
+			e.encodes = i
+		}
 		if m != 0 && (!first[m].IsValid() || first[m].IsZero() && !v.IsZero()) {
-			first[m] = v
+			first[m], entry[m] = v, i
 		}
 	}
-	return slices.DeleteFunc(first[:], func(v reflect.Value) bool { return !v.IsValid() })
+	for m, v := range first {
+		if v.IsValid() {
+			e.fails = append(e.fails, entry[m])
+		}
+	}
+	r.entries[t] = e
+	return e
 }
 
-// failure calls fail of src once per value of fails, and returns the value
-// whose call reports that it fails, and false when no call does.
-func failure(src source, fails []reflect.Value) (reflect.Value, bool) {
-	var out reflect.Value
-	for _, x := range fails {
+// selfValue returns the value that [resolver.self] builds for the type t
+// from table entry i.
+func (r *resolver) selfValue(t reflect.Type, i int) reflect.Value {
+	v := reflect.New(t).Elem()
+	r.self(table(i), v, 0)
+	return v
+}
+
+// failure calls fail of src once per entry of fails. It returns the last
+// entry whose call reports true, and false when no call does.
+func failure(src source, fails []int) (int, bool) {
+	out, ok := 0, false
+	for _, k := range fails {
 		if src.fail() {
-			out = x
+			out, ok = k, true
 		}
 	}
-	return out, out.IsValid()
-}
-
-// success returns a value of t, a type that encodes itself, that encodes,
-// as [encodeSelf] reports it: the first value that [resolver.self] builds
-// from the value tables that does, or the zero value when none does, so that
-// a sample fails to encode only where a failing source fails it.
-func (r *resolver) success(t reflect.Type) reflect.Value {
-	ok := reflect.Zero(t)
-	found := false
-	for i := range drawCount {
-		v := reflect.New(t).Elem()
-		r.self(table(i), v, 0)
-		if _, err := encodeSelf(v); !found && err == nil {
-			ok, found = v, true
-		}
-	}
-	return ok
+	return out, ok
 }
 
 // rejected returns a value of s, the shape of a kanon.Validator, that its

@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"testing"
 
+	"go.dokimi.dev/assert"
+
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/mapvalue"
 	"go.thesmos.sh/kanon/internal/fixture/nested"
 	"go.thesmos.sh/kanon/internal/fixture/number"
@@ -80,6 +83,25 @@ var nestedSpec = kanontest.Spec[mapvalue.Nested]{
 	Structs: []kanontest.Struct{
 		{Type: reflect.TypeFor[mapvalue.Holder](), Name: "Holder", Fields: fields("Names", "Inner")},
 	},
+}
+
+// tallyBound is the bound of bound.TalliesWide. The elements of its samples
+// at and past the bound count from 0 to tallyBound. A larger Tally in a
+// sample comes from the value tables.
+const tallyBound bound.Tally = 64
+
+// talliedAbove builds the checks of T that spec describes, and returns how
+// often the build encodes each value of bound.Tally above least.
+func talliedAbove[T any, P kanontest.Codec[T]](spec kanontest.Spec[T], least bound.Tally) map[bound.Tally]int {
+	before := bound.Tallied()
+	kanontest.Checks[T, P](spec)
+	out := make(map[bound.Tally]int)
+	for v, n := range bound.Tallied() {
+		if v > least && n > before[v] {
+			out[v] = n - before[v]
+		}
+	}
+	return out
 }
 
 // member returns the field of a union member named name, with the number
@@ -190,6 +212,19 @@ func TestSample(t *testing.T) {
 				"Ints", "Words", "Rows", "Tables", "Stamps", "Voids", "Deep", "Tree", "Nones",
 			)})
 		})
+		t.Run("encodes each table value of a type that encodes itself as often for the bound 64 as for the bound 2",
+			func(t *testing.T) {
+				t.Parallel()
+				narrow := talliedAbove(kanontest.Spec[bound.Tallies]{
+					Fields: []kanontest.Field{{Name: "List", Number: 1, Max: 2}},
+				}, tallyBound)
+				wide := talliedAbove(kanontest.Spec[bound.TalliesWide]{
+					Fields: []kanontest.Field{{Name: "List", Number: 1, Max: int(tallyBound)}},
+				}, tallyBound)
+				assert.NotEmpty(t, narrow, "the checks encode table values above the bound 64")
+				assert.Equal(t, wide, narrow,
+					"the checks for the bound 64 encode each table value as often as the checks for the bound 2")
+			})
 		t.Run("fails for a codec that writes an empty slice that is not nil", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[emptyChildren]{Fields: recordSpec.Fields},

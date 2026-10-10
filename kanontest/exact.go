@@ -80,7 +80,7 @@ func (x exactValue) String() string {
 // size of a value of t in memory. It fails for a type that kanon does not
 // encode, and for a type that does not meet the requirements of kanon.Exact
 // that the generator checks: t encodes itself through the append method of
-// its family, as [appends] reports, and == compares every bit of it, as
+// its family, as [methodsOf] reports, and == compares every bit of it, as
 // [bitwiseType] reports.
 func newExactSuite(t reflect.Type) (*exactSuite, error) {
 	r := resolverFor(t.PkgPath())
@@ -88,7 +88,7 @@ func newExactSuite(t reflect.Type) (*exactSuite, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kanontest: %v: %w", t, err)
 	}
-	if s.kind != kindBinary || !appends(t) {
+	if s.kind != kindBinary || !methodsOf(t).appends {
 		return nil, fmt.Errorf("kanontest: %v declares ExactKanon, and does not encode itself through AppendBinary or "+
 			"AppendText", t)
 	}
@@ -239,7 +239,7 @@ func ExactChecks[T kanon.Exact]() []Check {
 		{Name: exactErrorCheck, Run: es.succeed},
 		{Name: exactDecodeCheck, Run: es.decode},
 	}
-	if appendsKanon(typ) {
+	if methodsOf(typ).appender {
 		checks = append(checks, Check{Name: exactAppenderCheck, Run: es.appender})
 	}
 	return checks

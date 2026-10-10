@@ -107,9 +107,9 @@ type shape struct {
 	// absent exactly when it is the zero value of its type, since == compares
 	// every bit of the type, as [bitwiseType] reports.
 	zeroAbsent bool
-	// sizer reports that a type that encodes itself is a kanon.Sizer, as
-	// [sizes] reports, whose encoding the generated code writes into the
-	// room that its SizeKanon sizes.
+	// sizer reports that [methodsOf] finds a kanon.Sizer for a type that
+	// encodes itself. The generated code writes the encoding of such a value
+	// into the room that its SizeKanon sizes.
 	sizer bool
 	// validate reports that the type is a kanon.Validator, as [validates]
 	// reports: it encodes as its underlying type, and every value that the
@@ -259,6 +259,9 @@ type resolver struct {
 	// lengths at which [resolver.opaque] found that its decode method decodes
 	// a value, and to nil for a type that reflection fills.
 	opaques map[reflect.Type][]int
+	// entries maps each type that encodes itself that a sample builds to the
+	// selfEntries that [resolver.selfEntriesOf] finds for it.
+	entries map[reflect.Type]selfEntries
 	// canonical reports that the Spec is canonical, so that the reference
 	// decode applies the rules of a canonical decode.
 	canonical bool
@@ -274,6 +277,7 @@ func resolverFor(pkg string) *resolver {
 		bad:     make(map[*shape][]badKey),
 		taints:  make(map[reflect.Type]reflect.Value),
 		opaques: make(map[reflect.Type][]int),
+		entries: make(map[reflect.Type]selfEntries),
 	}
 }
 
@@ -422,8 +426,8 @@ func (r *resolver) shapeOf(t reflect.Type, o opts) (*shape, error) {
 		return s, nil
 	}
 	s.validate = validates(t)
-	if !s.validate && familyOf(t) != 0 {
-		s.kind, s.zeroAbsent, s.sizer = kindBinary, bitwiseType(t), sizes(t)
+	if m := methodsOf(t); !s.validate && m.family != 0 {
+		s.kind, s.zeroAbsent, s.sizer = kindBinary, bitwiseType(t), m.sizer
 		return s, nil
 	}
 	var err error

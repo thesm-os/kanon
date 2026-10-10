@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"go.thesmos.sh/kanon"
 )
@@ -24,6 +25,10 @@ var (
 	errNegative = fmt.Errorf("%w: SizeKanon is below 0", errSize)
 )
 
+// methodSets maps each type to the methods that [methodsOf] finds for it.
+// Every resolver and every goroutine of the process reads the same map.
+var methodSets sync.Map
+
 // family is a family of methods through which a type encodes itself. The
 // zero family is none.
 type family uint8
@@ -38,25 +43,52 @@ const (
 	familyText family = 3
 )
 
-// familyOf returns the first family whose decode method, and whose append
-// or encode method, the pointer to t has, and 0 when there is none. It does
-// not tell a type that encodes itself from time.Time and from a struct with
-// a kanon codec, which [resolver.shapeOf] classifies first.
-func familyOf(t reflect.Type) family {
+// methods are the methods through which the pointer to a type encodes and
+// decodes the values of the type. The generated code calls the same methods.
+// The zero methods have no family. They do not tell a type that encodes
+// itself from time.Time or from a struct with a kanon codec. [resolver.shapeOf]
+// classifies those types first.
+type methods struct {
+	// family is the first family whose decode method and append or encode
+	// method the pointer has. It is 0 when the pointer has none.
+	family family
+	// appends reports that the pointer has AppendBinary in the binary family
+	// or AppendText in the text family. The generated code calls that method
+	// with a stack array. The gob family has no append method.
+	appends bool
+	// sizer reports that the pointer is a kanon.Sizer. The generated code
+	// sizes a value with its SizeKanon.
+	sizer bool
+	// appender reports that the pointer is a kanon.Appender. The generated
+	// code of a kanon.Exact type calls AppendKanon in place of the append
+	// method of the family.
+	appender bool
+}
+
+// methodsOf returns the methods of t. The first call for t tests the pointer
+// to t against the interfaces of the families, kanon.Sizer and
+// kanon.Appender, and records the methods in methodSets. Every later call
+// returns the recorded methods. It is safe for concurrent use.
+func methodsOf(t reflect.Type) methods {
+	if m, ok := methodSets.Load(t); ok {
+		return m.(methods)
+	}
 	p := reflect.PointerTo(t)
 	has := func(i reflect.Type) bool { return p.Implements(i) }
-	binaryEncode := has(reflect.TypeFor[encoding.BinaryAppender]()) || has(reflect.TypeFor[encoding.BinaryMarshaler]())
-	textEncode := has(reflect.TypeFor[encoding.TextAppender]()) || has(reflect.TypeFor[encoding.TextMarshaler]())
-	if binaryEncode && has(reflect.TypeFor[encoding.BinaryUnmarshaler]()) {
-		return familyBinary
+	m := methods{sizer: has(reflect.TypeFor[kanon.Sizer]()), appender: has(reflect.TypeFor[kanon.Appender]())}
+	binaryAppends := has(reflect.TypeFor[encoding.BinaryAppender]())
+	textAppends := has(reflect.TypeFor[encoding.TextAppender]())
+	binaryEncodes := binaryAppends || has(reflect.TypeFor[encoding.BinaryMarshaler]())
+	textEncodes := textAppends || has(reflect.TypeFor[encoding.TextMarshaler]())
+	if binaryEncodes && has(reflect.TypeFor[encoding.BinaryUnmarshaler]()) {
+		m.family, m.appends = familyBinary, binaryAppends
+	} else if has(reflect.TypeFor[gob.GobEncoder]()) && has(reflect.TypeFor[gob.GobDecoder]()) {
+		m.family = familyGob
+	} else if textEncodes && has(reflect.TypeFor[encoding.TextUnmarshaler]()) {
+		m.family, m.appends = familyText, textAppends
 	}
-	if has(reflect.TypeFor[gob.GobEncoder]()) && has(reflect.TypeFor[gob.GobDecoder]()) {
-		return familyGob
-	}
-	if textEncode && has(reflect.TypeFor[encoding.TextUnmarshaler]()) {
-		return familyText
-	}
-	return 0
+	methodSets.Store(t, m)
+	return m
 }
 
 // failMode is a way in which a value of a type that encodes itself fails to
@@ -64,8 +96,9 @@ func familyOf(t reflect.Type) family {
 // none.
 type failMode uint8
 
-// Ways in which a value of a type that encodes itself fails to encode, in
-// the order in which [resolver.failures] lists their values.
+// The constants of failMode are the ways in which a value of a type that
+// encodes itself fails to encode. [resolver.selfEntriesOf] lists the table
+// entries of their values in the same order.
 const (
 	// failsSize is a SizeKanon below 0 of a kanon.Sizer, which the generated
 	// code meets before it calls the encode method.
@@ -94,40 +127,12 @@ func failModeOf(x reflect.Value) failMode {
 	return failsEncode
 }
 
-// appends reports whether the pointer to t, a type that encodes itself, has
-// the append method of its family, which the generated code calls with a
-// stack array: AppendBinary or AppendText. GobEncode has no append method.
-func appends(t reflect.Type) bool {
-	p := reflect.PointerTo(t)
-	switch familyOf(t) {
-	case familyBinary:
-		return p.Implements(reflect.TypeFor[encoding.BinaryAppender]())
-	case familyText:
-		return p.Implements(reflect.TypeFor[encoding.TextAppender]())
-	default:
-		return false
-	}
-}
-
-// sizes reports whether the pointer to t, a type that encodes itself, is a
-// kanon.Sizer, whose SizeKanon the generated code sizes a value with.
-func sizes(t reflect.Type) bool {
-	return reflect.PointerTo(t).Implements(reflect.TypeFor[kanon.Sizer]())
-}
-
 // sizeKanon returns the SizeKanon of x, a value of a kanon.Sizer.
 func sizeKanon(x reflect.Value) int {
 	p := reflect.New(x.Type())
 	p.Elem().Set(x)
 	s, _ := reflect.TypeAssert[kanon.Sizer](p)
 	return s.SizeKanon()
-}
-
-// appendsKanon reports whether the pointer to t, a kanon.Exact type, is a
-// kanon.Appender, whose AppendKanon the generated code calls in place of the
-// append method of its family.
-func appendsKanon(t reflect.Type) bool {
-	return reflect.PointerTo(t).Implements(reflect.TypeFor[kanon.Appender]())
 }
 
 // appendKanon appends the encoding of x, a value of a kanon.Appender, to b
@@ -146,7 +151,7 @@ func appendKanon(x reflect.Value, b []byte) []byte {
 // and errSize for a kanon.Sizer whose SizeKanon differs from the length of
 // the encoding.
 func encodeSelf(x reflect.Value) ([]byte, error) {
-	if !sizes(x.Type()) {
+	if !methodsOf(x.Type()).sizer {
 		return marshal(x)
 	}
 	n := sizeKanon(x)
@@ -160,17 +165,18 @@ func encodeSelf(x reflect.Value) ([]byte, error) {
 	return enc, err
 }
 
-// marshal returns the encoding of v, a value of a type that encodes itself,
-// through the method that the generated code calls: the append method of
-// its family when the type has one, as [appends] reports, and the encode
-// method otherwise.
+// marshal returns the encoding of v and the error of its encode. The type
+// of v encodes itself. marshal calls the append method of the family when
+// [methodsOf] reports one, and the encode method otherwise. The generated
+// code calls the same method.
 func marshal(v reflect.Value) ([]byte, error) {
-	if appends(v.Type()) {
+	m := methodsOf(v.Type())
+	if m.appends {
 		return appendTo(v, nil)
 	}
 	p := reflect.New(v.Type())
 	p.Elem().Set(v)
-	switch x := p.Interface(); familyOf(v.Type()) {
+	switch x := p.Interface(); m.family {
 	case familyBinary:
 		return x.(encoding.BinaryMarshaler).MarshalBinary()
 	case familyGob:
@@ -180,13 +186,13 @@ func marshal(v reflect.Value) ([]byte, error) {
 	}
 }
 
-// appendTo appends the encoding of v, a value of a type that has the append
-// method of its family, as [appends] reports, to b through that method, and
-// returns the extended slice and the error of the method.
+// appendTo appends the encoding of v to b through the append method of its
+// family, and returns the extended slice and the error of the method. The
+// type of v has that method when [methodsOf] reports appends.
 func appendTo(v reflect.Value, b []byte) ([]byte, error) {
 	p := reflect.New(v.Type())
 	p.Elem().Set(v)
-	if familyOf(v.Type()) == familyBinary {
+	if methodsOf(v.Type()).family == familyBinary {
 		return p.Interface().(encoding.BinaryAppender).AppendBinary(b)
 	}
 	return p.Interface().(encoding.TextAppender).AppendText(b)
@@ -199,7 +205,7 @@ func appendTo(v reflect.Value, b []byte) ([]byte, error) {
 func unmarshal(x reflect.Value, data []byte) error {
 	x.SetZero()
 	p := x.Addr().Interface()
-	switch familyOf(x.Type()) {
+	switch methodsOf(x.Type()).family {
 	case familyBinary:
 		return p.(encoding.BinaryUnmarshaler).UnmarshalBinary(data)
 	case familyGob:

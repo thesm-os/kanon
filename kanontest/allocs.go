@@ -41,7 +41,7 @@ func encodeAllocates(s *shape, x reflect.Value) bool {
 		return false
 	}
 	enc, _ := marshal(x)
-	return !appends(s.typ) || !s.sizer && len(enc) > scratchLength
+	return !methodsOf(s.typ).appends || !s.sizer && len(enc) > scratchLength
 }
 
 // sizeAllocs checks that SizeKanon allocates nothing for every sample that

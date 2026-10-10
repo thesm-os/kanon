@@ -219,8 +219,9 @@ func (r *resolver) taintField(x reflect.Value) {
 //     leaves out of a struct with a layout among them;
 //   - then, with every value of taintOf in place, the ways to fail the keys
 //     of every map among the shapes, as [resolver.badKeys] finds them, and
-//     the lengths of every type among them that encodes itself, as
-//     [resolver.opaque] finds them.
+//     for every type among them that encodes itself, the lengths that
+//     [resolver.opaque] finds and the table entries that
+//     [resolver.selfEntriesOf] finds.
 func (r *resolver) prepare(root *shape) {
 	var order []*shape
 	shapes := make(map[*shape]bool)
@@ -275,6 +276,7 @@ func (r *resolver) prepare(root *shape) {
 			r.badKeys(s.key)
 		case kindBinary:
 			r.opaque(s.typ)
+			r.selfEntriesOf(s.typ)
 		default:
 			// No other shape has a cache of its own.
 		}
