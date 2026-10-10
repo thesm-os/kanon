@@ -17,12 +17,6 @@ const inputLoc = "input"
 // Field is one field of a struct encoding, with the struct reading of a
 // bytes value.
 type Field struct {
-	// Number is the field number of the tag, and Wire its wire format:
-	// wire.Varint, wire.Fixed64, wire.Bytes or wire.Fixed32.
-	Number uint64
-	Wire   uint64
-	// Offset is the offset of the tag in the input of Parse.
-	Offset int
 	// Value is the bytes of the value after the tag, without the length of
 	// a bytes value. It aliases the input of Parse.
 	Value []byte
@@ -31,6 +25,12 @@ type Field struct {
 	// for a bytes value that is empty, that does not parse to its end, or
 	// that lies deeper than the depth of Parse.
 	Fields []Field
+	// Number is the field number of the tag, and Wire its wire format:
+	// wire.Varint, wire.Fixed64, wire.Bytes or wire.Fixed32.
+	Number uint64
+	Wire   uint64
+	// Offset is the offset of the tag in the input of Parse.
+	Offset int
 }
 
 // Parse returns the fields of the struct encoding in data, in the order of

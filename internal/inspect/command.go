@@ -109,7 +109,8 @@ func Command(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // readInput returns the input of the subcommand: the content of the file at
 // path, or of stdin for an empty path, and the bytes that its hexadecimal
-// digits spell with hexInput set.
+// digits spell with hexInput set. It wraps the error of a read that fails.
+// It also wraps the error of encoding/hex for digits that do not decode.
 func readInput(path string, stdin io.Reader, hexInput bool) ([]byte, error) {
 	var data []byte
 	var err error
@@ -118,13 +119,18 @@ func readInput(path string, stdin io.Reader, hexInput bool) ([]byte, error) {
 	} else {
 		data, err = io.ReadAll(stdin)
 	}
-	if err != nil || !hexInput {
-		return data, err
+	if err != nil {
+		return nil, fmt.Errorf("read the input: %w", err)
+	}
+	if !hexInput {
+		return data, nil
 	}
 	digits := bytes.Join(bytes.Fields(data), nil)
 	out := make([]byte, hex.DecodedLen(len(digits)))
-	_, err = hex.Decode(out, digits)
-	return out, err
+	if _, err := hex.Decode(out, digits); err != nil {
+		return nil, fmt.Errorf("read the hexadecimal digits: %w", err)
+	}
+	return out, nil
 }
 
 // inspectStruct writes the fields of data, one struct encoding, to stdout in

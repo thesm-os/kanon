@@ -45,6 +45,13 @@ const (
 // inputName is the name of the input file that a test writes.
 const inputName = "input"
 
+// The errors that Command writes for text and for JSON on a standard output
+// that fails.
+const (
+	textWriteFails = "inspect: write the text: inspect_test: the write fails\n"
+	jsonWriteFails = "inspect: write the JSON: inspect_test: the write fails\n"
+)
+
 // errRead is the error of a standard input that fails.
 var errRead = errors.New("inspect_test: the read fails")
 
@@ -106,32 +113,32 @@ func TestCommand(t *testing.T) {
 				args:       []string{hexFlag},
 				stdin:      strings.NewReader("0a 0"),
 				wantCode:   exitFail,
-				wantStderr: "inspect: encoding/hex: odd length hex string\n",
+				wantStderr: "inspect: read the hexadecimal digits: encoding/hex: odd length hex string\n",
 			},
 			{
 				name:       "returns exitFail for a byte that is not a hexadecimal digit",
 				args:       []string{hexFlag},
 				stdin:      strings.NewReader("zz"),
 				wantCode:   exitFail,
-				wantStderr: "inspect: encoding/hex: invalid byte: U+007A 'z'\n",
+				wantStderr: "inspect: read the hexadecimal digits: encoding/hex: invalid byte: U+007A 'z'\n",
 			},
 			{
 				name:       "returns exitFail for a standard input that fails",
 				stdin:      iotest.ErrReader(errRead),
 				wantCode:   exitFail,
-				wantStderr: "inspect: inspect_test: the read fails\n",
+				wantStderr: "inspect: read the input: inspect_test: the read fails\n",
 			},
 			{
 				name:       "returns exitFail for a file that does not exist",
 				args:       []string{missing},
 				wantCode:   exitFail,
-				wantStderr: "inspect: open " + missing + ": ",
+				wantStderr: "inspect: read the input: open " + missing + ": ",
 			},
 			{
 				name:       "returns exitFail for a file of hexadecimal digits that does not exist",
 				args:       []string{hexFlag, missing},
 				wantCode:   exitFail,
-				wantStderr: "inspect: open " + missing + ": ",
+				wantStderr: "inspect: read the input: open " + missing + ": ",
 			},
 			{
 				name:       "returns exitUsage for -frames with -batch",
@@ -181,9 +188,18 @@ func TestCommand(t *testing.T) {
 		writes := []struct {
 			name string
 			args []string
+			want string
 		}{
-			{name: "returns exitFail for text on a standard output that fails", args: []string{hexFlag}},
-			{name: "returns exitFail for JSON on a standard output that fails", args: []string{hexFlag, jsonFlag}},
+			{
+				name: "returns exitFail for text on a standard output that fails",
+				args: []string{hexFlag},
+				want: textWriteFails,
+			},
+			{
+				name: "returns exitFail for JSON on a standard output that fails",
+				args: []string{hexFlag, jsonFlag},
+				want: jsonWriteFails,
+			},
 		}
 		for _, tt := range writes {
 			t.Run(tt.name, func(t *testing.T) {
@@ -191,7 +207,7 @@ func TestCommand(t *testing.T) {
 				var stderr bytes.Buffer
 				code := inspect.Command(tt.args, strings.NewReader("08 01 10"), failingWriter{}, &stderr)
 				assert.Equal(t, code, exitFail, "Command returns exitFail")
-				assert.Equal(t, stderr.String(), "inspect: inspect_test: the write fails\n",
+				assert.Equal(t, stderr.String(), tt.want,
 					"Command writes the error of the write and not the error of the parse")
 			})
 		}

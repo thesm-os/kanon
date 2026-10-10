@@ -244,22 +244,23 @@ func TestContainer(t *testing.T) {
 			name string
 			args []string
 			give string
+			want string
 		}{
 			{
 				name: "returns exitFail for frames on a standard output that fails",
-				args: hexArgs(framesFlag), give: itemFrame,
+				args: hexArgs(framesFlag), give: itemFrame, want: textWriteFails,
 			},
 			{
 				name: "returns exitFail for frames as JSON on a standard output that fails",
-				args: []string{framesFlag, hexFlag, jsonFlag}, give: itemFrame,
+				args: []string{framesFlag, hexFlag, jsonFlag}, give: itemFrame, want: jsonWriteFails,
 			},
 			{
 				name: "returns exitFail for a batch on a standard output that fails",
-				args: hexArgs(batchFlag), give: oneRecord,
+				args: hexArgs(batchFlag), give: oneRecord, want: textWriteFails,
 			},
 			{
 				name: "returns exitFail for a batch as JSON on a standard output that fails",
-				args: []string{batchFlag, hexFlag, jsonFlag}, give: oneRecord,
+				args: []string{batchFlag, hexFlag, jsonFlag}, give: oneRecord, want: jsonWriteFails,
 			},
 		}
 		for _, tt := range writes {
@@ -268,7 +269,7 @@ func TestContainer(t *testing.T) {
 				var stderr bytes.Buffer
 				code := inspect.Command(tt.args, strings.NewReader(tt.give), failingWriter{}, &stderr)
 				assert.Equal(t, code, exitFail, "Command returns exitFail")
-				assert.Equal(t, stderr.String(), "inspect: inspect_test: the write fails\n", "Command writes the error")
+				assert.Equal(t, stderr.String(), tt.want, "Command writes the error")
 			})
 		}
 	})

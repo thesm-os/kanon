@@ -6,6 +6,7 @@ package inspect
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -79,18 +80,22 @@ type varintValue struct {
 // "unsigned", "signed" and "float" for a fixed64 and a fixed32, the float as
 // a string; and "length" and "hex" for a bytes value, with "text", "fields"
 // and "varints" when the value has those readings. Each field has "field",
-// "wire" and "offset". WriteJSON returns the error of the write.
+// "wire" and "offset". WriteJSON returns an error that wraps the error of
+// the write.
 func WriteJSON(w io.Writer, fields []Field) error {
 	return writeJSON(w, fieldsDoc{Fields: jsonFields(fields)})
 }
 
 // writeJSON writes doc to w as indented JSON without HTML escapes, and
-// returns the error of the write.
+// returns an error that wraps the error of the write.
 func writeJSON(w io.Writer, doc any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", jsonIndent)
-	return enc.Encode(doc)
+	if err := enc.Encode(doc); err != nil {
+		return fmt.Errorf("write the JSON: %w", err)
+	}
+	return nil
 }
 
 // jsonFields returns the JSON of fields, as [WriteJSON] states it, and an

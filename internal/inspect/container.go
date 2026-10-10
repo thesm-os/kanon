@@ -71,11 +71,11 @@ type recordJSON struct {
 // of the reader until its next frame, and err is the error of the payload.
 // For a frame that does not read, err is the error of the reader.
 type frameEntry struct {
-	index, offset, size int
-	read, checksummed   bool
-	id                  uint64
-	fields              []Field
 	err                 error
+	fields              []Field
+	index, offset, size int
+	id                  uint64
+	read, checksummed   bool
 }
 
 // inspectFrames writes the frames of the stream in data to stdout in the
@@ -111,16 +111,16 @@ func inspectFrames(data []byte, out format, stdout, stderr io.Writer) int {
 			status = exitFail
 		}
 		if out == formatJSON {
-			frames = append(frames, frameJSONOf(e))
+			frames = append(frames, frameJSONOf(&e))
 		} else {
-			appendFrameText(&text, e)
+			appendFrameText(&text, &e)
 		}
 	}
 	var werr error
 	if out == formatJSON {
 		werr = writeJSON(stdout, framesDoc{Frames: frames})
 	} else {
-		_, werr = io.WriteString(stdout, text.String())
+		werr = writeText(stdout, text.String())
 	}
 	if err := cmp.Or(werr, end); err != nil {
 		return report(stderr, err)
@@ -135,8 +135,9 @@ func skipped(err error) bool {
 	return errors.Is(err, frame.ErrVersion) || errors.Is(err, frame.ErrFlags) || errors.Is(err, frame.ErrChecksum)
 }
 
-// frameJSONOf returns the JSON of the frame e.
-func frameJSONOf(e frameEntry) frameJSON {
+// frameJSONOf returns the JSON of the frame e. The checksum state and the
+// type ID of the JSON point into e.
+func frameJSONOf(e *frameEntry) frameJSON {
 	f := frameJSON{Frame: e.index, Offset: e.offset, Size: e.size}
 	if e.read {
 		f.Checksum, f.Type, f.Fields = &e.checksummed, &e.id, jsonFields(e.fields)
@@ -151,7 +152,7 @@ func frameJSONOf(e frameEntry) frameJSON {
 // its offset, its size, its checksum state and its type ID, the fields of
 // its payload and a note of the error of the payload, or a note of the error
 // of the frame.
-func appendFrameText(b *strings.Builder, e frameEntry) {
+func appendFrameText(b *strings.Builder, e *frameEntry) {
 	head := frameWord + strconv.Itoa(e.index) + " at " + strconv.Itoa(e.offset) + ": " + byteCount(e.size)
 	if !e.read {
 		appendNote(b, head+": "+e.err.Error())
@@ -203,7 +204,7 @@ func inspectBatch(data []byte, out format, stdout, stderr io.Writer) int {
 	if out == formatJSON {
 		werr = writeJSON(stdout, batchDoc{Width: b.Width(), Records: records})
 	} else {
-		_, werr = io.WriteString(stdout, text.String())
+		werr = writeText(stdout, text.String())
 	}
 	if werr != nil {
 		return report(stderr, werr)

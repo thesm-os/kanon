@@ -5,6 +5,7 @@ package inspect
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -55,12 +56,20 @@ var quoteEscapes = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `
 //
 // protoscope assembles the text into the input of Parse when every varint
 // of the input has its shortest form, as an encoder writes it. WriteText
-// returns the error of the write.
+// returns an error that wraps the error of the write.
 func WriteText(w io.Writer, fields []Field) error {
 	var b strings.Builder
 	appendText(&b, fields, "")
-	_, err := io.WriteString(w, b.String())
-	return err
+	return writeText(w, b.String())
+}
+
+// writeText writes text to w, and returns an error that wraps the error of
+// the write.
+func writeText(w io.Writer, text string) error {
+	if _, err := io.WriteString(w, text); err != nil {
+		return fmt.Errorf("write the text: %w", err)
+	}
+	return nil
 }
 
 // appendText appends the lines of fields to b, each line after indent.
