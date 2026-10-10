@@ -1356,7 +1356,7 @@ func TestStreamAllocs(t *testing.T) {
 			pass := func() {
 				r.Reset(canonicalBox)
 				s.Reset(r, int64(len(canonicalBox)))
-				sinkErr = drain(&s, c.value)
+				errSink = drain(&s, c.value)
 			}
 			pass()
 			assert.MaxAllocs(t, pass, 0, "a stream reads an encoding that it read before without an allocation")
@@ -1370,7 +1370,7 @@ func TestStreamAllocs(t *testing.T) {
 		pass := func() {
 			r.Reset(enc)
 			s.Reset(r, int64(len(enc)))
-			sinkErr = drain(&s, func(*wire.Stream) error { return nil })
+			errSink = drain(&s, func(*wire.Stream) error { return nil })
 		}
 		pass()
 		assert.MaxAllocs(t, pass, 0, "a stream counts the elements of a bounded slice without an allocation")

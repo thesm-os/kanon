@@ -256,6 +256,7 @@ func SizeError(loc string, num int) error {
 // locate at the field of the value, and that wraps kanon.ErrExact and err.
 func MustExact(enc []byte, err error, n int, loc string, num int) {
 	if err != nil || len(enc) != n {
+		//nolint:forbidigo // A kanon.Exact type has no error path in the generated code, so a breach panics.
 		panic(exactFailure(len(enc), err, n, loc, num))
 	}
 }

@@ -321,17 +321,17 @@ func TestKeyAllocs(t *testing.T) {
 		},
 		{
 			name: "KeyTies/allocates nothing for keys of distinct projections",
-			fn:   func() { sinkErr = wire.KeyTies(sorted, compareKeys, keyLoc, keyNumber) },
+			fn:   func() { errSink = wire.KeyTies(sorted, compareKeys, keyLoc, keyNumber) },
 		},
 		{
 			name: "PairTies/allocates nothing for keys of distinct projections",
-			fn:   func() { sinkErr = wire.PairTies(pairs, compareKeys, keyLoc, keyNumber) },
+			fn:   func() { errSink = wire.PairTies(pairs, compareKeys, keyLoc, keyNumber) },
 		},
-		{name: "OneKey/allocates nothing for one key", fn: func() { sinkErr = wire.OneKey(1, keyLoc, keyNumber) }},
+		{name: "OneKey/allocates nothing for one key", fn: func() { errSink = wire.OneKey(1, keyLoc, keyNumber) }},
 		{
 			name: "MergeKeys/allocates nothing for keys that a decode yields",
 			fn: func() {
-				_, sinkErr = wire.MergeKeys(decoded, buf[:0], canonicalKey, compareKeys, keyLoc, keyNumber, keyOff)
+				_, errSink = wire.MergeKeys(decoded, buf[:0], canonicalKey, compareKeys, keyLoc, keyNumber, keyOff)
 			},
 		},
 		{

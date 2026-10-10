@@ -91,20 +91,19 @@ func Time(data []byte, loc string, num, off int) (time.Time, error) {
 	var secs, zone int64
 	var nanos uint64
 	zoned := false
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := Uvarint(data[i:])
+	for at := 0; at < len(data); {
+		tag, n := Uvarint(data[at:])
 		if n <= 0 {
-			return time.Time{}, ReadError(n, loc, num, off+i)
+			return time.Time{}, ReadError(n, loc, num, off+at)
 		}
-		i += n
+		i := at + n
 		field := tag >> 3
 		if field < timeSeconds || field > timeZone {
 			skipped, err := Skip(data[i:], tag, loc, num, off+at)
 			if err != nil {
 				return time.Time{}, err
 			}
-			i += skipped
+			at = i + skipped
 			continue
 		}
 		if tag&7 != Varint {
@@ -132,7 +131,7 @@ func Time(data []byte, loc string, num, off int) (time.Time, error) {
 			}
 			zone, zoned = z, true
 		}
-		i += n
+		at = i + n
 	}
 	t := time.Unix(secs, int64(nanos))
 	if !zoned {

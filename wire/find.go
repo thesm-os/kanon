@@ -45,13 +45,12 @@ func FindOne(data []byte, tag uint64, loc string) (int, error) {
 func scan(data []byte, tag uint64, loc string, r repeat) (int, error) {
 	typ, _ := split(loc)
 	at := -1
-	for i := 0; i < len(data); {
-		start := i
-		t, n := Uvarint(data[i:])
+	for start := 0; start < len(data); {
+		t, n := Uvarint(data[start:])
 		if n <= 0 {
-			return -1, ReadError(n, typ, 0, i)
+			return -1, ReadError(n, typ, 0, start)
 		}
-		i += n
+		i := start + n
 		skipped, err := Skip(data[i:], t, typ, 0, start)
 		if err != nil {
 			return -1, err
@@ -65,7 +64,7 @@ func scan(data []byte, tag uint64, loc string, r repeat) (int, error) {
 			}
 			at = i
 		}
-		i += skipped
+		start = i + skipped
 	}
 	return at, nil
 }

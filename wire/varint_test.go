@@ -331,7 +331,7 @@ func TestVarintAllocs(t *testing.T) {
 		{name: "PutTag/allocates nothing", fn: func() { sinkInt = wire.PutTag(buf, len(buf), maxTag-1) }},
 		{name: "PutBool/allocates nothing", fn: func() { sinkInt = wire.PutBool(buf, len(buf), true) }},
 		{name: "Presence/allocates nothing", fn: func() {
-			sinkBool, sinkErr = wire.Presence(buf, presenceLoc, presenceNum, presenceOff)
+			sinkBool, errSink = wire.Presence(buf, presenceLoc, presenceNum, presenceOff)
 		}},
 		{name: "Zigzag/allocates nothing", fn: func() { sinkUint64 = wire.Zigzag(math.MinInt64) }},
 		{name: "Unzigzag/allocates nothing", fn: func() { sinkInt64 = wire.Unzigzag(math.MaxUint64) }},

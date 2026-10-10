@@ -38,15 +38,15 @@ const (
 // caller reads, or a slice of a struct type with a kanon codec, whose
 // elements the caller decodes one at a time.
 type StreamField struct {
-	// Tag is the tag of the field: its number shifted left by three bits,
-	// with the wire format Bytes in the low bits.
-	Tag uint64
 	// Loc is the location of the field in errors: "Type.Field".
 	Loc string
 	// Elem names the struct type of the elements of a slice, as the errors of
 	// the decode of the slice name it, and is empty for a byte slice and a
 	// string.
 	Elem string
+	// Tag is the tag of the field: its number shifted left by three bits,
+	// with the wire format Bytes in the low bits.
+	Tag uint64
 	// Max is the bound of the tag option max of a slice: the most elements
 	// that the slice takes over every occurrence of the field. It is 0 for a
 	// slice without the option, a byte slice and a string.
@@ -59,11 +59,11 @@ type StreamField struct {
 type StreamSchema struct {
 	// Loc names the struct type in errors.
 	Loc string
+	// Fields lists the streamed fields of the type.
+	Fields []StreamField
 	// Canonical reports that the decode of the type accepts only the
 	// canonical encoding of a value.
 	Canonical bool
-	// Fields lists the streamed fields of the type.
-	Fields []StreamField
 }
 
 // Run is a part of an encoding that the generated code of a stream decoder
@@ -174,11 +174,8 @@ type Stream struct {
 	// offset off that the stream read into it and has not used, a slice of
 	// buf.
 	buf, ahead []byte
-	// schema describes the struct type that the stream decodes, and marks
-	// has the bit of the number modulo 64 of each of its streamed fields, so
-	// that a field whose bit is clear is no streamed field.
+	// schema describes the struct type that the stream decodes.
 	schema *StreamSchema
-	marks  uint64
 	// run contains the decoded fields of the encoding, which the strings of
 	// the receiver alias until the next Reset.
 	run []byte
@@ -191,14 +188,17 @@ type Stream struct {
 	// pending is the error of the field after the last run that takes the
 	// decoded fields past the buffer limit, and nil without one.
 	pending error
-	// cur is the streamed field that Open opened last, and field its index in
-	// the schema.
-	cur   StreamField
-	field int
 	// counts has, per streamed field of the schema, the number of the
 	// elements that Value returned over every occurrence of the field, when a
 	// field of the schema has a Max, and is nil otherwise.
 	counts []int
+	// cur is the streamed field that Open opened last.
+	cur StreamField
+	// marks has the bit of the number modulo 64 of each streamed field of the
+	// schema, so that a field whose bit is clear is no streamed field.
+	marks uint64
+	// field is the index of cur in the schema.
+	field int
 	// size is the length of the encoding, and off the offset of the next
 	// byte.
 	size, off int64
@@ -210,10 +210,8 @@ type Stream struct {
 	// has not read, and length the declared length of that value.
 	left, length int64
 	// elen is the length of the current element, and eat the offset of that
-	// length. head reports that Element read the length of an element whose
-	// bytes Value has not read.
+	// length.
 	elen, eat int64
-	head      bool
 	// next is the index in the schema of the streamed field after the last
 	// run, whose tag is at the offset tagAt, and -1 when no streamed field
 	// follows the run.
@@ -224,6 +222,9 @@ type Stream struct {
 	prior uint64
 	// limit and depth are the buffer limit and the nesting limit.
 	limit, depth int
+	// head reports that Element read the length of an element whose bytes
+	// Value has not read.
+	head bool
 }
 
 // Init sets the schema of s, which describes the struct type that s decodes,
@@ -449,6 +450,7 @@ func (s *Stream) WriteTo(w io.Writer) (int64, error) {
 		s.left -= int64(n)
 		written += int64(n)
 		if err != nil {
+			//nolint:wrapcheck // WriteTo returns the error of its writer unchanged, as bytes.Buffer and bufio.Reader do.
 			return written, err
 		}
 		if n < len(p) {

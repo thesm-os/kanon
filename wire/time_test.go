@@ -103,13 +103,13 @@ func BenchmarkTime(b *testing.B) {
 		b.Run("Time/"+c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				sinkTime, sinkErr = wire.Time(enc, timeLoc, timeNumber, timeOff)
+				sinkTime, errSink = wire.Time(enc, timeLoc, timeNumber, timeOff)
 			}
 		})
 		b.Run("CanonicalTime/"+c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				sinkTime, sinkErr = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff)
+				sinkTime, errSink = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff)
 			}
 		})
 	}
@@ -146,11 +146,11 @@ func TestTimeAllocs(t *testing.T) {
 			assert.MaxAllocs(t, func() { sinkInt = wire.PutTime(buf, len(buf), c.t) }, 0, "PutTime allocates nothing")
 		})
 		t.Run("Time/allocates nothing for a time "+c.name, func(t *testing.T) {
-			assert.MaxAllocs(t, func() { sinkTime, sinkErr = wire.Time(enc, timeLoc, timeNumber, timeOff) }, 0,
+			assert.MaxAllocs(t, func() { sinkTime, errSink = wire.Time(enc, timeLoc, timeNumber, timeOff) }, 0,
 				"Time allocates nothing for a zone it does not create")
 		})
 		t.Run("CanonicalTime/allocates nothing for a time "+c.name, func(t *testing.T) {
-			assert.MaxAllocs(t, func() { sinkTime, sinkErr = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff) }, 0,
+			assert.MaxAllocs(t, func() { sinkTime, errSink = wire.CanonicalTime(enc, timeLoc, timeNumber, timeOff) }, 0,
 				"CanonicalTime allocates nothing for a zone it does not create")
 		})
 	}

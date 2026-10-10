@@ -33,9 +33,9 @@ const (
 	field0Tag  = 0
 )
 
-// sinkErr keeps the compiler from dropping the results of benchmarked
+// errSink keeps the compiler from dropping the results of benchmarked
 // calls.
-var sinkErr error
+var errSink error
 
 func BenchmarkField(b *testing.B) {
 	cases := []struct {
@@ -52,7 +52,7 @@ func BenchmarkField(b *testing.B) {
 		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				sinkInt, sinkErr = wire.Skip(c.data, c.tag, skipType, 0, skipOff)
+				sinkInt, errSink = wire.Skip(c.data, c.tag, skipType, 0, skipOff)
 			}
 		})
 	}
@@ -73,7 +73,7 @@ func TestFieldAllocs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.MaxAllocs(t, func() { sinkInt, sinkErr = wire.Skip(c.data, c.tag, skipType, 0, skipOff) }, 0,
+			assert.MaxAllocs(t, func() { sinkInt, errSink = wire.Skip(c.data, c.tag, skipType, 0, skipOff) }, 0,
 				"Skip allocates nothing without an error")
 		})
 	}

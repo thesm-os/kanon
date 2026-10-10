@@ -169,7 +169,7 @@ func BenchmarkFind(b *testing.B) {
 	data := []byte{0x08, 0x01, 0x12, 0x01, 'a'}
 	b.ReportAllocs()
 	for b.Loop() {
-		sinkInt, sinkErr = wire.Find(data, findTag, findLoc)
+		sinkInt, errSink = wire.Find(data, findTag, findLoc)
 	}
 }
 
@@ -178,11 +178,11 @@ func BenchmarkFind(b *testing.B) {
 func TestFindAllocs(t *testing.T) {
 	data := []byte{0x08, 0x01, 0x12, 0x01, 'a'}
 	t.Run("Find/allocates nothing", func(t *testing.T) {
-		assert.MaxAllocs(t, func() { sinkInt, sinkErr = wire.Find(data, findTag, findLoc) }, 0,
+		assert.MaxAllocs(t, func() { sinkInt, errSink = wire.Find(data, findTag, findLoc) }, 0,
 			"Find allocates nothing for a well-formed encoding")
 	})
 	t.Run("FindOne/allocates nothing", func(t *testing.T) {
-		assert.MaxAllocs(t, func() { sinkInt, sinkErr = wire.FindOne(data, findTag, findLoc) }, 0,
+		assert.MaxAllocs(t, func() { sinkInt, errSink = wire.FindOne(data, findTag, findLoc) }, 0,
 			"FindOne allocates nothing for a well-formed encoding")
 	})
 }
