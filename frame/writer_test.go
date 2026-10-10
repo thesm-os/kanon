@@ -97,10 +97,12 @@ func TestWriter(t *testing.T) {
 			assert.ErrorIs(t, err, frame.ErrTooLarge, "Write rejects the frame")
 			assert.Equal(t, out.Len(), 0, "Write writes nothing")
 		})
-		t.Run("returns the error of the stream", func(t *testing.T) {
+		t.Run("wraps the error of the stream", func(t *testing.T) {
 			t.Parallel()
 			err := frame.NewWriter(failingWriter{}).Write(typeID, &view.Item{})
-			assert.ErrorIs(t, err, errStream, "Write returns the error of the stream")
+			assert.ErrorIs(t, err, errStream, "Write wraps the error of the stream")
+			assert.Equal(t, err.Error(), "frame: write the stream: frame_test: the stream fails",
+				"the error message puts the package and the write before the error of the stream")
 		})
 		t.Run("returns io.ErrShortWrite for a stream that writes part of the frame", func(t *testing.T) {
 			t.Parallel()

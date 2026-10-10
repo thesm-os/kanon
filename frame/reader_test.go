@@ -166,7 +166,7 @@ func TestReader(t *testing.T) {
 				r := frame.NewReader(bytes.NewReader(tt.in))
 				r.MaxSize = tt.maxSize
 				_, _, err := r.Next()
-				assert.ErrorIs(t, err, tt.want, "Next fails for the reason of the frame")
+				assert.Equal(t, err, tt.want, "Next returns the error of the frame itself")
 			})
 		}
 		after := []struct {
@@ -201,16 +201,20 @@ func TestReader(t *testing.T) {
 			_, _, err := frame.NewReader(bytes.NewReader(defaultLength)).Next()
 			assert.ErrorIs(t, err, io.ErrUnexpectedEOF, "Next reads past the length and finds no frame")
 		})
-		t.Run("returns the error of the stream", func(t *testing.T) {
+		t.Run("wraps the error of the stream", func(t *testing.T) {
 			t.Parallel()
 			_, _, err := frame.NewReader(failingReader{}).Next()
-			assert.ErrorIs(t, err, errStream, "Next returns the error of the stream")
+			assert.ErrorIs(t, err, errStream, "Next wraps the error of the stream")
+			assert.Equal(t, err.Error(), "frame: read the stream: frame_test: the stream fails",
+				"the error message puts the package and the read before the error of the stream")
 		})
-		t.Run("returns the error of the stream inside a frame", func(t *testing.T) {
+		t.Run("wraps the error of the stream inside a frame", func(t *testing.T) {
 			t.Parallel()
 			in := io.MultiReader(bytes.NewReader([]byte{0x03, 0x01}), failingReader{})
 			_, _, err := frame.NewReader(in).Next()
-			assert.ErrorIs(t, err, errStream, "Next returns the error of the stream")
+			assert.ErrorIs(t, err, errStream, "Next wraps the error of the stream")
+			assert.Equal(t, err.Error(), "frame: read the stream: frame_test: the stream fails",
+				"the error message puts the package and the read before the error of the stream")
 		})
 	})
 	t.Run("Decode", func(t *testing.T) {

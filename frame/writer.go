@@ -5,6 +5,7 @@ package frame
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"slices"
@@ -15,13 +16,13 @@ import (
 // Writer writes frames to a stream with one buffer, which grows to the
 // longest frame written. A Writer is not safe for concurrent use.
 type Writer struct {
-	// Checksum adds a CRC-32C to every frame.
-	Checksum bool
-
 	// w is the stream.
 	w io.Writer
 	// buf is the buffer of the frames, which each Write overwrites.
 	buf []byte
+
+	// Checksum adds a CRC-32C to every frame.
+	Checksum bool
 }
 
 // NewWriter returns a Writer that writes to w.
@@ -37,10 +38,10 @@ func NewWriter(w io.Writer) *Writer {
 // included, and [ErrTooLarge] when the frame, its length included, is longer
 // than math.MaxInt bytes. When m fails to encode, Write returns the error of
 // the encode and does not write to the stream. When the stream returns an
-// error, Write returns it. When the stream writes fewer bytes than the frame
-// without an error, Write returns io.ErrShortWrite. Write does not retry,
-// since a short write can already have put a prefix of the frame on the
-// stream.
+// error, Write returns an error that wraps it. When the stream writes fewer
+// bytes than the frame without an error, Write returns io.ErrShortWrite.
+// Write does not retry, since a short write can already have put a prefix of
+// the frame on the stream.
 func (w *Writer) Write(id uint64, m kanon.Message) error {
 	if isNil(m) {
 		return ErrNilMessage
@@ -74,7 +75,7 @@ func (w *Writer) Write(id uint64, m kanon.Message) error {
 	}
 	written, err := w.w.Write(buf)
 	if err != nil {
-		return err
+		return fmt.Errorf("frame: write the stream: %w", err)
 	}
 	if written != len(buf) {
 		return io.ErrShortWrite

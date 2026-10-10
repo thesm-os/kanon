@@ -8,8 +8,9 @@ import "errors"
 // Errors of a [Reader] and a [Writer]. A stream that ends before the first
 // byte of a length returns io.EOF, and one that ends inside a length or
 // before the declared length returns io.ErrUnexpectedEOF. Every other error
-// is one of these, the error of the stream, or the error of the message's
-// encode or decode, so that a caller compares with errors.Is.
+// is one of these, an error that wraps the error of the stream, or the error
+// of the message's encode or decode, so that a caller compares with
+// errors.Is.
 var (
 	// ErrVersion marks a frame whose version byte is not 1.
 	ErrVersion = errors.New("frame: unsupported version")

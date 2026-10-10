@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"unsafe"
@@ -21,10 +22,6 @@ const DefaultMaxSize = 16777216
 // Reader reads frames from a stream with one buffer, which grows to the
 // longest frame read. A Reader is not safe for concurrent use.
 type Reader struct {
-	// MaxSize is the longest frame length that the reader accepts. 0 or
-	// less means DefaultMaxSize.
-	MaxSize int
-
 	// r is the stream, or a bufio.Reader over it when the stream does not
 	// implement io.ByteReader.
 	r byteReader
@@ -32,6 +29,11 @@ type Reader struct {
 	buf []byte
 	// payload is the payload of the current frame, a slice of buf.
 	payload []byte
+
+	// MaxSize is the longest frame length that the reader accepts. 0 or
+	// less means DefaultMaxSize.
+	MaxSize int
+
 	// current reports that the last call of Next succeeded, so that
 	// payload is the payload of a frame.
 	current bool
@@ -63,14 +65,14 @@ func NewReader(r io.Reader) *Reader {
 // Next can overwrite it. A caller that keeps the payload longer copies it.
 //
 // Next returns io.EOF at the end of the stream between frames, and
-// io.ErrUnexpectedEOF when the stream ends inside a frame. It returns
-// [ErrMalformed] for a length uvarint that runs past 10 bytes or 64 bits,
-// and [ErrTooLarge] for a length above MaxSize, before it allocates for
-// the frame. For a length within MaxSize, it reads the whole frame before
-// it checks it, and returns [ErrMalformed] for a frame too short for its
-// version and flags, a type uvarint that runs past the frame or 64 bits,
-// and a frame too short for its checksum, [ErrVersion], [ErrFlags] and
-// [ErrChecksum].
+// io.ErrUnexpectedEOF when the stream ends inside a frame. It wraps any
+// other error of the stream. It returns [ErrMalformed] for a length uvarint
+// that runs past 10 bytes or 64 bits, and [ErrTooLarge] for a length above
+// MaxSize, before it allocates for the frame. For a length within MaxSize,
+// it reads the whole frame before it checks it, and returns [ErrMalformed]
+// for a frame too short for its version and flags, a type uvarint that runs
+// past the frame or 64 bits, and a frame too short for its checksum,
+// [ErrVersion], [ErrFlags] and [ErrChecksum].
 func (r *Reader) Next() (id uint64, payload []byte, err error) {
 	r.current, r.checksummed = false, false
 	length, err := r.length()
@@ -86,7 +88,7 @@ func (r *Reader) Next() (id uint64, payload []byte, err error) {
 	}
 	r.buf = slices.Grow(r.buf[:0], int(length))[:length]
 	if _, err = io.ReadFull(r.r, r.buf); err != nil {
-		return 0, nil, truncated(err)
+		return 0, nil, readError(err)
 	}
 	id, err = r.parse()
 	if err != nil {
@@ -128,17 +130,18 @@ func (r *Reader) Checksummed() bool {
 // does, and returns [ErrMalformed] where ReadUvarint returns its unexported
 // overflow error: for a uvarint that runs past 10 bytes or past 64 bits. It
 // returns io.EOF when the stream ends before the first byte, and
-// io.ErrUnexpectedEOF when it ends inside the uvarint.
+// io.ErrUnexpectedEOF when it ends inside the uvarint. It wraps any other
+// error of the stream.
 func (r *Reader) length() (uint64, error) {
 	var x uint64
 	var shift uint
 	for i := range maxVarint {
 		b, err := r.r.ReadByte()
 		if err != nil {
-			if i > 0 {
-				return 0, truncated(err)
+			if i == 0 && errors.Is(err, io.EOF) {
+				return 0, io.EOF
 			}
-			return 0, err
+			return 0, readError(err)
 		}
 		if b < 0x80 {
 			if i == maxVarint-1 && b > 1 {
@@ -184,12 +187,15 @@ func (r *Reader) parse() (uint64, error) {
 	return id, nil
 }
 
-// truncated returns err of a read inside a frame: io.ErrUnexpectedEOF for
-// the end of the stream, which a read inside a frame means truncation, and
-// err otherwise.
-func truncated(err error) error {
-	if errors.Is(err, io.EOF) {
+// readError returns the error that Next returns when a read of the stream
+// fails with err. It returns io.ErrUnexpectedEOF for io.EOF and for
+// io.ErrUnexpectedEOF, and an error that wraps err for any other error.
+// io.ReadFull returns io.ErrUnexpectedEOF for a stream that ends inside the
+// frame. Next itself returns io.EOF when the stream ends before the first
+// byte of a frame.
+func readError(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return io.ErrUnexpectedEOF
 	}
-	return err
+	return fmt.Errorf("frame: read the stream: %w", err)
 }
