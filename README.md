@@ -322,11 +322,18 @@ index, err := shop.OrderView(data).IndexKanon()
 if err != nil {
 	return err
 }
-id, err := index.ID()
+id := index.ID()
+placed, err := index.Placed()
 ```
 
 `IndexKanon` scans the encoding once, and records the offset of every field that the view reads.
-Each method of the index returns what the method of the view with the same name returns.
+It also fails at each occurrence of an integer field whose value is outside the range of its Go type.
+A method of the view checks the range at the last occurrence of its field alone.
+
+Each method of the index returns the value that the method of the view with the same name returns.
+The methods of a time, a `complex128`, a byte array, a type that encodes itself and a type with `-validate` also return the error of the view method.
+The other methods return the value alone.
+
 The view of a struct without a field that a view reads does not have such a method.
 Its `IndexKanon` returns the index without a scan and without an error.
 
