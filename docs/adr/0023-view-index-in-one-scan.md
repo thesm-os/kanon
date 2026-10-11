@@ -1,10 +1,10 @@
 ---
 adr: 0023
 title: Generate an index per view type that reads its fields after one scan
-status: Accepted
+status: Superseded
 date: 2026-09-29
 supersedes: none
-superseded-by: none
+superseded-by: ADR-0025
 rfc: RFC-0002
 ---
 
@@ -17,7 +17,7 @@ rfc: RFC-0002
 
 ## Status
 
-Accepted
+Superseded by [ADR-0025](0025-index-errors-only-where-reads-fail.md).
 
 ## Context
 
