@@ -155,9 +155,17 @@
 // the tag of a second occurrence, since a decode merges the occurrences.
 //
 // When the view type has IndexKanon, a check calls it on the same inputs.
-// It returns the first error, by offset, of the reference scans of the
-// fields that the view reads, and without an error each method of the index
-// returns what the reference view of its field returns.
+// It returns the first error of one reference scan of the input. The scan
+// fails where the reference view of a field that the view reads fails
+// before it reads a value. It also fails at an occurrence of an integer
+// field whose value is outside the range of its Go type. A decode fails at
+// the same occurrence. Without an error, each method of the index returns
+// the value of the reference view of its field. The method of a time, a
+// complex128, a byte array and a type that encodes itself also returns the
+// error of the reference view. The method of any other field returns the
+// value alone, unless the field is of a kanon.Validator. The generated code
+// calls the ValidateKanon of a Validator only for a type whose directive
+// has -validate, so its method can take either form.
 //
 // # Stream decoders
 //

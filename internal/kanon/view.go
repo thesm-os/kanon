@@ -63,17 +63,18 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 	if v.kind == kindStruct {
 		find = "FindOne"
 	}
+	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i"}
 	doc := f.name + " returns the value of the field " + f.name + " of the encoding in v."
 	if v.validate {
 		doc += " It returns the error of " + validateKanonName + " for a value that the method rejects."
 	}
 	e.doc(doc)
 	e.line("func (v %s) %s() (%s, error) {", view, f.name, result)
-	e.line("i, err := %s%s(v, %s, %s)", e.wire(), find, e.tag(f.num, v.kind.wire()), fieldLoc(m, f))
+	e.line("i, err := %s%s(v, %s, %s)", e.wire(), find, e.tag(f.num, v.kind.wire()), p.loc)
 	e.line("if err != nil || i < 0 {")
 	e.line("return %s, err", zero)
 	e.line("}")
-	e.viewRead(m, f)
+	e.viewRead(f, p)
 	e.line("}")
 	e.line("")
 }
@@ -94,54 +95,57 @@ func (e *emitter) viewParts(f *field) (*value, string, string) {
 	return v, result, e.zero(v.typ)
 }
 
-// viewRead writes the statements that read the value of the field f of m
-// at offset i of the view v and return it, the body of a method of the view
-// type and of the index type after the offset. The offset is that of the
-// value of a complete occurrence of the field, so the statements check only
-// what the type of the field adds: the range of an integer, the length of
-// an array and of a complex number, and the fields of a time. A type that
-// encodes itself decodes the bytes of the field with the decode method of
-// its family, whose error is the cause of the error of the method.
-func (e *emitter) viewRead(m *target, f *field) {
+// viewRead writes the statements that read the value of the field f at
+// offset i of the view v and return it, the body of a method of the view
+// type and of the index type after the offset. p locates the value in
+// errors. The offset is that of the value of a complete occurrence of the
+// field, so the statements check only what the type of the field adds: the
+// range of an integer, the length of an array and of a complex number, and
+// the fields of a time. A type that encodes itself decodes the bytes of the
+// field with the decode method of its family, whose error is the cause of
+// the error of the method. The method of an index reads after IndexKanon
+// checked the range of each integer, and p.ranged is set for its read. That
+// method returns the value alone when its read cannot fail, as [readFails]
+// reports it.
+func (e *emitter) viewRead(f *field, p place) {
 	v, result, zero := e.viewParts(f)
 	w := e.wire()
-	loc, num := fieldLoc(m, f), strconv.Itoa(f.num)
 	e.ret = zero + ", "
 	switch v.kind {
 	case kindBool, kindInt, kindUint:
 		e.line("u, _ := %sUvarint(v[i:])", w)
-		e.viewReturn(v, e.varint(v, "u", place{loc: loc, num: num, at: "i"}), loc, num)
+		e.viewReturn(v, e.varint(v, "u", p), p)
 	case kindFixed32, kindFloat32:
 		e.line("u, _ := %sUint32(v[i:])", w)
-		e.viewReturn(v, e.fixed(v, "u"), loc, num)
+		e.viewReturn(v, e.fixed(v, "u"), p)
 	case kindFixed64, kindFloat64, kindComplex64:
 		e.line("u, _ := %sUint64(v[i:])", w)
-		e.viewReturn(v, e.fixed(v, "u"), loc, num)
+		e.viewReturn(v, e.fixed(v, "u"), p)
 	case kindTime:
 		e.line("l, n := %sUvarint(v[i:])", w)
-		e.line("return %sTime(v[i+n:i+n+int(l)], %s, %s, i+n)", w, loc, num)
+		e.line("return %sTime(v[i+n:i+n+int(l)], %s, %s, i+n)", w, p.loc, p.num)
 	case kindComplex128:
 		math := e.std(mathPath)
-		e.viewLength(complex128Width, loc, num)
+		e.viewLength(complex128Width, p.loc, p.num)
 		e.line("re, _ := %sUint64(v[i+n:])", w)
 		e.line("im, _ := %sUint64(v[i+n+%d:])", w, fixed64Width)
 		e.viewReturn(v, e.cast(v, "complex("+math+".Float64frombits(re), "+math+".Float64frombits(im))",
-			types.Complex128), loc, num)
+			types.Complex128), p)
 	case kindByteArray:
-		e.viewLength(v.size, loc, num)
+		e.viewLength(v.size, p.loc, p.num)
 		e.line("var x %s", result)
 		e.line("copy(x[:], v[i+n:])")
-		e.viewReturn(v, "x", loc, num)
+		e.viewReturn(v, "x", p)
 	case kindBinary:
 		e.line("l, n := %sUvarint(v[i:])", w)
 		e.line("var x %s", result)
 		e.line("if err := %s(v[i+n : i+n+int(l)]); err != nil {", method("x", v.self.unmarshaler))
-		e.fail(w + "UnmarshalError(err, " + loc + ", " + num + ", i+n)")
+		e.fail(w + "UnmarshalError(err, " + p.loc + ", " + p.num + ", i+n)")
 		e.line("}")
 		e.line("return x, nil")
 	default:
 		e.line("l, n := %sUvarint(v[i:])", w)
-		e.viewReturn(v, result+"(v[i+n : i+n+int(l)])", loc, num)
+		e.viewReturn(v, result+"(v[i+n : i+n+int(l)])", p)
 	}
 }
 
@@ -191,7 +195,8 @@ func (e *emitter) indexType(m *target, view string, fields []*field) {
 	} else {
 		e.doc(index + " is the index of a " + view + ": the view and the offsets of the values of the fields " +
 			"that its methods read, which " + indexKanonName + " records in one scan. Each method of " + index +
-			" returns what the method of " + view + " of the same name returns, without a scan.")
+			" reads its field without a scan. It returns the value that the method of " + view + " of the same " +
+			"name returns. A method whose read can fail after the scan also returns the error of that method.")
 	}
 	e.line("type %s struct {", index)
 	e.line("v %s", view)
@@ -214,8 +219,15 @@ func (e *emitter) indexType(m *target, view string, fields []*field) {
 // fields. It fails where a method of the view fails before it reads a
 // value: at a malformed tag or value, at an occurrence of one of fields
 // with another wire format, and at the second occurrence of a struct field.
-// A view without fields has no method that fails, so its IndexKanon
-// returns the index without a scan.
+// It also checks the range of every occurrence of an integer field whose Go
+// type is narrower than 64 bits, with the check that [emitter.varint]
+// writes. The method of the index that reads such a field then cannot fail.
+// The scan reads the varint of a field of the wire format Varint itself, as
+// a decode reads it, and the range check takes the value from that read. It
+// skips the value of any other field with wire.Skip. Its error for a varint
+// that does not read is the error that wire.Skip returns for it. A view
+// without fields has no method that fails, so its IndexKanon returns the
+// index without a scan.
 func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 	if len(fields) == 0 {
 		e.doc(indexKanonName + " returns the index of the encoding in v. " + view + " has no method that reads a " +
@@ -227,35 +239,60 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 		return
 	}
 	w, typ := e.wire(), structLoc(m)
-	e.doc(indexKanonName + " returns the index of the encoding in v, from one scan of the encoding. It fails " +
+	ranges := make([]bool, len(fields))
+	value := blankName
+	for k, f := range fields {
+		if v, _, _ := e.viewParts(f); (v.kind == kindInt || v.kind == kindUint) && v.narrow() {
+			ranges[k], value = true, "u"
+		}
+	}
+	e.doc(indexKanonName + " scans the encoding in v once and returns its index. It fails " +
 		"where a method of " + view + " fails before it reads a value: at a malformed tag or value, at an " +
 		"occurrence of a field that a method reads with another wire format, and at the second occurrence of a " +
-		"struct field.")
+		"struct field. It also fails at an occurrence of an integer field whose value is outside the range of " +
+		"its Go type. A decode fails at the same occurrence. The method of " + view + " checks only the last " +
+		"occurrence.")
 	e.line("func (v %s) %s() (%s, error) {", view, indexKanonName, index)
+	e.ret = index + "{}, "
 	e.line("ix := %s{v: v}", index)
 	e.line("for i := 0; i < len(v); {")
 	e.line("at := i")
 	e.line("tag, n := %sUvarint(v[i:])", w)
 	e.line("if n <= 0 {")
-	e.line("return %s{}, %sReadError(n, %s, 0, i)", index, w, typ)
+	e.fail(w + "ReadError(n, " + typ + ", 0, i)")
 	e.line("}")
 	e.line("i += n")
-	e.line("skipped, err := %sSkip(v[i:], tag, %s, 0, at)", w, typ)
-	e.line("if err != nil {")
-	e.line("return %s{}, err", index)
+	if value != blankName {
+		e.line("var u uint64")
+	}
+	e.line("var skipped int")
+	e.line("var err error")
+	e.line("if tag&7 == %sVarint && tag>>3 != 0 {", w)
+	e.line("%s, skipped = %sUvarint(v[i:])", value, w)
+	e.line("if skipped <= 0 {")
+	e.line("err = %sReadError(skipped, %s, 0, at)", w, typ)
 	e.line("}")
+	e.line("} else {")
+	e.line("skipped, err = %sSkip(v[i:], tag, %s, 0, at)", w, typ)
+	e.line("}")
+	e.check()
 	e.line("switch tag >> 3 {")
 	for k, f := range fields {
 		v, _, _ := e.viewParts(f)
-		loc := fieldLoc(m, f)
+		p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i"}
 		e.line("case %d:", f.num)
 		e.line("if tag != %s {", e.tag(f.num, v.kind.wire()))
-		e.line("return %s{}, %sFormatError(tag, %s%s, %s, at)", index, w, w, wireName(v.kind.wire()), loc)
+		e.fail(w + "FormatError(tag, " + w + wireName(v.kind.wire()) + ", " + p.loc + ", at)")
 		e.line("}")
 		if v.kind == kindStruct {
 			e.line("if ix.at[%d] != 0 {", k)
-			e.line("return %s{}, %sRepeatedError(%s, %d, at)", index, w, loc, f.num)
+			e.fail(w + "RepeatedError(" + p.loc + ", " + p.num + ", at)")
 			e.line("}")
+		}
+		if ranges[k] {
+			// The scan drops the expression that varint returns. The method of
+			// the index converts the value.
+			e.varint(v, "u", p)
 		}
 		e.line("ix.at[%d] = i + 1", k)
 	}
@@ -268,22 +305,47 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 }
 
 // indexRead writes the method of the index type index that reads the field
-// f of m at the offset k of the index. Its result is that of the method of
-// the view type view of the same name: the value that [emitter.viewRead]
-// reads at the offset, and the zero value for a field that the encoding
-// does not contain.
+// f of m at the offset k of the index. It returns the value that the method
+// of the view type view of the same name returns, and the zero value for a
+// field that the encoding does not contain. The method also returns the
+// error of the method of the view when [readFails] reports that its read can
+// fail. It returns the value alone otherwise.
 func (e *emitter) indexRead(m *target, view, index string, k int, f *field) {
-	_, result, zero := e.viewParts(f)
-	e.doc(f.name + " returns the value of the field " + f.name + ", as " + view + "." + f.name + " returns it, " +
-		"at the offset that the index records.")
-	e.line("func (ix %s) %s() (%s, error) {", index, f.name, result)
+	v, result, zero := e.viewParts(f)
+	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i", ranged: true}
+	doc := f.name + " returns the value of the field " + f.name + " at the offset that the index records."
+	if readFails(v) {
+		e.doc(doc + " " + view + "." + f.name + " returns the same value and the same error.")
+		e.line("func (ix %s) %s() (%s, error) {", index, f.name, result)
+		zero += ", nil"
+	} else {
+		e.doc(doc + " " + view + "." + f.name + " returns the same value. " + f.name + " does not return an " +
+			"error, because " + indexKanonName + " checked the value.")
+		e.line("func (ix %s) %s() %s {", index, f.name, result)
+	}
 	e.line("v, i := ix.v, ix.at[%d]-1", k)
 	e.line("if i < 0 {")
-	e.line("return %s, nil", zero)
+	e.line("return %s", zero)
 	e.line("}")
-	e.viewRead(m, f)
+	e.viewRead(f, p)
 	e.line("}")
 	e.line("")
+}
+
+// readFails reports whether the read of a value of v at the offset of a
+// complete occurrence can fail after IndexKanon checked the occurrence. The
+// read of a time checks the fields of the time, and the read of a complex128
+// and of a byte array checks their length. The read of a type that encodes
+// itself calls its decode method, and the read of a kanon.Validator calls
+// its ValidateKanon when v.validate is set. The scan of IndexKanon checks
+// everything that the read of any other value needs.
+func readFails(v *value) bool {
+	switch v.kind {
+	case kindTime, kindComplex128, kindByteArray, kindBinary:
+		return true
+	default:
+		return v.validate
+	}
 }
 
 // viewed reports whether a view type has a method for a field whose value is

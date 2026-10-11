@@ -254,8 +254,9 @@ func (v ItemView) Count() (uint32, error) {
 
 // ItemIndex is the index of a ItemView: the view and the offsets of the values
 // of the fields that its methods read, which IndexKanon records in one scan.
-// Each method of ItemIndex returns what the method of ItemView of the same name
-// returns, without a scan.
+// Each method of ItemIndex reads its field without a scan. It returns the value
+// that the method of ItemView of the same name returns. A method whose read can
+// fail after the scan also returns the error of that method.
 type ItemIndex struct {
 	v ItemView
 	// at records, per method, 1 + the offset of the value of the last
@@ -263,10 +264,13 @@ type ItemIndex struct {
 	at [2]int
 }
 
-// IndexKanon returns the index of the encoding in v, from one scan of the
-// encoding. It fails where a method of ItemView fails before it reads a value:
-// at a malformed tag or value, at an occurrence of a field that a method reads
-// with another wire format, and at the second occurrence of a struct field.
+// IndexKanon scans the encoding in v once and returns its index. It fails where
+// a method of ItemView fails before it reads a value: at a malformed tag or
+// value, at an occurrence of a field that a method reads with another wire
+// format, and at the second occurrence of a struct field. It also fails at an
+// occurrence of an integer field whose value is outside the range of its Go
+// type. A decode fails at the same occurrence. The method of ItemView checks
+// only the last occurrence.
 func (v ItemView) IndexKanon() (ItemIndex, error) {
 	ix := ItemIndex{v: v}
 	for i := 0; i < len(v); {
@@ -276,7 +280,17 @@ func (v ItemView) IndexKanon() (ItemIndex, error) {
 			return ItemIndex{}, wire.ReadError(n, "Item", 0, i)
 		}
 		i += n
-		skipped, err := wire.Skip(v[i:], tag, "Item", 0, at)
+		var u uint64
+		var skipped int
+		var err error
+		if tag&7 == wire.Varint && tag>>3 != 0 {
+			u, skipped = wire.Uvarint(v[i:])
+			if skipped <= 0 {
+				err = wire.ReadError(skipped, "Item", 0, at)
+			}
+		} else {
+			skipped, err = wire.Skip(v[i:], tag, "Item", 0, at)
+		}
 		if err != nil {
 			return ItemIndex{}, err
 		}
@@ -290,6 +304,9 @@ func (v ItemView) IndexKanon() (ItemIndex, error) {
 			if tag != 2<<3|wire.Varint {
 				return ItemIndex{}, wire.FormatError(tag, wire.Varint, "Item.Count", at)
 			}
+			if u != uint64(uint32(u)) {
+				return ItemIndex{}, wire.RangeError(u, "uint32", "Item.Count", 2, i)
+			}
 			ix.at[1] = i + 1
 		}
 		i += skipped
@@ -297,29 +314,28 @@ func (v ItemView) IndexKanon() (ItemIndex, error) {
 	return ix, nil
 }
 
-// Name returns the value of the field Name, as ItemView.Name returns it, at the
-// offset that the index records.
-func (ix ItemIndex) Name() ([]byte, error) {
+// Name returns the value of the field Name at the offset that the index
+// records. ItemView.Name returns the same value. Name does not return an error,
+// because IndexKanon checked the value.
+func (ix ItemIndex) Name() []byte {
 	v, i := ix.v, ix.at[0]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
-// Count returns the value of the field Count, as ItemView.Count returns it, at
-// the offset that the index records.
-func (ix ItemIndex) Count() (uint32, error) {
+// Count returns the value of the field Count at the offset that the index
+// records. ItemView.Count returns the same value. Count does not return an
+// error, because IndexKanon checked the value.
+func (ix ItemIndex) Count() uint32 {
 	v, i := ix.v, ix.at[1]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	if u != uint64(uint32(u)) {
-		return 0, wire.RangeError(u, "uint32", "Item.Count", 2, i)
-	}
-	return uint32(u), nil
+	return uint32(u)
 }
 
 // SizeKanon returns the length of the encoding of m in bytes, and 0 for a
@@ -1307,8 +1323,9 @@ func (v RecordView) Seal() (codec.Seal, error) {
 
 // RecordIndex is the index of a RecordView: the view and the offsets of the
 // values of the fields that its methods read, which IndexKanon records in one
-// scan. Each method of RecordIndex returns what the method of RecordView of the
-// same name returns, without a scan.
+// scan. Each method of RecordIndex reads its field without a scan. It returns
+// the value that the method of RecordView of the same name returns. A method
+// whose read can fail after the scan also returns the error of that method.
 type RecordIndex struct {
 	v RecordView
 	// at records, per method, 1 + the offset of the value of the last
@@ -1316,11 +1333,13 @@ type RecordIndex struct {
 	at [20]int
 }
 
-// IndexKanon returns the index of the encoding in v, from one scan of the
-// encoding. It fails where a method of RecordView fails before it reads a
-// value: at a malformed tag or value, at an occurrence of a field that a method
-// reads with another wire format, and at the second occurrence of a struct
-// field.
+// IndexKanon scans the encoding in v once and returns its index. It fails where
+// a method of RecordView fails before it reads a value: at a malformed tag or
+// value, at an occurrence of a field that a method reads with another wire
+// format, and at the second occurrence of a struct field. It also fails at an
+// occurrence of an integer field whose value is outside the range of its Go
+// type. A decode fails at the same occurrence. The method of RecordView checks
+// only the last occurrence.
 func (v RecordView) IndexKanon() (RecordIndex, error) {
 	ix := RecordIndex{v: v}
 	for i := 0; i < len(v); {
@@ -1330,7 +1349,17 @@ func (v RecordView) IndexKanon() (RecordIndex, error) {
 			return RecordIndex{}, wire.ReadError(n, "Record", 0, i)
 		}
 		i += n
-		skipped, err := wire.Skip(v[i:], tag, "Record", 0, at)
+		var u uint64
+		var skipped int
+		var err error
+		if tag&7 == wire.Varint && tag>>3 != 0 {
+			u, skipped = wire.Uvarint(v[i:])
+			if skipped <= 0 {
+				err = wire.ReadError(skipped, "Record", 0, at)
+			}
+		} else {
+			skipped, err = wire.Skip(v[i:], tag, "Record", 0, at)
+		}
 		if err != nil {
 			return RecordIndex{}, err
 		}
@@ -1344,15 +1373,26 @@ func (v RecordView) IndexKanon() (RecordIndex, error) {
 			if tag != 2<<3|wire.Varint {
 				return RecordIndex{}, wire.FormatError(tag, wire.Varint, "Record.Int8", at)
 			}
+			s := wire.Unzigzag(u)
+			if s != int64(int8(s)) {
+				return RecordIndex{}, wire.RangeError(s, "int8", "Record.Int8", 2, i)
+			}
 			ix.at[1] = i + 1
 		case 3:
 			if tag != 3<<3|wire.Varint {
 				return RecordIndex{}, wire.FormatError(tag, wire.Varint, "Record.Level", at)
 			}
+			s := wire.Unzigzag(u)
+			if s != int64(int32(s)) {
+				return RecordIndex{}, wire.RangeError(s, "int32", "Record.Level", 3, i)
+			}
 			ix.at[2] = i + 1
 		case 4:
 			if tag != 4<<3|wire.Varint {
 				return RecordIndex{}, wire.FormatError(tag, wire.Varint, "Record.Uint16", at)
+			}
+			if u != uint64(uint16(u)) {
+				return RecordIndex{}, wire.RangeError(u, "uint16", "Record.Uint16", 4, i)
 			}
 			ix.at[3] = i + 1
 		case 5:
@@ -1420,6 +1460,10 @@ func (v RecordView) IndexKanon() (RecordIndex, error) {
 			if tag != 16<<3|wire.Varint {
 				return RecordIndex{}, wire.FormatError(tag, wire.Varint, "Record.Ref", at)
 			}
+			s := wire.Unzigzag(u)
+			if s != int64(int32(s)) {
+				return RecordIndex{}, wire.RangeError(s, "int32", "Record.Ref", 16, i)
+			}
 			ix.at[15] = i + 1
 		case 17:
 			if tag != 17<<3|wire.Bytes {
@@ -1450,107 +1494,104 @@ func (v RecordView) IndexKanon() (RecordIndex, error) {
 	return ix, nil
 }
 
-// Flag returns the value of the field Flag, as RecordView.Flag returns it, at
-// the offset that the index records.
-func (ix RecordIndex) Flag() (bool, error) {
+// Flag returns the value of the field Flag at the offset that the index
+// records. RecordView.Flag returns the same value. Flag does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Flag() bool {
 	v, i := ix.v, ix.at[0]-1
 	if i < 0 {
-		return false, nil
+		return false
 	}
 	u, _ := wire.Uvarint(v[i:])
-	return u != 0, nil
+	return u != 0
 }
 
-// Int8 returns the value of the field Int8, as RecordView.Int8 returns it, at
-// the offset that the index records.
-func (ix RecordIndex) Int8() (int8, error) {
+// Int8 returns the value of the field Int8 at the offset that the index
+// records. RecordView.Int8 returns the same value. Int8 does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Int8() int8 {
 	v, i := ix.v, ix.at[1]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	s := wire.Unzigzag(u)
-	if s != int64(int8(s)) {
-		return 0, wire.RangeError(s, "int8", "Record.Int8", 2, i)
-	}
-	return int8(s), nil
+	return int8(wire.Unzigzag(u))
 }
 
-// Level returns the value of the field Level, as RecordView.Level returns it,
-// at the offset that the index records.
-func (ix RecordIndex) Level() (Level, error) {
+// Level returns the value of the field Level at the offset that the index
+// records. RecordView.Level returns the same value. Level does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Level() Level {
 	v, i := ix.v, ix.at[2]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	s := wire.Unzigzag(u)
-	if s != int64(int32(s)) {
-		return 0, wire.RangeError(s, "int32", "Record.Level", 3, i)
-	}
-	return Level(s), nil
+	return Level(wire.Unzigzag(u))
 }
 
-// Uint16 returns the value of the field Uint16, as RecordView.Uint16 returns
-// it, at the offset that the index records.
-func (ix RecordIndex) Uint16() (uint16, error) {
+// Uint16 returns the value of the field Uint16 at the offset that the index
+// records. RecordView.Uint16 returns the same value. Uint16 does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Uint16() uint16 {
 	v, i := ix.v, ix.at[3]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	if u != uint64(uint16(u)) {
-		return 0, wire.RangeError(u, "uint16", "Record.Uint16", 4, i)
-	}
-	return uint16(u), nil
+	return uint16(u)
 }
 
-// Fixed returns the value of the field Fixed, as RecordView.Fixed returns it,
-// at the offset that the index records.
-func (ix RecordIndex) Fixed() (int64, error) {
+// Fixed returns the value of the field Fixed at the offset that the index
+// records. RecordView.Fixed returns the same value. Fixed does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Fixed() int64 {
 	v, i := ix.v, ix.at[4]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uint64(v[i:])
-	return int64(u), nil
+	return int64(u)
 }
 
-// Float32 returns the value of the field Float32, as RecordView.Float32 returns
-// it, at the offset that the index records.
-func (ix RecordIndex) Float32() (float32, error) {
+// Float32 returns the value of the field Float32 at the offset that the index
+// records. RecordView.Float32 returns the same value. Float32 does not return
+// an error, because IndexKanon checked the value.
+func (ix RecordIndex) Float32() float32 {
 	v, i := ix.v, ix.at[5]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uint32(v[i:])
-	return math.Float32frombits(u), nil
+	return math.Float32frombits(u)
 }
 
-// Float64 returns the value of the field Float64, as RecordView.Float64 returns
-// it, at the offset that the index records.
-func (ix RecordIndex) Float64() (float64, error) {
+// Float64 returns the value of the field Float64 at the offset that the index
+// records. RecordView.Float64 returns the same value. Float64 does not return
+// an error, because IndexKanon checked the value.
+func (ix RecordIndex) Float64() float64 {
 	v, i := ix.v, ix.at[6]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uint64(v[i:])
-	return math.Float64frombits(u), nil
+	return math.Float64frombits(u)
 }
 
-// Complex returns the value of the field Complex, as RecordView.Complex returns
-// it, at the offset that the index records.
-func (ix RecordIndex) Complex() (complex64, error) {
+// Complex returns the value of the field Complex at the offset that the index
+// records. RecordView.Complex returns the same value. Complex does not return
+// an error, because IndexKanon checked the value.
+func (ix RecordIndex) Complex() complex64 {
 	v, i := ix.v, ix.at[7]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uint64(v[i:])
-	return complex(math.Float32frombits(uint32(u)), math.Float32frombits(uint32(u>>32))), nil
+	return complex(math.Float32frombits(uint32(u)), math.Float32frombits(uint32(u>>32)))
 }
 
-// Wave returns the value of the field Wave, as RecordView.Wave returns it, at
-// the offset that the index records.
+// Wave returns the value of the field Wave at the offset that the index
+// records. RecordView.Wave returns the same value and the same error.
 func (ix RecordIndex) Wave() (complex128, error) {
 	v, i := ix.v, ix.at[8]-1
 	if i < 0 {
@@ -1565,30 +1606,32 @@ func (ix RecordIndex) Wave() (complex128, error) {
 	return complex(math.Float64frombits(re), math.Float64frombits(im)), nil
 }
 
-// Text returns the value of the field Text, as RecordView.Text returns it, at
-// the offset that the index records.
-func (ix RecordIndex) Text() ([]byte, error) {
+// Text returns the value of the field Text at the offset that the index
+// records. RecordView.Text returns the same value. Text does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Text() []byte {
 	v, i := ix.v, ix.at[9]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
-// Blob returns the value of the field Blob, as RecordView.Blob returns it, at
-// the offset that the index records.
-func (ix RecordIndex) Blob() ([]byte, error) {
+// Blob returns the value of the field Blob at the offset that the index
+// records. RecordView.Blob returns the same value. Blob does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Blob() []byte {
 	v, i := ix.v, ix.at[10]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
-// Digest returns the value of the field Digest, as RecordView.Digest returns
-// it, at the offset that the index records.
+// Digest returns the value of the field Digest at the offset that the index
+// records. RecordView.Digest returns the same value and the same error.
 func (ix RecordIndex) Digest() ([8]byte, error) {
 	v, i := ix.v, ix.at[11]-1
 	if i < 0 {
@@ -1603,8 +1646,8 @@ func (ix RecordIndex) Digest() ([8]byte, error) {
 	return x, nil
 }
 
-// At returns the value of the field At, as RecordView.At returns it, at the
-// offset that the index records.
+// At returns the value of the field At at the offset that the index records.
+// RecordView.At returns the same value and the same error.
 func (ix RecordIndex) At() (time.Time, error) {
 	v, i := ix.v, ix.at[12]-1
 	if i < 0 {
@@ -1614,56 +1657,56 @@ func (ix RecordIndex) At() (time.Time, error) {
 	return wire.Time(v[i+n:i+n+int(l)], "Record.At", 13, i+n)
 }
 
-// Item returns the value of the field Item, as RecordView.Item returns it, at
-// the offset that the index records.
-func (ix RecordIndex) Item() (ItemView, error) {
+// Item returns the value of the field Item at the offset that the index
+// records. RecordView.Item returns the same value. Item does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Item() ItemView {
 	v, i := ix.v, ix.at[13]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return ItemView(v[i+n : i+n+int(l)]), nil
+	return ItemView(v[i+n : i+n+int(l)])
 }
 
-// Label returns the value of the field Label, as RecordView.Label returns it,
-// at the offset that the index records.
-func (ix RecordIndex) Label() ([]byte, error) {
+// Label returns the value of the field Label at the offset that the index
+// records. RecordView.Label returns the same value. Label does not return an
+// error, because IndexKanon checked the value.
+func (ix RecordIndex) Label() []byte {
 	v, i := ix.v, ix.at[14]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
-// Ref returns the value of the field Ref, as RecordView.Ref returns it, at the
-// offset that the index records.
-func (ix RecordIndex) Ref() (int32, error) {
+// Ref returns the value of the field Ref at the offset that the index records.
+// RecordView.Ref returns the same value. Ref does not return an error, because
+// IndexKanon checked the value.
+func (ix RecordIndex) Ref() int32 {
 	v, i := ix.v, ix.at[15]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	s := wire.Unzigzag(u)
-	if s != int64(int32(s)) {
-		return 0, wire.RangeError(s, "int32", "Record.Ref", 16, i)
-	}
-	return int32(s), nil
+	return int32(wire.Unzigzag(u))
 }
 
-// ItemPtr returns the value of the field ItemPtr, as RecordView.ItemPtr returns
-// it, at the offset that the index records.
-func (ix RecordIndex) ItemPtr() (ItemView, error) {
+// ItemPtr returns the value of the field ItemPtr at the offset that the index
+// records. RecordView.ItemPtr returns the same value. ItemPtr does not return
+// an error, because IndexKanon checked the value.
+func (ix RecordIndex) ItemPtr() ItemView {
 	v, i := ix.v, ix.at[16]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return ItemView(v[i+n : i+n+int(l)]), nil
+	return ItemView(v[i+n : i+n+int(l)])
 }
 
-// Token returns the value of the field Token, as RecordView.Token returns it,
-// at the offset that the index records.
+// Token returns the value of the field Token at the offset that the index
+// records. RecordView.Token returns the same value and the same error.
 func (ix RecordIndex) Token() (codec.Token, error) {
 	v, i := ix.v, ix.at[17]-1
 	if i < 0 {
@@ -1677,8 +1720,8 @@ func (ix RecordIndex) Token() (codec.Token, error) {
 	return x, nil
 }
 
-// TokenPtr returns the value of the field TokenPtr, as RecordView.TokenPtr
-// returns it, at the offset that the index records.
+// TokenPtr returns the value of the field TokenPtr at the offset that the index
+// records. RecordView.TokenPtr returns the same value and the same error.
 func (ix RecordIndex) TokenPtr() (codec.Token, error) {
 	v, i := ix.v, ix.at[18]-1
 	if i < 0 {
@@ -1692,8 +1735,8 @@ func (ix RecordIndex) TokenPtr() (codec.Token, error) {
 	return x, nil
 }
 
-// Seal returns the value of the field Seal, as RecordView.Seal returns it, at
-// the offset that the index records.
+// Seal returns the value of the field Seal at the offset that the index
+// records. RecordView.Seal returns the same value and the same error.
 func (ix RecordIndex) Seal() (codec.Seal, error) {
 	v, i := ix.v, ix.at[19]-1
 	if i < 0 {

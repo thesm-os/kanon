@@ -109,18 +109,25 @@ func (e *emitter) validRead(v *value, dst string, p place) {
 }
 
 // viewReturn writes the statement of a view method that returns x, the
-// value of v that the method read, and for a kanon.Validator first the
+// value of v that the method read at p, and for a kanon.Validator first the
 // statements that return the error of its ValidateKanon at offset i, the
 // offset of the value after its tag. The value takes the local variable x.
-func (e *emitter) viewReturn(v *value, x, loc, num string) {
+// A read with p.ranged set is the read of a method of an index. Such a
+// method returns the value alone when the read cannot fail, as [readFails]
+// reports it.
+func (e *emitter) viewReturn(v *value, x string, p place) {
 	if v.validate {
 		if x != "x" {
 			e.line("x := %s", x)
 		}
 		e.line("if err := x.%s(); err != nil {", validateKanonName)
-		e.fail(e.wire() + "UnmarshalError(err, " + loc + ", " + num + ", i)")
+		e.fail(e.wire() + "UnmarshalError(err, " + p.loc + ", " + p.num + ", i)")
 		e.line("}")
 		x = "x"
+	}
+	if p.ranged && !readFails(v) {
+		e.line("return %s", x)
+		return
 	}
 	e.line("return %s, nil", x)
 }

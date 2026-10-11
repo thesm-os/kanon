@@ -1244,8 +1244,9 @@ func (v ValuesView) Era() (Era, error) {
 
 // ValuesIndex is the index of a ValuesView: the view and the offsets of the
 // values of the fields that its methods read, which IndexKanon records in one
-// scan. Each method of ValuesIndex returns what the method of ValuesView of the
-// same name returns, without a scan.
+// scan. Each method of ValuesIndex reads its field without a scan. It returns
+// the value that the method of ValuesView of the same name returns. A method
+// whose read can fail after the scan also returns the error of that method.
 type ValuesIndex struct {
 	v ValuesView
 	// at records, per method, 1 + the offset of the value of the last
@@ -1253,11 +1254,13 @@ type ValuesIndex struct {
 	at [15]int
 }
 
-// IndexKanon returns the index of the encoding in v, from one scan of the
-// encoding. It fails where a method of ValuesView fails before it reads a
-// value: at a malformed tag or value, at an occurrence of a field that a method
-// reads with another wire format, and at the second occurrence of a struct
-// field.
+// IndexKanon scans the encoding in v once and returns its index. It fails where
+// a method of ValuesView fails before it reads a value: at a malformed tag or
+// value, at an occurrence of a field that a method reads with another wire
+// format, and at the second occurrence of a struct field. It also fails at an
+// occurrence of an integer field whose value is outside the range of its Go
+// type. A decode fails at the same occurrence. The method of ValuesView checks
+// only the last occurrence.
 func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 	ix := ValuesIndex{v: v}
 	for i := 0; i < len(v); {
@@ -1267,7 +1270,17 @@ func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 			return ValuesIndex{}, wire.ReadError(n, "Values", 0, i)
 		}
 		i += n
-		skipped, err := wire.Skip(v[i:], tag, "Values", 0, at)
+		var u uint64
+		var skipped int
+		var err error
+		if tag&7 == wire.Varint && tag>>3 != 0 {
+			u, skipped = wire.Uvarint(v[i:])
+			if skipped <= 0 {
+				err = wire.ReadError(skipped, "Values", 0, at)
+			}
+		} else {
+			skipped, err = wire.Skip(v[i:], tag, "Values", 0, at)
+		}
 		if err != nil {
 			return ValuesIndex{}, err
 		}
@@ -1275,6 +1288,9 @@ func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 		case 1:
 			if tag != 1<<3|wire.Varint {
 				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Level", at)
+			}
+			if u != uint64(uint8(u)) {
+				return ValuesIndex{}, wire.RangeError(u, "uint8", "Values.Level", 1, i)
 			}
 			ix.at[0] = i + 1
 		case 2:
@@ -1311,6 +1327,9 @@ func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 			if tag != 25<<3|wire.Varint {
 				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Port", at)
 			}
+			if u != uint64(uint16(u)) {
+				return ValuesIndex{}, wire.RangeError(u, "uint16", "Values.Port", 25, i)
+			}
 			ix.at[7] = i + 1
 		case 12:
 			if tag != 12<<3|wire.Fixed32 {
@@ -1331,10 +1350,17 @@ func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 			if tag != 15<<3|wire.Varint {
 				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Grade", at)
 			}
+			s := wire.Unzigzag(u)
+			if s != int64(int16(s)) {
+				return ValuesIndex{}, wire.RangeError(s, "int16", "Values.Grade", 15, i)
+			}
 			ix.at[11] = i + 1
 		case 16:
 			if tag != 16<<3|wire.Varint {
 				return ValuesIndex{}, wire.FormatError(tag, wire.Varint, "Values.Next", at)
+			}
+			if u != uint64(uint8(u)) {
+				return ValuesIndex{}, wire.RangeError(u, "uint8", "Values.Next", 16, i)
 			}
 			ix.at[12] = i + 1
 		case 24:
@@ -1353,17 +1379,14 @@ func (v ValuesView) IndexKanon() (ValuesIndex, error) {
 	return ix, nil
 }
 
-// Level returns the value of the field Level, as ValuesView.Level returns it,
-// at the offset that the index records.
+// Level returns the value of the field Level at the offset that the index
+// records. ValuesView.Level returns the same value and the same error.
 func (ix ValuesIndex) Level() (Level, error) {
 	v, i := ix.v, ix.at[0]-1
 	if i < 0 {
 		return 0, nil
 	}
 	u, _ := wire.Uvarint(v[i:])
-	if u != uint64(uint8(u)) {
-		return 0, wire.RangeError(u, "uint8", "Values.Level", 1, i)
-	}
 	x := Level(u)
 	if err := x.ValidateKanon(); err != nil {
 		return 0, wire.UnmarshalError(err, "Values.Level", 1, i)
@@ -1371,8 +1394,8 @@ func (ix ValuesIndex) Level() (Level, error) {
 	return x, nil
 }
 
-// Amount returns the value of the field Amount, as ValuesView.Amount returns
-// it, at the offset that the index records.
+// Amount returns the value of the field Amount at the offset that the index
+// records. ValuesView.Amount returns the same value and the same error.
 func (ix ValuesIndex) Amount() (Amount, error) {
 	v, i := ix.v, ix.at[1]-1
 	if i < 0 {
@@ -1386,8 +1409,8 @@ func (ix ValuesIndex) Amount() (Amount, error) {
 	return x, nil
 }
 
-// Tick returns the value of the field Tick, as ValuesView.Tick returns it, at
-// the offset that the index records.
+// Tick returns the value of the field Tick at the offset that the index
+// records. ValuesView.Tick returns the same value and the same error.
 func (ix ValuesIndex) Tick() (Tick, error) {
 	v, i := ix.v, ix.at[2]-1
 	if i < 0 {
@@ -1401,8 +1424,8 @@ func (ix ValuesIndex) Tick() (Tick, error) {
 	return x, nil
 }
 
-// Code returns the value of the field Code, as ValuesView.Code returns it, at
-// the offset that the index records.
+// Code returns the value of the field Code at the offset that the index
+// records. ValuesView.Code returns the same value and the same error.
 func (ix ValuesIndex) Code() (Code, error) {
 	v, i := ix.v, ix.at[3]-1
 	if i < 0 {
@@ -1416,8 +1439,8 @@ func (ix ValuesIndex) Code() (Code, error) {
 	return x, nil
 }
 
-// Ratio returns the value of the field Ratio, as ValuesView.Ratio returns it,
-// at the offset that the index records.
+// Ratio returns the value of the field Ratio at the offset that the index
+// records. ValuesView.Ratio returns the same value and the same error.
 func (ix ValuesIndex) Ratio() (Ratio, error) {
 	v, i := ix.v, ix.at[4]-1
 	if i < 0 {
@@ -1431,8 +1454,8 @@ func (ix ValuesIndex) Ratio() (Ratio, error) {
 	return x, nil
 }
 
-// Hash returns the value of the field Hash, as ValuesView.Hash returns it, at
-// the offset that the index records.
+// Hash returns the value of the field Hash at the offset that the index
+// records. ValuesView.Hash returns the same value and the same error.
 func (ix ValuesIndex) Hash() (Hash, error) {
 	v, i := ix.v, ix.at[5]-1
 	if i < 0 {
@@ -1450,8 +1473,8 @@ func (ix ValuesIndex) Hash() (Hash, error) {
 	return x, nil
 }
 
-// Blob returns the value of the field Blob, as ValuesView.Blob returns it, at
-// the offset that the index records.
+// Blob returns the value of the field Blob at the offset that the index
+// records. ValuesView.Blob returns the same value and the same error.
 func (ix ValuesIndex) Blob() (Blob, error) {
 	v, i := ix.v, ix.at[6]-1
 	if i < 0 {
@@ -1465,17 +1488,14 @@ func (ix ValuesIndex) Blob() (Blob, error) {
 	return x, nil
 }
 
-// Port returns the value of the field Port, as ValuesView.Port returns it, at
-// the offset that the index records.
+// Port returns the value of the field Port at the offset that the index
+// records. ValuesView.Port returns the same value and the same error.
 func (ix ValuesIndex) Port() (Port, error) {
 	v, i := ix.v, ix.at[7]-1
 	if i < 0 {
 		return 0, nil
 	}
 	u, _ := wire.Uvarint(v[i:])
-	if u != uint64(uint16(u)) {
-		return 0, wire.RangeError(u, "uint16", "Values.Port", 25, i)
-	}
 	x := Port(u)
 	if err := x.ValidateKanon(); err != nil {
 		return 0, wire.UnmarshalError(err, "Values.Port", 25, i)
@@ -1483,8 +1503,8 @@ func (ix ValuesIndex) Port() (Port, error) {
 	return x, nil
 }
 
-// Weight returns the value of the field Weight, as ValuesView.Weight returns
-// it, at the offset that the index records.
+// Weight returns the value of the field Weight at the offset that the index
+// records. ValuesView.Weight returns the same value and the same error.
 func (ix ValuesIndex) Weight() (Weight, error) {
 	v, i := ix.v, ix.at[8]-1
 	if i < 0 {
@@ -1498,8 +1518,8 @@ func (ix ValuesIndex) Weight() (Weight, error) {
 	return x, nil
 }
 
-// Wave returns the value of the field Wave, as ValuesView.Wave returns it, at
-// the offset that the index records.
+// Wave returns the value of the field Wave at the offset that the index
+// records. ValuesView.Wave returns the same value and the same error.
 func (ix ValuesIndex) Wave() (Wave, error) {
 	v, i := ix.v, ix.at[9]-1
 	if i < 0 {
@@ -1513,8 +1533,8 @@ func (ix ValuesIndex) Wave() (Wave, error) {
 	return x, nil
 }
 
-// Phase returns the value of the field Phase, as ValuesView.Phase returns it,
-// at the offset that the index records.
+// Phase returns the value of the field Phase at the offset that the index
+// records. ValuesView.Phase returns the same value and the same error.
 func (ix ValuesIndex) Phase() (Phase, error) {
 	v, i := ix.v, ix.at[10]-1
 	if i < 0 {
@@ -1533,36 +1553,29 @@ func (ix ValuesIndex) Phase() (Phase, error) {
 	return x, nil
 }
 
-// Grade returns the value of the field Grade, as ValuesView.Grade returns it,
-// at the offset that the index records.
+// Grade returns the value of the field Grade at the offset that the index
+// records. ValuesView.Grade returns the same value and the same error.
 func (ix ValuesIndex) Grade() (Grade, error) {
 	v, i := ix.v, ix.at[11]-1
 	if i < 0 {
 		return 0, nil
 	}
 	u, _ := wire.Uvarint(v[i:])
-	s := wire.Unzigzag(u)
-	if s != int64(int16(s)) {
-		return 0, wire.RangeError(s, "int16", "Values.Grade", 15, i)
-	}
-	x := Grade(s)
+	x := Grade(wire.Unzigzag(u))
 	if err := x.ValidateKanon(); err != nil {
 		return 0, wire.UnmarshalError(err, "Values.Grade", 15, i)
 	}
 	return x, nil
 }
 
-// Next returns the value of the field Next, as ValuesView.Next returns it, at
-// the offset that the index records.
+// Next returns the value of the field Next at the offset that the index
+// records. ValuesView.Next returns the same value and the same error.
 func (ix ValuesIndex) Next() (Level, error) {
 	v, i := ix.v, ix.at[12]-1
 	if i < 0 {
 		return 0, nil
 	}
 	u, _ := wire.Uvarint(v[i:])
-	if u != uint64(uint8(u)) {
-		return 0, wire.RangeError(u, "uint8", "Values.Next", 16, i)
-	}
 	x := Level(u)
 	if err := x.ValidateKanon(); err != nil {
 		return 0, wire.UnmarshalError(err, "Values.Next", 16, i)
@@ -1570,8 +1583,8 @@ func (ix ValuesIndex) Next() (Level, error) {
 	return x, nil
 }
 
-// Fixed returns the value of the field Fixed, as ValuesView.Fixed returns it,
-// at the offset that the index records.
+// Fixed returns the value of the field Fixed at the offset that the index
+// records. ValuesView.Fixed returns the same value and the same error.
 func (ix ValuesIndex) Fixed() (Tick, error) {
 	v, i := ix.v, ix.at[13]-1
 	if i < 0 {
@@ -1585,15 +1598,16 @@ func (ix ValuesIndex) Fixed() (Tick, error) {
 	return x, nil
 }
 
-// Era returns the value of the field Era, as ValuesView.Era returns it, at the
-// offset that the index records.
-func (ix ValuesIndex) Era() (Era, error) {
+// Era returns the value of the field Era at the offset that the index records.
+// ValuesView.Era returns the same value. Era does not return an error, because
+// IndexKanon checked the value.
+func (ix ValuesIndex) Era() Era {
 	v, i := ix.v, ix.at[14]-1
 	if i < 0 {
-		return 0, nil
+		return 0
 	}
 	u, _ := wire.Uvarint(v[i:])
-	return Era(u), nil
+	return Era(u)
 }
 
 // _values_sizeTags returns the length of the encoding of the elements of x, a

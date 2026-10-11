@@ -4,8 +4,10 @@
 package kanontest_test
 
 import (
+	"errors"
 	"testing"
 
+	"go.thesmos.sh/kanon"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
@@ -27,10 +29,7 @@ const (
 type doubledIndex struct{ view.ItemIndex }
 
 // Count returns twice the Count of the index.
-func (x doubledIndex) Count() (uint32, error) {
-	n, err := x.ItemIndex.Count()
-	return 2 * n, err
-}
+func (x doubledIndex) Count() uint32 { return 2 * x.ItemIndex.Count() }
 
 // doubledView is a view of view.Item whose index returns twice the count.
 type doubledView []byte
@@ -83,6 +82,50 @@ func (v lenientView) Count() (uint32, error) { return view.ItemView(v).Count() }
 func (v lenientView) IndexKanon() (view.ItemIndex, error) {
 	x, _ := view.ItemView(v).IndexKanon()
 	return x, nil
+}
+
+// fallibleIndex is an index of view.Item whose Count returns an error,
+// although the read of a uint32 after IndexKanon cannot fail.
+type fallibleIndex struct{ view.ItemIndex }
+
+// Count returns the Count of the index and no error.
+func (x fallibleIndex) Count() (uint32, error) { return x.ItemIndex.Count(), nil }
+
+// fallibleView is a view of view.Item whose index returns an error from
+// Count.
+type fallibleView []byte
+
+// Name returns the Name of the encoding in v.
+func (v fallibleView) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns the Count of the encoding in v.
+func (v fallibleView) Count() (uint32, error) { return view.ItemView(v).Count() }
+
+// IndexKanon returns the index of the encoding in v, whose Count returns an
+// error.
+func (v fallibleView) IndexKanon() (fallibleIndex, error) {
+	x, err := view.ItemView(v).IndexKanon()
+	return fallibleIndex{x}, err
+}
+
+// rangeless is a view of view.Item whose IndexKanon does not check the
+// range of Count.
+type rangeless []byte
+
+// Name returns the Name of the encoding in v.
+func (v rangeless) Name() ([]byte, error) { return view.ItemView(v).Name() }
+
+// Count returns the Count of the encoding in v.
+func (v rangeless) Count() (uint32, error) { return view.ItemView(v).Count() }
+
+// IndexKanon returns the index of the encoding in v. It returns the zero
+// index and no error for an encoding whose scan fails with kanon.ErrRange.
+func (v rangeless) IndexKanon() (view.ItemIndex, error) {
+	x, err := view.ItemView(v).IndexKanon()
+	if errors.Is(err, kanon.ErrRange) {
+		return view.ItemIndex{}, nil
+	}
+	return x, err
 }
 
 // nameless is a view of view.Item whose Name returns no bytes.
@@ -203,6 +246,10 @@ func TestView(t *testing.T) {
 			t.Parallel()
 			holds(t, valuesView, indexCheck)
 		})
+		t.Run("passes the index of a view type that does not read a field", func(t *testing.T) {
+			t.Parallel()
+			holds(t, kanontest.Spec[view.Page]{Fields: pageSpec.Fields, View: view.PageView(nil)}, indexCheck)
+		})
 		t.Run("fails for an index method that returns another value", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: doubledView(nil)}, indexCheck,
@@ -212,6 +259,16 @@ func TestView(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: lenientView(nil)}, indexCheck,
 				"lenientView.IndexKanon returns the error of the reference index")
+		})
+		t.Run("fails for an IndexKanon that does not check the range of an integer", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: rangeless(nil)}, indexCheck,
+				"rangeless.IndexKanon returns the error of the reference index")
+		})
+		t.Run("fails for an index method that returns an error for a field whose read cannot fail", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: fallibleView(nil)}, indexCheck,
+				"fallibleIndex.Count returns an error exactly when the read of its field can fail")
 		})
 		t.Run("fails for an index method that names no field", func(t *testing.T) {
 			t.Parallel()

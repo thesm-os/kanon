@@ -452,8 +452,9 @@ func (v PrivateView) Name() ([]byte, error) {
 
 // PrivateIndex is the index of a PrivateView: the view and the offsets of the
 // values of the fields that its methods read, which IndexKanon records in one
-// scan. Each method of PrivateIndex returns what the method of PrivateView of
-// the same name returns, without a scan.
+// scan. Each method of PrivateIndex reads its field without a scan. It returns
+// the value that the method of PrivateView of the same name returns. A method
+// whose read can fail after the scan also returns the error of that method.
 type PrivateIndex struct {
 	v PrivateView
 	// at records, per method, 1 + the offset of the value of the last
@@ -461,11 +462,13 @@ type PrivateIndex struct {
 	at [1]int
 }
 
-// IndexKanon returns the index of the encoding in v, from one scan of the
-// encoding. It fails where a method of PrivateView fails before it reads a
-// value: at a malformed tag or value, at an occurrence of a field that a method
-// reads with another wire format, and at the second occurrence of a struct
-// field.
+// IndexKanon scans the encoding in v once and returns its index. It fails where
+// a method of PrivateView fails before it reads a value: at a malformed tag or
+// value, at an occurrence of a field that a method reads with another wire
+// format, and at the second occurrence of a struct field. It also fails at an
+// occurrence of an integer field whose value is outside the range of its Go
+// type. A decode fails at the same occurrence. The method of PrivateView checks
+// only the last occurrence.
 func (v PrivateView) IndexKanon() (PrivateIndex, error) {
 	ix := PrivateIndex{v: v}
 	for i := 0; i < len(v); {
@@ -475,7 +478,16 @@ func (v PrivateView) IndexKanon() (PrivateIndex, error) {
 			return PrivateIndex{}, wire.ReadError(n, "Private", 0, i)
 		}
 		i += n
-		skipped, err := wire.Skip(v[i:], tag, "Private", 0, at)
+		var skipped int
+		var err error
+		if tag&7 == wire.Varint && tag>>3 != 0 {
+			_, skipped = wire.Uvarint(v[i:])
+			if skipped <= 0 {
+				err = wire.ReadError(skipped, "Private", 0, at)
+			}
+		} else {
+			skipped, err = wire.Skip(v[i:], tag, "Private", 0, at)
+		}
 		if err != nil {
 			return PrivateIndex{}, err
 		}
@@ -491,15 +503,16 @@ func (v PrivateView) IndexKanon() (PrivateIndex, error) {
 	return ix, nil
 }
 
-// Name returns the value of the field Name, as PrivateView.Name returns it, at
-// the offset that the index records.
-func (ix PrivateIndex) Name() ([]byte, error) {
+// Name returns the value of the field Name at the offset that the index
+// records. PrivateView.Name returns the same value. Name does not return an
+// error, because IndexKanon checked the value.
+func (ix PrivateIndex) Name() []byte {
 	v, i := ix.v, ix.at[0]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
 // SizeKanon returns the length of the encoding of m in bytes, and 0 for a
@@ -714,8 +727,10 @@ func (v PrivateKeyView) Name() ([]byte, error) {
 
 // PrivateKeyIndex is the index of a PrivateKeyView: the view and the offsets of
 // the values of the fields that its methods read, which IndexKanon records in
-// one scan. Each method of PrivateKeyIndex returns what the method of
-// PrivateKeyView of the same name returns, without a scan.
+// one scan. Each method of PrivateKeyIndex reads its field without a scan. It
+// returns the value that the method of PrivateKeyView of the same name returns.
+// A method whose read can fail after the scan also returns the error of that
+// method.
 type PrivateKeyIndex struct {
 	v PrivateKeyView
 	// at records, per method, 1 + the offset of the value of the last
@@ -723,11 +738,13 @@ type PrivateKeyIndex struct {
 	at [1]int
 }
 
-// IndexKanon returns the index of the encoding in v, from one scan of the
-// encoding. It fails where a method of PrivateKeyView fails before it reads a
-// value: at a malformed tag or value, at an occurrence of a field that a method
-// reads with another wire format, and at the second occurrence of a struct
-// field.
+// IndexKanon scans the encoding in v once and returns its index. It fails where
+// a method of PrivateKeyView fails before it reads a value: at a malformed tag
+// or value, at an occurrence of a field that a method reads with another wire
+// format, and at the second occurrence of a struct field. It also fails at an
+// occurrence of an integer field whose value is outside the range of its Go
+// type. A decode fails at the same occurrence. The method of PrivateKeyView
+// checks only the last occurrence.
 func (v PrivateKeyView) IndexKanon() (PrivateKeyIndex, error) {
 	ix := PrivateKeyIndex{v: v}
 	for i := 0; i < len(v); {
@@ -737,7 +754,16 @@ func (v PrivateKeyView) IndexKanon() (PrivateKeyIndex, error) {
 			return PrivateKeyIndex{}, wire.ReadError(n, "PrivateKey", 0, i)
 		}
 		i += n
-		skipped, err := wire.Skip(v[i:], tag, "PrivateKey", 0, at)
+		var skipped int
+		var err error
+		if tag&7 == wire.Varint && tag>>3 != 0 {
+			_, skipped = wire.Uvarint(v[i:])
+			if skipped <= 0 {
+				err = wire.ReadError(skipped, "PrivateKey", 0, at)
+			}
+		} else {
+			skipped, err = wire.Skip(v[i:], tag, "PrivateKey", 0, at)
+		}
 		if err != nil {
 			return PrivateKeyIndex{}, err
 		}
@@ -753,15 +779,16 @@ func (v PrivateKeyView) IndexKanon() (PrivateKeyIndex, error) {
 	return ix, nil
 }
 
-// Name returns the value of the field Name, as PrivateKeyView.Name returns it,
-// at the offset that the index records.
-func (ix PrivateKeyIndex) Name() ([]byte, error) {
+// Name returns the value of the field Name at the offset that the index
+// records. PrivateKeyView.Name returns the same value. Name does not return an
+// error, because IndexKanon checked the value.
+func (ix PrivateKeyIndex) Name() []byte {
 	v, i := ix.v, ix.at[0]-1
 	if i < 0 {
-		return nil, nil
+		return nil
 	}
 	l, n := wire.Uvarint(v[i:])
-	return []byte(v[i+n : i+n+int(l)]), nil
+	return []byte(v[i+n : i+n+int(l)])
 }
 
 // _private_sizeSliceString returns the length of the encoding of the elements

@@ -4,12 +4,10 @@
 package kanontest
 
 import (
-	"errors"
 	"reflect"
 
 	"go.dokimi.dev/assert"
 
-	"go.thesmos.sh/kanon"
 	"go.thesmos.sh/kanon/wire"
 )
 
@@ -23,22 +21,60 @@ const (
 const indexName = "IndexKanon"
 
 // indexError returns the error of the reference index of data, an encoding
-// of a struct of l, for the fields that a view type reads: the first error,
-// by offset in data, of the scans of the reference views of the fields, as
-// [field.find] returns them, which one scan of data meets in that order,
-// and nil when none of them fails.
+// of a struct of l, for the fields that a view type reads. It scans data
+// once, reads each tag and skips each value as a decode does. It returns
+// the error of the first of these sites in the order of the encoding:
+//
+//   - a tag or a value that does not read;
+//   - an occurrence of a field of fields whose tag has another wire format
+//     than the field;
+//   - the second occurrence of a field of fields whose values a decode
+//     merges, which one byte slice cannot hold;
+//   - an occurrence of an integer field of fields whose value is outside the
+//     range of its Go type, as [setVarint] checks it.
+//
+// The reference view of a field fails at the same sites before it reads a
+// value. It checks the range of an integer at the last occurrence alone.
+// indexError returns nil when the scan passes. It also returns nil without
+// a scan when fields is empty. The IndexKanon of a view type that does not
+// read a field does not scan the encoding.
 func indexError(l *layout, fields []*field, data []byte) error {
-	var first *kanon.DecodeError
-	for _, f := range fields {
-		_, err := f.find()(data, f.tag(), l.loc(f))
-		if d, ok := errors.AsType[*kanon.DecodeError](err); ok && (first == nil || d.Offset < first.Offset) {
-			first = d
-		}
-	}
-	if first == nil {
+	if len(fields) == 0 {
 		return nil
 	}
-	return first
+	seen := make([]bool, len(fields))
+	for at := 0; at < len(data); {
+		tag, n := wire.Uvarint(data[at:])
+		if n <= 0 {
+			return wire.ReadError(n, l.name, 0, at)
+		}
+		i := at + n
+		skipped, err := wire.Skip(data[i:], tag, l.name, 0, at)
+		if err != nil {
+			return err
+		}
+		for k, f := range fields {
+			if tag>>3 != f.tag()>>3 {
+				continue
+			}
+			s := f.viewShape()
+			if tag != f.tag() {
+				return wire.FormatError(tag, f.wire(), l.loc(f), at)
+			}
+			if seen[k] && s.merges() {
+				return wire.RepeatedError(l.loc(f), f.Number, at)
+			}
+			seen[k] = true
+			if s.wire() == wire.Varint {
+				u, _ := wire.Uvarint(data[i:])
+				if err := setVarint(s, reflect.New(s.typ).Elem(), u, l.loc(f), f.Number, i); err != nil {
+					return err
+				}
+			}
+		}
+		at = i + skipped
+	}
+	return nil
 }
 
 // views checks each method of the view type of T against the reference view
@@ -62,8 +98,13 @@ func (s *suite[T, P]) views(tb assert.TB, inputs [][]byte) {
 // inputs: it returns an error of the [errorIdentity] of the reference index,
 // as [indexError] returns it, and without an error each method of the index
 // returns what the reference view of the field that it names returns, as
-// [suite.viewResult] checks it. The table checks pass the inputs that
-// [suite.viewInputs] returns.
+// [suite.viewResult] checks it. A method of the index that reads a field of
+// T returns an error when [shape.readFails] reports that the read of the
+// field can fail. The method of any other field returns the value alone,
+// unless the field is of a kanon.Validator. The method of such a Validator
+// can take either form, since the generated code calls its ValidateKanon
+// only for a type whose directive has -validate. The table checks pass the
+// inputs that [suite.viewInputs] returns.
 func (s *suite[T, P]) indexes(tb assert.TB, inputs [][]byte) {
 	tb.Helper()
 	fields := s.l.byName()
@@ -72,6 +113,22 @@ func (s *suite[T, P]) indexes(tb assert.TB, inputs [][]byte) {
 		if f := fields[m.Name]; f != nil {
 			read = append(read, f)
 		}
+	}
+	indexKanon, _ := s.view.MethodByName(indexName)
+	index := indexKanon.Type.Out(0)
+	for m := range index.Methods() {
+		f := fields[m.Name]
+		if f == nil {
+			continue
+		}
+		results := 1
+		if vs := f.viewShape(); vs.readFails() {
+			results = 2
+		} else if vs.validate {
+			continue
+		}
+		assert.Equal(tb, m.Type.NumOut(), results,
+			index.Name()+"."+m.Name+" returns an error exactly when the read of its field can fail")
 	}
 	for _, data := range inputs {
 		out := reflect.ValueOf(data).Convert(s.view).MethodByName(indexName).Call(nil)
@@ -107,10 +164,12 @@ func (s *suite[T, P]) viewInputs() [][]byte {
 // viewResult checks out, the results of the method named method of the
 // view or index type owner for data, against the reference view of the
 // field that the method names, which fields maps by name, as
-// [resolver.view] returns it: the method returns an error of the
+// [resolver.view] returns it. The results are the value, and the error when
+// the method returns two. The method returns an error of the
 // [errorIdentity] of the reference view, and without an error its value, as
-// their [resolver.viewPrint] compares them. A method that names no field of
-// T fails the check.
+// their [resolver.viewPrint] compares them. The check counts a method that
+// returns the value alone as a method without an error. A method that names
+// no field of T fails the check.
 func (s *suite[T, P]) viewResult(tb assert.TB, fields map[string]*field, owner reflect.Type, method string,
 	data []byte, out []reflect.Value,
 ) {
@@ -118,7 +177,10 @@ func (s *suite[T, P]) viewResult(tb assert.TB, fields map[string]*field, owner r
 	f := fields[method]
 	name := owner.Name() + "." + method
 	assert.NotNil(tb, f, name+" names a field of "+s.l.name)
-	err, _ := reflect.TypeAssert[error](out[1])
+	var err error
+	if len(out) > 1 {
+		err, _ = reflect.TypeAssert[error](out[1])
+	}
 	want, wantErr := s.r.view(s.l, f, data)
 	if gotID, wantID := identityOf(err), identityOf(wantErr); gotID != wantID {
 		assert.Equal(tb, gotID, wantID, name+" returns the error of the reference decode")
@@ -208,6 +270,22 @@ func (f *field) find() func(data []byte, tag uint64, loc string) (int, error) {
 		return wire.FindOne
 	}
 	return wire.Find
+}
+
+// readFails reports whether the read of a value of s at the offset that
+// IndexKanon records can fail for any type of its kind, so that the method
+// of an index that reads it returns an error. The read of a time checks the
+// fields of the time, and the read of a complex128 and of a byte array
+// checks their length. The read of a type that encodes itself calls its
+// decode method. The scan of IndexKanon checks everything that the read of a
+// value of any other kind needs, unless the value is of a kanon.Validator.
+func (s *shape) readFails() bool {
+	switch s.kind {
+	case kindTime, kindComplex128, kindByteArray, kindBinary:
+		return true
+	default:
+		return false
+	}
 }
 
 // byName returns the fields of l by name.

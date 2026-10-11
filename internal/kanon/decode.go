@@ -26,6 +26,10 @@ type place struct {
 	// the level depth-k, so that the decode of a struct at it makes no check
 	// of its own: the value of a map whose key checks its level.
 	checked bool
+	// ranged reports that a scan before the read checked the range of the
+	// integer at p, so that the read does not check the range again. The
+	// methods of an index type read their fields after such a scan.
+	ranged bool
 }
 
 // offset returns the expression of the offset of the value at p in the
@@ -755,7 +759,8 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 // varint returns the expression of the value of v, a bool or an integer,
 // that the varint u encodes. For an integer whose Go type is narrower than
 // 64 bits, it first writes the statements that reject a value outside the
-// range of the type, at the offset of the varint.
+// range of the type, at the offset of the varint. It writes none when
+// p.ranged reports that a scan checked the range before.
 func (e *emitter) varint(v *value, u string, p place) string {
 	if v.kind == kindBool {
 		return e.cast(v, u+" != 0", types.Bool)
@@ -763,18 +768,19 @@ func (e *emitter) varint(v *value, u string, p place) string {
 	x, wide := u, types.Uint64
 	if v.signed() {
 		x, wide = e.wire()+"Unzigzag("+u+")", types.Int64
-		if v.narrow() {
-			e.line("s := %s", x)
-			x = "s"
-		}
 	}
-	if v.narrow() {
-		basic := v.basicName()
-		e.line("if %s != %s(%s(%s)) {", x, types.Typ[wide].Name(), basic, x)
-		e.fail(e.wire() + "RangeError(" + x + ", " + quoted(basic) + ", " + p.loc + ", " + p.num + ", " +
-			p.offset() + ")")
-		e.line("}")
+	if !v.narrow() || p.ranged {
+		return e.cast(v, x, wide)
 	}
+	if v.signed() {
+		e.line("s := %s", x)
+		x = "s"
+	}
+	basic := v.basicName()
+	e.line("if %s != %s(%s(%s)) {", x, types.Typ[wide].Name(), basic, x)
+	e.fail(e.wire() + "RangeError(" + x + ", " + quoted(basic) + ", " + p.loc + ", " + p.num + ", " +
+		p.offset() + ")")
+	e.line("}")
 	return e.cast(v, x, wide)
 }
 
