@@ -1,5 +1,11 @@
 # go.thesmos.sh/kanon
 
+## 0.2.0
+
+### Minor Changes
+
+- 5c99023: **Breaking:** Return the value alone from each index method whose read cannot fail, and check the range of each integer narrower than 64 bits in `IndexKanon`.
+
 ## 0.1.0
 
 ### Minor Changes
