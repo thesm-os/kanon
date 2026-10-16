@@ -24,7 +24,7 @@ const (
 	exactText     = "kanon: a type that declares ExactKanon breaks its guarantee"
 	limitText     = "kanon: value longer than the buffer of the stream"
 	sizeText      = "kanon: stream size outside 0 to math.MaxInt"
-	maxText       = "kanon: more elements than the max of the field"
+	maxText       = "kanon: value longer than the max of its field"
 )
 
 func TestDecodeError(t *testing.T) {

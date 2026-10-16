@@ -68,11 +68,12 @@
 //
 // # Bounds
 //
-// The tag option max=N on a slice or a map field bounds the number of its
-// elements at N. The encode of a value whose field has more elements fails
-// with [ErrMax]. A decode, a merge and a stream decoder fail with [ErrMax] at
-// the element that would take the field past N, before they decode it, and
-// the first allocation of a bounded slice makes room for N elements at most.
+// The tag option max=N bounds the length of a field at N: the bytes of a
+// string or a byte slice, and the elements of a slice or a map. The encode
+// of a value whose field is longer fails with [ErrMax]. A decode, a merge, a
+// view and a stream decoder fail with [ErrMax] at the byte, the element or
+// the entry that would take the field past N, before they copy or decode it.
+// The first allocation of a bounded slice makes room for N elements at most.
 // The first allocation of every slice takes at most 10 MiB, and the slice
 // grows by append after it.
 //

@@ -33,7 +33,7 @@ kanon writes the encode, decode, copy and reset methods of each type, and a test
 - A view reads one field of an encoding without a decode of the others.
 - The `-canonical` flag makes a decode accept only the bytes that the encode writes for the value.
 - A stream decoder reads an encoding too large for memory from an `io.Reader`, one field at a time.
-- The tag option `max` bounds the elements of a slice or a map before a decode allocates for them.
+- The tag option `max` bounds the bytes of a string or a byte slice and the elements of a slice or a map. A decode checks the bound before it copies the bytes or allocates the elements.
 - The generated test compares each codec with a reference encoder and decoder on fixed samples, on generated values and on malformed input, and checks its allocations.
 
 ## Install
@@ -175,7 +175,7 @@ An encode returns a `*kanon.EncodeError` in seven cases:
 - A type that encodes itself returns an error.
 - The encoding of a type that declares `SizeKanon` has another length than `SizeKanon` returns, and the error wraps `kanon.ErrSize`.
 - The `ValidateKanon` method of a type rejects a value.
-- A slice or a map has more elements than the tag option `max` of its field allows, and the error wraps `kanon.ErrMax`.
+- A value is longer than the tag option `max` of its field allows, and the error wraps `kanon.ErrMax`.
 
 A value of a type that declares `kanon.Exact` and breaks its guarantee panics the encode with a `*kanon.EncodeError` that wraps `kanon.ErrExact`.
 [The documentation of package kanon](https://pkg.go.dev/go.thesmos.sh/kanon#pkg-variables) lists every sentinel error.
@@ -226,7 +226,7 @@ A tag is a comma-separated list of at most one field number and any of the optio
 | `kanon:",types=Circle\|*Square"` | Lists the concrete types of the interfaces in the type of the field, as `gob.Register` registers types. |
 | `kanon:",unknown"` | Marks the `[]byte` field in which a decode keeps the fields that it does not know. |
 | `kanon:",stream"` | Makes the stream decoder of the struct return the value of the field to its caller, as [Decode an encoding too large for memory](#decode-an-encoding-too-large-for-memory) describes. |
-| `kanon:",max=1024"` | Bounds the elements of a slice or a map field at 1024, as [Bound slices and maps](#bound-slices-and-maps) describes. |
+| `kanon:",max=1024"` | Bounds a string or a byte slice field at 1024 bytes, or a slice or a map field at 1024 elements, as [Bound the length of a field](#bound-the-length-of-a-field) describes. |
 
 The discriminator of a union is a field of a named integer type, which the encoding leaves out.
 Declare one constant of that type per member, named after the type and the member.
@@ -327,8 +327,8 @@ placed, err := index.Placed()
 ```
 
 `IndexKanon` scans the encoding once, and records the offset of every field that the view reads.
-It also fails at each occurrence of an integer field whose value is outside the range of its Go type.
-A method of the view checks the range at the last occurrence of its field alone.
+It also fails at each occurrence of an integer field whose value is outside the range of its Go type, and of a string or a byte slice field whose value is longer than the tag option `max` of the field allows.
+A method of the view checks the range and the bound at the last occurrence of its field alone.
 
 Each method of the index returns the value that the method of the view with the same name returns.
 The methods of a time, a `complex128`, a byte array, a type that encodes itself and a type with `-validate` also return the error of the view method.
@@ -366,28 +366,35 @@ A canonical reader rejects a field that its struct does not declare.
 Upgrade every canonical reader before a writer sets a new field.
 The generation fails for a canonical type that contains a struct with a kanon codec whose directive does not set `-canonical`, a struct whose codec is written by hand, or a field tagged `unknown`.
 
-## Bound slices and maps
+## Bound the length of a field
 
 A decode makes a slice with room for every element that it counts in its input, before it decodes the first one.
 An empty element takes one byte of input, so 1 MiB of untrusted input can make a slice of a million elements.
-Bound a slice or a map field with the tag option `max`:
+A byte slice field can take the whole input, and a decode copies it into the memory of the receiver before the caller can check its length.
+Bound a string, a byte slice, a slice or a map field with the tag option `max`:
 
 ```go
 type Page struct {
-	Items [][]byte          `kanon:"1,max=1024"`
-	Path  []string          `kanon:"2,max=32"`
-	Meta  map[string]string `kanon:"3,max=16"`
+	Title string            `kanon:"1,max=256"`
+	Body  []byte            `kanon:"2,max=65536"`
+	Items [][]byte          `kanon:"3,max=1024"`
+	Path  []string          `kanon:"4,max=32"`
+	Meta  map[string]string `kanon:"5,max=16"`
 }
 ```
 
-- The encode of a value whose field has more elements fails with a `*kanon.EncodeError` that wraps `kanon.ErrMax`.
-- A decode, a merge and a stream decoder fail with a `*kanon.DecodeError` that wraps `kanon.ErrMax` at the element that would take the field past its bound, before they decode it.
+The bound of a string or a byte slice counts bytes, and the bound of a slice or a map counts elements.
+
+- The encode of a value whose field is longer than its bound fails with a `*kanon.EncodeError` that wraps `kanon.ErrMax`.
+- A decode, a merge and a stream decoder fail with a `*kanon.DecodeError` that wraps `kanon.ErrMax`. A string or a byte slice fails at the byte past its bound, before they copy the bytes or take the substring. A slice or a map fails at the element that would take the field past its bound, before they decode it.
+- A method of a view and `IndexKanon` fail at the same byte for a string or a byte slice.
 - The first allocation of a bounded slice makes room for its bound of elements at most.
 - The first allocation of every slice takes at most 10 MiB, bounded or not, and the slice grows by `append` after it.
 
-The bound counts the elements of every occurrence of the field in the encoding, and in a merge the elements of the receiver.
-It applies to the field itself, and not to the slices and maps in its elements.
-The option applies to a slice and a map, other than a byte slice and a type that encodes itself.
+The bound of a string or a byte slice applies to each occurrence of the field in the encoding, because a later occurrence replaces the value.
+The bound of a slice or a map counts the elements of every occurrence of the field, and in a merge the elements of the receiver.
+It applies to the field itself, and not to the strings, slices and maps in its elements.
+The option applies to a string, a byte slice, a slice and a map, other than a type that encodes itself.
 
 The option does not change the encoding, but it changes what a reader accepts:
 
@@ -462,6 +469,7 @@ A later byte can still fail the stream, so act on the values only after `Next` r
 `kanon.StreamOptions` sets the nesting limit and the buffer limit, which is 16 MiB by default.
 The decoded fields together, and each element, must fit within the buffer limit, or the stream fails with `kanon.ErrLimit`.
 A streamed slice with the tag option `max` fails with `kanon.ErrMax` at the element past its bound, before the stream reads the length of the element.
+A streamed string or byte slice with the option fails with `kanon.ErrMax` at the byte past its bound, before `Next` returns the field.
 The strings of the receiver alias the buffer of the stream until the next `Reset`.
 The strings of an element alias it until the next call of `Next`, `Element` or a decode method.
 
@@ -630,6 +638,7 @@ RFCs under [docs/rfc](docs/rfc/README.md) specify the design, and ADRs under [do
 - [Canonical decoding](docs/rfc/0006-canonical-decoding.md) specifies the `-canonical` flag.
 - [Stream decoding](docs/rfc/0007-stream-decoding.md) specifies the tag option `stream` and the stream decoder.
 - [Element bounds](docs/rfc/0008-element-bounds.md) specifies the tag option `max`.
+- [Length bounds](docs/rfc/0009-length-bounds.md) extends the tag option `max` to strings and byte slices.
 
 ## Contributing
 

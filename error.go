@@ -89,12 +89,13 @@ var (
 	ErrAmbiguousKey = errors.New("kanon: two map keys encode alike")
 )
 
-// ErrMax is a cause of an [EncodeError] and of a [DecodeError]: a slice or a
-// map with more elements than the tag option max of its field allows. The
-// encode of a value whose field has more elements fails, and the decode
-// fails at the element that would take the field past the bound, before it
-// decodes the element.
-var ErrMax = errors.New("kanon: more elements than the max of the field")
+// ErrMax is a cause of an [EncodeError] and of a [DecodeError]: a value that
+// is longer than the tag option max of its field allows. A string and a byte
+// slice are longer with more bytes, and a slice and a map with more elements.
+// The encode of a value whose field is longer fails. The decode fails at the
+// byte, the element or the entry that would take the field past the bound,
+// before it copies or decodes it.
+var ErrMax = errors.New("kanon: value longer than the max of its field")
 
 // DecodeError is the error of a decode: the malformed input, where it
 // starts, and why it is malformed. The generated code returns one for every
