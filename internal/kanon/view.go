@@ -63,8 +63,11 @@ func (e *emitter) viewMethod(m *target, view string, f *field) {
 	if v.kind == kindStruct {
 		find = "FindOne"
 	}
-	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i"}
+	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i", bound: f.tag.max}
 	doc := f.name + " returns the value of the field " + f.name + " of the encoding in v."
+	if f.tag.max != 0 {
+		doc += " It fails with kanon.ErrMax for a value longer than " + strconv.Itoa(f.tag.max) + " bytes."
+	}
 	if v.validate {
 		doc += " It returns the error of " + validateKanonName + " for a value that the method rejects."
 	}
@@ -100,13 +103,14 @@ func (e *emitter) viewParts(f *field) (*value, string, string) {
 // type and of the index type after the offset. p locates the value in
 // errors. The offset is that of the value of a complete occurrence of the
 // field, so the statements check only what the type of the field adds: the
-// range of an integer, the length of an array and of a complex number, and
-// the fields of a time. A type that encodes itself decodes the bytes of the
-// field with the decode method of its family, whose error is the cause of
-// the error of the method. The method of an index reads after IndexKanon
-// checked the range of each integer, and p.ranged is set for its read. That
-// method returns the value alone when its read cannot fail, as [readFails]
-// reports it.
+// range of an integer, the length of an array and of a complex number, the
+// fields of a time, and the bound of a string or a byte slice, as
+// [emitter.lengthCheck] writes its check. A type that encodes itself decodes
+// the bytes of the field with the decode method of its family, whose error is
+// the cause of the error of the method. The method of an index reads after
+// IndexKanon checked the range of each integer and the bound of each string
+// and byte slice, and p.scanned is set for its read. That method returns the
+// value alone when its read cannot fail, as [readFails] reports it.
 func (e *emitter) viewRead(f *field, p place) {
 	v, result, zero := e.viewParts(f)
 	w := e.wire()
@@ -145,6 +149,7 @@ func (e *emitter) viewRead(f *field, p place) {
 		e.line("return x, nil")
 	default:
 		e.line("l, n := %sUvarint(v[i:])", w)
+		e.lengthCheck(p, "i+n")
 		e.viewReturn(v, result+"(v[i+n : i+n+int(l)])", p)
 	}
 }
@@ -221,13 +226,16 @@ func (e *emitter) indexType(m *target, view string, fields []*field) {
 // with another wire format, and at the second occurrence of a struct field.
 // It also checks the range of every occurrence of an integer field whose Go
 // type is narrower than 64 bits, with the check that [emitter.varint]
-// writes. The method of the index that reads such a field then cannot fail.
-// The scan reads the varint of a field of the wire format Varint itself, as
-// a decode reads it, and the range check takes the value from that read. It
-// skips the value of any other field with wire.Skip. Its error for a varint
-// that does not read is the error that wire.Skip returns for it. A view
-// without fields has no method that fails, so its IndexKanon returns the
-// index without a scan.
+// writes, and the bound of every occurrence of a string or a byte slice field
+// with the tag option max, with the check that [emitter.lengthCheck] writes.
+// The method of the index that reads such a field then cannot fail. The scan
+// reads the varint of a field of the wire format Varint itself, as a decode
+// reads it, and the range check takes the value from that read. It skips the
+// value of any other field with wire.Skip, and the bound check reads the
+// length of the value again after the skip. Its error for a varint that does
+// not read is the error that wire.Skip returns for it. A view without fields
+// has no method that fails, so its IndexKanon returns the index without a
+// scan.
 func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 	if len(fields) == 0 {
 		e.doc(indexKanonName + " returns the index of the encoding in v. " + view + " has no method that reads a " +
@@ -250,8 +258,9 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 		"where a method of " + view + " fails before it reads a value: at a malformed tag or value, at an " +
 		"occurrence of a field that a method reads with another wire format, and at the second occurrence of a " +
 		"struct field. It also fails at an occurrence of an integer field whose value is outside the range of " +
-		"its Go type. A decode fails at the same occurrence. The method of " + view + " checks only the last " +
-		"occurrence.")
+		"its Go type, and at an occurrence of a string or a byte slice that is longer than the tag option max " +
+		"of its field allows. A decode fails at the same occurrence. The method of " + view + " checks only " +
+		"the last occurrence.")
 	e.line("func (v %s) %s() (%s, error) {", view, indexKanonName, index)
 	e.ret = index + "{}, "
 	e.line("ix := %s{v: v}", index)
@@ -279,7 +288,7 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 	e.line("switch tag >> 3 {")
 	for k, f := range fields {
 		v, _, _ := e.viewParts(f)
-		p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i"}
+		p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i", bound: f.tag.max}
 		e.line("case %d:", f.num)
 		e.line("if tag != %s {", e.tag(f.num, v.kind.wire()))
 		e.fail(w + "FormatError(tag, " + w + wireName(v.kind.wire()) + ", " + p.loc + ", at)")
@@ -293,6 +302,10 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 			// The scan drops the expression that varint returns. The method of
 			// the index converts the value.
 			e.varint(v, "u", p)
+		}
+		if p.bound != 0 {
+			e.line("l, n := %sUvarint(v[i:])", w)
+			e.lengthCheck(p, "i+n")
 		}
 		e.line("ix.at[%d] = i + 1", k)
 	}
@@ -312,7 +325,7 @@ func (e *emitter) indexMethod(m *target, view, index string, fields []*field) {
 // fail. It returns the value alone otherwise.
 func (e *emitter) indexRead(m *target, view, index string, k int, f *field) {
 	v, result, zero := e.viewParts(f)
-	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i", ranged: true}
+	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), at: "i", bound: f.tag.max, scanned: true}
 	doc := f.name + " returns the value of the field " + f.name + " at the offset that the index records."
 	if readFails(v) {
 		e.doc(doc + " " + view + "." + f.name + " returns the same value and the same error.")

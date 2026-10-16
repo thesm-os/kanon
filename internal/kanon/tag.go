@@ -34,8 +34,9 @@ const (
 	// "types=Circle|*Square".
 	optionTypes = "types"
 	tagTypes    = "types="
-	// optionMax names the option that bounds the number of the elements of a
-	// slice or a map field, and tagMax begins it in a tag, as in "max=1024".
+	// optionMax names the option that bounds the length of a field, the bytes
+	// of a string or a byte slice and the elements of a slice or a map, and
+	// tagMax begins it in a tag, as in "max=1024".
 	optionMax = "max"
 	tagMax    = "max="
 	// tagSeparator separates the words of a tag.
@@ -73,8 +74,8 @@ type tag struct {
 	types string
 	// num is the field number that the tag sets, or 0.
 	num int
-	// max is the bound of the tag option max, the most elements of the slice
-	// or the map of the field, or 0 for a tag without the option.
+	// max is the bound of the tag option max, the longest length of the field,
+	// or 0 for a tag without the option.
 	max int
 	// tagged reports that the field has a kanon tag, even an empty one,
 	// which opts an unexported field into the encoding.

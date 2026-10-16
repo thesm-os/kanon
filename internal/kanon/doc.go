@@ -97,11 +97,15 @@
 // the decode of an element of the slice. The test file adapts the stream
 // decoder to kanontest.Stream for the conformance suite.
 //
-// A slice or a map field with the tag option max=N gets the bound N. The
-// encode of the struct fails with kanon.ErrMax for a value with more
-// elements, before it writes the field. The read function of each slice and
-// map type that such a field calls takes the bound after its depth, and
-// fails at the element or the entry that would take the value past it, with
+// A string, a byte slice, a slice or a map field with the tag option max=N
+// gets the bound N on its length. The encode of the struct fails with
+// kanon.ErrMax for a longer value, before it writes the field. The decode of
+// a string or a byte slice field fails with wire.MaxError at an occurrence
+// longer than N, at the offset of its byte past the bound, before it copies a
+// byte. Its view method checks the last occurrence, and IndexKanon checks
+// every occurrence. The read function of each slice and map type that a
+// bounded field calls takes the bound after its depth, and fails at the
+// element or the entry that would take the value past it, with
 // wire.MaxError. Every other call of such a function passes math.MaxInt, and
 // a read function that no bounded field calls takes no bound. The first
 // allocation of every slice takes its capacity from wire.SliceCap, which

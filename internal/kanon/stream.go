@@ -136,9 +136,8 @@ func (e *emitter) streamType(m *target, fields []*field) {
 
 // streamSchema writes the variable schema, the wire.StreamSchema of m and its
 // streamed fields, fields: the location of m in errors, whether its decode
-// is canonical, and per field its tag, its location and, for a slice, the
-// name of the struct of its elements in errors and the bound of the tag
-// option max.
+// is canonical, and per field its tag, its location, for a slice the name of
+// the struct of its elements in errors, and the bound of the tag option max.
 func (e *emitter) streamSchema(m *target, fields []*field, schema string) {
 	w := e.wire()
 	e.doc(schema + " describes " + m.name + " to the wire.Stream of its stream decoder.")
@@ -167,14 +166,19 @@ func (e *emitter) streamSchema(m *target, fields []*field, schema string) {
 // streamed fields are fields, with its docblock.
 func (e *emitter) streamStruct(m *target, fields []*field, stream string) {
 	names := make([]string, 0, len(fields))
-	var bytes, bounded, clauses []string
+	var bytes, bounded, boundedBytes, clauses []string
 	for _, f := range fields {
 		names = append(names, f.name)
 		if f.val.kind != kindSlice {
 			bytes = append(bytes, f.name)
 		}
-		if f.tag.max != 0 {
+		if f.tag.max == 0 {
+			continue
+		}
+		if f.val.kind == kindSlice {
 			bounded = append(bounded, f.name)
+		} else {
+			boundedBytes = append(boundedBytes, f.name)
 		}
 	}
 	noAlloc := []string{"Reset", "Len"}
@@ -224,6 +228,10 @@ func (e *emitter) streamStruct(m *target, fields []*field, stream string) {
 			"fails with a *kanon.DecodeError that wraps kanon.ErrMax."
 		allocated = "the stream, its read buffer of 4096 bytes and the counts of the elements of " +
 			series(bounded, "and")
+	}
+	if len(boundedBytes) > 0 {
+		limits += " A value of " + series(boundedBytes, "or") + " that is longer than the bound of the tag option " +
+			"max of its field fails with a *kanon.DecodeError that wraps kanon.ErrMax, before Next returns the field."
 	}
 	e.doc(limits + " A reader that returns fewer than size bytes fails the call that needs the next byte with a " +
 		"*kanon.DecodeError that wraps io.ErrUnexpectedEOF, at the offset of that byte. The methods return any " +
@@ -385,11 +393,11 @@ func (e *emitter) streamReaders(fields []*field, stream string) {
 	e.line("")
 	var bytes, slices, bounded []string
 	for _, f := range fields {
-		if f.val.kind == kindSlice {
-			slices = append(slices, f.name)
-		} else {
+		if f.val.kind != kindSlice {
 			bytes = append(bytes, f.name)
+			continue
 		}
+		slices = append(slices, f.name)
 		if f.tag.max != 0 {
 			bounded = append(bounded, f.name)
 		}

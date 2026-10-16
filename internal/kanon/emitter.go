@@ -44,7 +44,7 @@ const (
 
 // generatorVersion is the version of the generator, which the EnforceVersion
 // constants of every code file state.
-const generatorVersion = 4
+const generatorVersion = 5
 
 // Names of the parameters of the helpers that locate a value in errors: the
 // location, "Type.Field", and the field number.
@@ -128,10 +128,11 @@ type emitter struct {
 	// merging marks the ids of the values whose read functions take the
 	// merge flag, as [mergingValues] collects them.
 	merging map[string]bool
-	// bounded marks the ids of the values whose read functions take the bound
-	// of the tag option max, as [boundedValues] collects them, and short the
-	// ids of the map values whose put functions take at most mapKeyBuffer
-	// entries, as [shortMaps] collects them.
+	// bounded marks the ids of the values of the fields with the tag option
+	// max, whose read functions of a slice or a map take the bound, as
+	// [boundedValues] collects them, and short the ids of the map values whose
+	// put functions take at most mapKeyBuffer entries, as [shortMaps] collects
+	// them.
 	bounded map[string]bool
 	short   map[string]bool
 	// keyTargets maps the id of each struct with a kanon codec in a map key

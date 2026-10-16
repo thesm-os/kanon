@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 )
@@ -277,14 +278,19 @@ func (c *classifier) target(named *types.Named) (*target, error) {
 // bytes. The fields left out are recorded in leftOut. The field tagged
 // unknown keeps the unknown fields of a decode and has no number.
 //
-// analyze fails for a blank field or a field that [unencoded] reports with
-// a kanon tag, for an unexported field with a kanon tag in a
-// struct of another package, which the code of the file cannot reach, for
-// a types option that [classifier.listOf] rejects, for a field type that
-// kanon does not encode, for the tag option max on a field that is not a
-// slice or a map, for the tag option stream on a field that [streamable]
-// rejects, for an invalid union, and for a field tagged unknown that is
-// unexported, is not a []byte or follows another.
+// analyze fails for these fields:
+//
+//   - a blank field or a field that [unencoded] reports, with a kanon tag;
+//   - an unexported field with a kanon tag in a struct of another package,
+//     which the code of the file cannot access;
+//   - a field whose types option [classifier.listOf] rejects;
+//   - a field of a type that kanon does not encode;
+//   - a field with the tag option max that is not a string, a byte slice, a
+//     slice or a map;
+//   - a field with the tag option stream that [streamable] rejects;
+//   - the members of an invalid union;
+//   - a field tagged unknown that is unexported, is not a []byte or follows
+//     another.
 func (c *classifier) analyze(m *target, at site) error {
 	st, _ := m.typ.Underlying().(*types.Struct)
 	byName := make(map[string]*types.Var, st.NumFields())
@@ -331,7 +337,7 @@ func (c *classifier) analyze(m *target, at site) error {
 		if f.val, err = c.classify(obj.Type(), t.fixed, list, at.field(obj.Name())); err != nil {
 			return m.fail(obj, err)
 		}
-		if t.max != 0 && f.val.kind != kindSlice && f.val.kind != kindMap {
+		if t.max != 0 && !slices.Contains(boundedKinds, f.val.kind) {
 			return m.fail(obj, errBoundKind)
 		}
 		if t.stream {

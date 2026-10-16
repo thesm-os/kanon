@@ -79,8 +79,8 @@ func (c *classifier) mayFail(t types.Type, seen map[*types.Named]bool) bool {
 
 // fieldsMayFail reports whether encoding a field of the struct type st can
 // fail, as match reports it for the type of the field, for the fields that
-// [walked] returns. A field with the tag option max fails for a value with
-// more elements than its bound. A field that is not a union member and whose
+// [walked] returns. A field with the tag option max fails for a value longer
+// than its bound. A field that is not a union member and whose
 // type declares kanon.Exact, as [exactType] reports, cannot fail, as
 // [exactField] states.
 func (c *classifier) fieldsMayFail(st *types.Struct, seen map[*types.Named]bool,

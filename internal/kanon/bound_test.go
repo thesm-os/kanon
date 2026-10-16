@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+
+	"go.thesmos.sh/kanon/internal/kanon"
 )
 
 // boundStructs is the source of the struct types A, B and E. A has a slice
@@ -29,10 +31,26 @@ const boundStructs = "type A struct {\n" +
 	"type B struct {\n\tAs []A\n\tData []E `kanon:\",stream,max=2\"`\n}\n\n" +
 	"type E struct {\n\tName string\n}\n"
 
+// boundBytes is the source of the struct type C, whose codec has a view type:
+// a string with the bound 2, a byte slice with the bound 3, and a streamed
+// byte slice with the bound 4.
+const boundBytes = "type C struct {\n" +
+	"\tS string `kanon:\",max=2\"`\n" +
+	"\tB []byte `kanon:\",max=3\"`\n" +
+	"\tD []byte `kanon:\",stream,max=4\"`\n" +
+	"}\n"
+
 // selfSlice is the source of T, a named slice type that encodes itself,
 // before the struct type A of a field of it with the tag option max on line
 // 10 of a.go.
 const selfSlice = "type T []int32\n\n" +
+	"func (t T) MarshalBinary() ([]byte, error) { return nil, nil }\n\n" +
+	"func (t *T) UnmarshalBinary([]byte) error { return nil }\n\n"
+
+// selfString is the source of T, a named string type that encodes itself,
+// before the struct type A of a field of it with the tag option max on line
+// 10 of a.go.
+const selfString = "type T string\n\n" +
 	"func (t T) MarshalBinary() ([]byte, error) { return nil, nil }\n\n" +
 	"func (t *T) UnmarshalBinary([]byte) error { return nil }\n\n"
 
@@ -161,6 +179,69 @@ func TestBound(t *testing.T) {
 					"the put function sorts a map of more than 16 entries in a slice")
 			})
 		}
+		views, err := kanon.Generate(t.Context(), module(t, map[string]string{source: boundBytes}), source,
+			kanon.Options{Types: []string{"C"}, Views: true})
+		assert.NoError(t, err, "Generate generates the struct type with bounded bytes and its view type")
+		assert.Length(t, views, 2, "Generate returns the code file and the test file")
+		code, spec := string(views[0].Src), string(views[1].Src)
+		lengths := []struct {
+			name string
+			give string
+			want string
+		}{
+			{
+				name: "fails the decode of a string longer than its bound before it takes the substring",
+				give: code,
+				want: "\t\t\ti += n\n\t\t\tif l > 2 {\n\t\t\t\treturn wire.MaxError(\"C.S\", 1, off+i+2, 2)\n\t\t\t}\n" +
+					"\t\t\tm.S = slab[off+i : off+i+int(l)]\n",
+			},
+			{
+				name: "fails the decode of a byte slice longer than its bound before it copies the bytes",
+				give: code,
+				want: "\t\t\ti += n\n\t\t\tif l > 3 {\n\t\t\t\treturn wire.MaxError(\"C.B\", 2, off+i+3, 3)\n\t\t\t}\n" +
+					"\t\t\tm.B = append(m.B[:0], data[i:i+int(l)]...)\n",
+			},
+			{
+				name: "fails the view method of a byte slice longer than its bound at the byte past the bound",
+				give: code,
+				want: "\tl, n := wire.Uvarint(v[i:])\n\tif l > 3 {\n\t\treturn nil, wire.MaxError(\"C.B\", 2, i+n+3, 3)\n" +
+					"\t}\n\treturn []byte(v[i+n : i+n+int(l)]), nil\n",
+			},
+			{
+				name: "checks the bound of every occurrence of a byte slice in the scan of IndexKanon",
+				give: code,
+				want: "\t\t\tl, n := wire.Uvarint(v[i:])\n\t\t\tif l > 3 {\n" +
+					"\t\t\t\treturn CIndex{}, wire.MaxError(\"C.B\", 2, i+n+3, 3)\n\t\t\t}\n\t\t\tix.at[1] = i + 1\n",
+			},
+			{
+				name: "returns the value alone from the index method of a bounded byte slice",
+				give: code,
+				want: "func (ix CIndex) B() []byte {\n\tv, i := ix.v, ix.at[1]-1\n\tif i < 0 {\n\t\treturn nil\n\t}\n" +
+					"\tl, n := wire.Uvarint(v[i:])\n\treturn []byte(v[i+n : i+n+int(l)])\n}\n",
+			},
+			{
+				name: "fails the encode of a string longer than its bound before it writes the string",
+				give: code,
+				want: "\tif m.S != \"\" {\n\t\tif len(m.S) > 2 {\n" +
+					"\t\t\treturn 0, wire.MarshalError(kanon.ErrMax, \"C.S\", 1)\n\t\t}\n",
+			},
+			{
+				name: "states the bound of a streamed byte slice in the schema of the stream decoder",
+				give: code,
+				want: `{Tag: 3<<3 | wire.Bytes, Loc: "C.D", Max: 4},`,
+			},
+			{
+				name: "states the bound of a string in the Spec of the test file",
+				give: spec,
+				want: `{Name: "S", Number: 1, Max: 2},`,
+			},
+		}
+		for _, tt := range lengths {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, tt.give, tt.want, "the generated file checks the length of the bounded field")
+			})
+		}
 		failures := []struct {
 			name  string
 			files map[string]string
@@ -172,18 +253,13 @@ func TestBound(t *testing.T) {
 				want:  "kanon: a.go:4:2: A.X: " + boundKind,
 			},
 			{
-				name:  "returns an error for the tag option max on a string",
-				files: map[string]string{source: structA("X string `kanon:\",max=2\"`")},
-				want:  "kanon: a.go:4:2: A.X: " + boundKind,
-			},
-			{
-				name:  "returns an error for the tag option max on a byte slice",
-				files: map[string]string{source: structA("X []byte `kanon:\",max=2\"`")},
-				want:  "kanon: a.go:4:2: A.X: " + boundKind,
-			},
-			{
 				name:  "returns an error for the tag option max on an array",
 				files: map[string]string{source: structA("X [2]int32 `kanon:\",max=2\"`")},
+				want:  "kanon: a.go:4:2: A.X: " + boundKind,
+			},
+			{
+				name:  "returns an error for the tag option max on a byte array",
+				files: map[string]string{source: structA("X [4]byte `kanon:\",max=2\"`")},
 				want:  "kanon: a.go:4:2: A.X: " + boundKind,
 			},
 			{
@@ -192,8 +268,18 @@ func TestBound(t *testing.T) {
 				want:  "kanon: a.go:4:2: A.X: " + boundKind,
 			},
 			{
+				name:  "returns an error for the tag option max on a pointer to a string",
+				files: map[string]string{source: structA("X *string `kanon:\",max=2\"`")},
+				want:  "kanon: a.go:4:2: A.X: " + boundKind,
+			},
+			{
 				name:  "returns an error for the tag option max on a slice type that encodes itself",
 				files: map[string]string{source: selfSlice + structA("X T `kanon:\",max=2\"`")},
+				want:  "kanon: a.go:10:2: A.X: " + boundKind,
+			},
+			{
+				name:  "returns an error for the tag option max on a string type that encodes itself",
+				files: map[string]string{source: selfString + structA("X T `kanon:\",max=2\"`")},
 				want:  "kanon: a.go:10:2: A.X: " + boundKind,
 			},
 		}
@@ -207,6 +293,6 @@ func TestBound(t *testing.T) {
 }
 
 // boundKind is the reason of the error of the tag option max on a field that
-// is not a slice or a map.
-const boundKind = "the tag option max applies to a slice or a map, other than a byte slice and a type that " +
-	"encodes itself"
+// is not a string, a byte slice, a slice or a map.
+const boundKind = "the tag option max applies to a string, a byte slice, a slice or a map, other than a type " +
+	"that encodes itself"

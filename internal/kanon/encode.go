@@ -23,8 +23,8 @@ const (
 // a struct whose encoding can fail. [emitter.doc] wraps its words.
 const encodeFailure = `It fails when the value of a field fails to encode: a type that encodes itself returns an
 error, ValidateKanon of a type rejects a value, an interface stores a type that the tag option types of its field
-does not list, a map has a key with a NaN component or two keys of one projection, or a slice or a map has more
-elements than the tag option max of its field allows.`
+does not list, a map has a key with a NaN component or two keys of one projection, or a value is longer than the
+tag option max of its field allows.`
 
 // neverFails states the error of the encoding methods of a struct whose
 // encoding cannot fail.

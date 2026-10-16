@@ -22,14 +22,19 @@ type place struct {
 	// decodes it: the value is at level depth-k, and its decode fails when
 	// that is negative.
 	k int
+	// bound is the bound of the tag option max of the field of the value, and
+	// 0 for a field without the option. The read of a string and of a byte
+	// slice checks it, as [emitter.lengthCheck] writes the check.
+	bound int
 	// checked reports that the decode of a value before this one checked
 	// the level depth-k, so that the decode of a struct at it makes no check
 	// of its own: the value of a map whose key checks its level.
 	checked bool
-	// ranged reports that a scan before the read checked the range of the
-	// integer at p, so that the read does not check the range again. The
-	// methods of an index type read their fields after such a scan.
-	ranged bool
+	// scanned reports that a scan before the read checked the range of an
+	// integer and the bound of a string or a byte slice at p. The read then
+	// does not check them again. The methods of an index type read their
+	// fields after such a scan.
+	scanned bool
 }
 
 // offset returns the expression of the offset of the value at p in the
@@ -419,7 +424,7 @@ func (e *emitter) skipField(m *target) {
 // body, and its body has no such check.
 func (e *emitter) readField(m *target, f *field) {
 	x, v := "m."+f.name, f.val
-	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), k: 1}
+	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), k: 1, bound: f.tag.max}
 	if !e.canonical {
 		format := wireName(fieldWire(f))
 		e.line("if tag != %d<<3|%s%s {", f.num, e.wire(), format)
@@ -627,8 +632,11 @@ func (e *emitter) readExact(p place, size int64) {
 // [value.merges] reports: with the flag set, dst merges the decoded value as
 // a repeated field merges it. dst is addressable, or the value that a pointer
 // points at, as (*p). The statements declare variables, and every group of
-// them reads dst. A kanon.Validator then calls its ValidateKanon on dst, and
-// its error names the offset of the value.
+// them reads dst. A string and a byte slice at a place with a bound fail for
+// a length above it after the checks of the length, before the copy, as
+// [emitter.lengthCheck] writes the check. For a kanon.Validator, the
+// statements then call ValidateKanon on dst and fail with its error at the
+// offset of the value.
 func (e *emitter) read(v *value, dst string, p place, merge string) {
 	w := e.wire()
 	e.validFrom(v, p)
@@ -668,10 +676,12 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		e.line("i += %d", complex128Width)
 	case kindString:
 		e.readLength(p)
+		e.lengthCheck(p, "off+i")
 		e.line("%s = %s", dst, e.cast(v, "slab[off+i:off+i+int(l)]", types.String))
 		e.line("i += int(l)")
 	case kindBytes:
 		e.readLength(p)
+		e.lengthCheck(p, "off+i")
 		e.line("%s = append(%s[:0], data[i:i+int(l)]...)", dst, primary(dst))
 		e.line("i += int(l)")
 	case kindByteArray:
@@ -760,7 +770,7 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 // that the varint u encodes. For an integer whose Go type is narrower than
 // 64 bits, it first writes the statements that reject a value outside the
 // range of the type, at the offset of the varint. It writes none when
-// p.ranged reports that a scan checked the range before.
+// p.scanned reports that a scan checked the range before.
 func (e *emitter) varint(v *value, u string, p place) string {
 	if v.kind == kindBool {
 		return e.cast(v, u+" != 0", types.Bool)
@@ -769,7 +779,7 @@ func (e *emitter) varint(v *value, u string, p place) string {
 	if v.signed() {
 		x, wide = e.wire()+"Unzigzag("+u+")", types.Int64
 	}
-	if !v.narrow() || p.ranged {
+	if !v.narrow() || p.scanned {
 		return e.cast(v, x, wide)
 	}
 	if v.signed() {
