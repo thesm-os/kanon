@@ -1,5 +1,5 @@
 {
-  "ergon": "0.8.4",
+  "ergon": "0.10.0",
   "files": [
     {
       "path": ".commitlint.yaml",
@@ -37,6 +37,11 @@
       "sha256": "847a27513a667c4b096a937d209b6403718968d300cd7353a38091dd403ffb94"
     },
     {
+      "path": ".github/actionlint.yaml",
+      "producer": "github",
+      "sha256": "1b1fca0de871f5975557a62370b65ab114cd19c0adf2735ccba2c7947961867e"
+    },
+    {
       "path": ".github/actions/setup-ergon/action.yml",
       "producer": "github",
       "sha256": "4aaa13da8da70d09dea1654946ca0badb00a13e00999eaef1a780e9230acad93"
@@ -60,12 +65,12 @@
       "path": ".github/workflows/ci.yml",
       "producer": "github",
       "local": "7ce6d37e3956a350bb7f372218cc1d43534784c164e696e8ebcb618247cc27d2",
-      "sha256": "ba5a14ccd41f3ccb5da4fbdc67961cd344c035dd12d1940edcfe09507951b252"
+      "sha256": "f6862921faa16b471886dfc7a9086be36a300536a774378eca460978ec7b59b2"
     },
     {
       "path": ".github/workflows/codeql.yml",
       "producer": "github",
-      "sha256": "219b2a3e23e5b10b2e7ea9e33cb6bfb937d97c93ac9886df9d86793370e4af8b"
+      "sha256": "5e07fa561318aaf54ca5a6d3edab8644647d25de75225b40cf3fe2474fb1abaa"
     },
     {
       "path": ".github/workflows/nightly.yml",
@@ -80,7 +85,7 @@
     {
       "path": ".github/workflows/security.yml",
       "producer": "github",
-      "sha256": "623fd26152fc68d822fcf30ffb781d146bd8efb3a94d3ec0ed709b5c2a67f45b"
+      "sha256": "d8e417da7c7c24961381966bc06f18d494867fc77fde0d3925910253f1a5b2e3"
     },
     {
       "path": ".github/workflows/version.yml",
@@ -97,7 +102,7 @@
       "path": ".golangci.yml",
       "producer": "go",
       "local": "36306a14709695cae269bc14b3d9826bbe891754e8522e884e6d1199138d0f23",
-      "sha256": "a8ced6856d2db27f004e707776f09f86d208a7760bce01c7573061c4dcbf6287"
+      "sha256": "0dfea9545072f546e653ddec1f63e3c1ca360f84b53e8d7c00a316cb3a8806ea"
     },
     {
       "path": ".goreleaser.yaml",
@@ -107,12 +112,17 @@
     {
       "path": ".markdownlint.yml",
       "producer": "common",
-      "sha256": "cf54e52b8bdd1fcfcc74679b59f5dc6494e168e7f01de2504fcbfd54cc0f0845"
+      "sha256": "ebb529758bc8537e5e88a8772020d015d2782c80202faf274d62b8f3b62162e4"
+    },
+    {
+      "path": ".markdownlintignore",
+      "producer": "common",
+      "sha256": "cd1c6710f77a903d1a44995a27c3f52c3327b5dfb493fddf87f130ae6b0f7f1f"
     },
     {
       "path": ".pre-commit-config.yaml",
       "producer": "common",
-      "sha256": "ecaa2fc2648601525a24707cf06193b20f5e8db8df7d0b1264caaeb9e629b4c2"
+      "sha256": "6eac5d714a351b97a4cdf0d698c8c218c534c035d7ad967aa5bd3c952d2dc42a"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -128,7 +138,7 @@
       "path": "Makefile",
       "producer": "common",
       "local": "10d8734aaef3094cdefd5f56c89911c5f8d918d994d0027ff19ce4b5c7db135e",
-      "sha256": "bfcfba0ca2f8558383e58a07ffce51f3f975d9994ae5b5a242a5b62d782137f9"
+      "sha256": "b8c6f818dfa4c206469e4a8076b7293aee34dcc98fb1c77cdc96c500463c5800"
     },
     {
       "path": "NOTICE",
@@ -137,13 +147,11 @@
     }
   ],
   "settings": {
-    "common.ci.actions.markdownlint.commit": "21c1be1b93ad9ed58fa840aacc3f279cde2a72ff",
-    "common.ci.actions.markdownlint.release": "v24.2.0",
-    "common.ci.actions.markdownlint.uses": "DavidAnson/markdownlint-cli2-action",
     "common.ci.timeout": 10,
     "common.ergon": [
       "ergon"
     ],
+    "common.hooks.exclude": "",
     "common.hooks.pre-commit": [
       "lint",
       "test"
@@ -158,6 +166,12 @@
       "windows/amd64": "e8f90d08616ab8cd987b2dbef7ae0ee7fd1cb43c97f5a1ad171e8a56d1bd2f3d"
     },
     "common.tools.commitlint.version": "0.12.0",
+    "common.tools.rumdl.sha256": {
+      "darwin/arm64": "8c0ecf93a61bf612df5f6c6f22813d066a6f51a5680f3c12da49b93ed892aebb",
+      "linux/amd64": "a85ae77c6880616118e10dda1e36292df59815bcfbf767201736ff6971213cf3",
+      "windows/amd64": "07d12118c143976fadaaf7d053ac6be328798ce3b59b3f774572ac946b123672"
+    },
+    "common.tools.rumdl.version": "0.2.79",
     "github.ci.actions.attest.commit": "1e69f48acb82d1966a394da916b4c1698aa569d6",
     "github.ci.actions.attest.release": "v4.2.2",
     "github.ci.actions.attest.uses": "actions/attest",
@@ -186,6 +200,7 @@
     "github.ci.actions.upload-artifact.release": "v7.0.2",
     "github.ci.actions.upload-artifact.uses": "actions/upload-artifact",
     "github.ci.timeout": 15,
+    "github.code-security": true,
     "github.linux": "ubuntu-26.04",
     "github.make": "4.4.1",
     "github.nightly.schedule": "0 3 * * *",
@@ -194,6 +209,12 @@
       "macos-26",
       "windows-2025"
     ],
+    "github.tools.actionlint.sha256": {
+      "darwin/arm64": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+      "linux/amd64": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+      "windows/amd64": "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+    },
+    "github.tools.actionlint.version": "1.7.12",
     "go.audit.args": [],
     "go.bench.args": [
       "-benchmem"
