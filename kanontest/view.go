@@ -31,10 +31,13 @@ const indexName = "IndexKanon"
 //   - the second occurrence of a field of fields whose values a decode
 //     merges, which one byte slice cannot hold;
 //   - an occurrence of an integer field of fields whose value is outside the
-//     range of its Go type, as [setVarint] checks it.
+//     range of its Go type, as [setVarint] checks it;
+//   - the byte past the bound of an occurrence of a string or a byte slice
+//     field of fields that is longer than the Max of the field.
 //
 // The reference view of a field fails at the same sites before it reads a
-// value. It checks the range of an integer at the last occurrence alone.
+// value. It checks the range of an integer and the bound of a string or a byte
+// slice at the last occurrence alone.
 // indexError returns nil when the scan passes. It also returns nil without
 // a scan when fields is empty. The IndexKanon of a view type that does not
 // read a field does not scan the encoding.
@@ -70,6 +73,15 @@ func indexError(l *layout, fields []*field, data []byte) error {
 				if err := setVarint(s, reflect.New(s.typ).Elem(), u, l.loc(f), f.Number, i); err != nil {
 					return err
 				}
+			}
+			if f.Max == 0 {
+				continue
+			}
+			// A field that a view reads and that has a Max is a string or a byte
+			// slice. Its value is a length of width bytes and the bytes that the
+			// length counts.
+			if _, width := wire.Uvarint(data[i:]); skipped-width > f.Max {
+				return wire.MaxError(l.loc(f), f.Number, i+width+f.Max, f.Max)
 			}
 		}
 		at = i + skipped
@@ -195,13 +207,14 @@ func (s *suite[T, P]) viewResult(tb assert.TB, fields map[string]*field, owner r
 // l for data, the reference of the generated view methods: the value of the
 // last occurrence of f, or of the value that f points at, decoded alone, or
 // the zero value when data has no occurrence of f. The value of a string, a
-// byte slice and a struct is the bytes after its length, and the value of a
-// string or a byte slice of a kanon.Validator is those bytes converted to
-// its type, which passes its ValidateKanon at the offset of the value. A
-// struct has one occurrence at most, since a decode merges its occurrences,
-// and view returns the error of wire.FindOne for it, which wraps
-// kanon.ErrRepeatedView for a second one. view returns the error of
-// wire.Find for any other value, and the error of the decode of the value.
+// byte slice and a struct is the bytes after its length. The view of a string
+// or a byte slice that is longer than the Max of f fails at the byte past the
+// bound. The value of a string or a byte slice of a kanon.Validator is those
+// bytes converted to its type, which then passes its ValidateKanon at the
+// offset of the value. A struct has one occurrence at most, since a decode
+// merges its occurrences, and view returns the error of wire.FindOne for it,
+// which wraps kanon.ErrRepeatedView for a second one. view returns the error
+// of wire.Find for any other value, and the error of the decode of the value.
 func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error) {
 	s := f.viewShape()
 	d := &decoder{r: r}
@@ -212,6 +225,9 @@ func (r *resolver) view(l *layout, f *field, data []byte) (reflect.Value, error)
 			var start, end int
 			start, end, err = d.length(data, i, 0, l.loc(f), f.Number)
 			b = data[start:end]
+			if f.Max > 0 && end-start > f.Max {
+				err = wire.MaxError(l.loc(f), f.Number, start+f.Max, f.Max)
+			}
 		}
 		if !s.validate {
 			return reflect.ValueOf(b), err

@@ -40,7 +40,7 @@
 //     or that encodes to another length than its SizeKanon, an interface
 //     that stores a type that its field does not list, a map with a key
 //     with a NaN component or with two keys of one projection, or a field
-//     with the tag option max at one element past its bound;
+//     with the tag option max at a length one above its bound;
 //   - the key sample, whose map keys differ in one part each and have no
 //     NaN component;
 //   - wide samples, whose maps have more entries than a decode reuses, and
@@ -95,24 +95,29 @@
 // # Bounds
 //
 // A field with the tag option max, whose bound the Max of its Field states,
-// has at most its bound of elements in every sample, other than a sample
-// that fails at the field. The bound of a field of a struct with a kanon
-// codec that a sample contains is the one that its tag states. The reference
-// encoder fails a value with more elements, and the reference decoder fails
-// at the element that would take the field past the bound, as the generated
-// code fails. The reference decoder counts the keys of a map under ==, as the
-// generated code counts them before it keeps one entry per projection.
+// has a length of at most its bound in every sample, other than a sample
+// that fails at the field: the bytes of a string or a byte slice, the
+// elements of a slice and the entries of a map. The bound of a field of a
+// struct with a kanon codec that a sample contains is the one that its tag
+// states. The reference encoder fails a longer value. The reference decoder
+// fails at the byte, the element or the entry that would take the field past
+// the bound, as the generated code fails. It checks each occurrence of a
+// string or a byte slice on its own, after the checks of the varint of its
+// length, and counts the keys of a map under ==, as the generated code counts
+// them before it keeps one entry per projection.
 //
 // The checks that run once on every sample also run on the bound samples.
 // The probes that cut a sample at each byte, write a value of it wrong, or
 // leave out its elements one at a time leave them out, so that the time of
 // their checks grows linearly with the bound, and the golden file pins the
 // encoding of a bound sample by its length and a digest. A merge of a bound
-// sample into its own decode fails at its first element for a slice, and
-// succeeds for a map, whose keys the decode has already. One more family of
-// probes decodes each field with a bound alone at one element past it, the
-// last element in the order of the encoding, and fails with kanon.ErrMax. A
-// map whose key type has no more keys than the bound has no such probe.
+// sample into its own decode fails at its first element for a slice,
+// succeeds for a map, whose keys the decode has already, and succeeds for a
+// string and a byte slice, which the merge replaces. One more family of
+// probes decodes each field with a bound alone at a length one above it, with
+// the extra byte, element or entry last in the order of the encoding, and
+// fails with kanon.ErrMax. A map whose key type has no more keys than the
+// bound has no such probe.
 //
 // # Canonical Specs
 //
@@ -151,15 +156,19 @@
 // reference view of the field that it names returns: the value of the last
 // occurrence of the field, or of the value that the field points at,
 // decoded alone, and the bytes after the length of a string, a byte slice
-// and a struct. The method of a struct fails with kanon.ErrRepeatedView at
-// the tag of a second occurrence, since a decode merges the occurrences.
+// and a struct. The method of a string or a byte slice with the tag option
+// max fails with kanon.ErrMax for a last occurrence longer than the bound.
+// The method of a struct fails with kanon.ErrRepeatedView at the tag of a
+// second occurrence, since a decode merges the occurrences.
 //
 // When the view type has IndexKanon, a check calls it on the same inputs.
 // It returns the first error of one reference scan of the input. The scan
 // fails where the reference view of a field that the view reads fails
 // before it reads a value. It also fails at an occurrence of an integer
-// field whose value is outside the range of its Go type. A decode fails at
-// the same occurrence. Without an error, each method of the index returns
+// field whose value is outside the range of its Go type, and at an
+// occurrence of a string or a byte slice longer than the bound of its field.
+// A decode fails at the same occurrence. Without an error, each method of the
+// index returns
 // the value of the reference view of its field. The method of a time, a
 // complex128, a byte array and a type that encodes itself also returns the
 // error of the reference view. The method of any other field returns the
@@ -206,8 +215,9 @@
 //   - Integers take the range of their width. An int, a uint and a uintptr
 //     take 32 bits, as in the samples.
 //   - Floats range from -Inf to +Inf, NaN included.
-//   - Strings and byte slices take up to 255 arbitrary bytes, and a nil
-//     byte slice differs from an empty one.
+//   - Strings and byte slices take up to 255 arbitrary bytes, and at most the
+//     bound of a field with the tag option max. A nil byte slice differs from
+//     an empty one.
 //   - Times take the range of time.Time, in UTC or in a fixed zone.
 //   - Slices and maps take up to 4 elements or nil, three levels deep at
 //     most, and at most the bound of a field with the tag option max.

@@ -67,9 +67,9 @@ type Field struct {
 	Types []ConcreteType
 	// Number is the field number.
 	Number int
-	// Max is the bound of the tag option max: the most elements of a slice,
-	// or entries of a map, that a value of the field has, and 0 for a field
-	// without the option.
+	// Max is the bound of the tag option max, and 0 for a field without the
+	// option. It is the most bytes of a string or a byte slice, and the most
+	// elements or entries of a slice or a map.
 	Max int
 	// Fixed reports the tag option fixed: the 32- and 64-bit integers in
 	// the type of the field take the fixed-size encoding, except in map

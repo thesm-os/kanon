@@ -315,9 +315,9 @@ func (e *encoder) appendSelected(b []byte, l *layout, f *field, x reflect.Value)
 // struct and of any other type that encodes itself encodes before its
 // presence is known, as the generated code encodes it, so its failure
 // counts when the value has no bytes. A field with the tag option max whose
-// value has more elements than its bound fails with kanon.ErrMax, after the
-// failures of its value, since the generated code checks the bound before it
-// writes the value. The encoding still has the value.
+// value is longer than its bound fails with kanon.ErrMax, after the failures
+// of its value, since the generated code checks the bound before it writes
+// the value. The encoding still has the value.
 func (e *encoder) appendField(b []byte, loc string, f *field, x reflect.Value, member bool) []byte {
 	s := f.shape
 	if s.kind == kindPointer {

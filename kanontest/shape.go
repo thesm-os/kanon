@@ -68,6 +68,11 @@ const (
 	kindInterface kind = 19
 )
 
+// boundedKinds lists the kinds of the values whose length the tag option max
+// bounds: a string and a byte slice by their bytes, and a slice and a map by
+// their elements.
+var boundedKinds = []kind{kindString, kindBytes, kindSlice, kindMap}
+
 // Words of the kanon struct tag that change which fields of a struct type
 // that no Spec describes are encoded, and how many elements a sample gives
 // them.
@@ -78,8 +83,8 @@ const (
 	tagSkip = "-"
 	// tagUnknown marks the field that keeps unknown fields.
 	tagUnknown = "unknown"
-	// tagMax begins the tag option max, which bounds the elements of a slice
-	// or a map field.
+	// tagMax begins the tag option max, which bounds the length of a string,
+	// a byte slice, a slice or a map field.
 	tagMax = "max="
 	// tagSeparator separates the words of a tag.
 	tagSeparator = ","
@@ -349,7 +354,7 @@ func newResolver[T any](spec Spec[T]) (*resolver, *layout, error) {
 // describes with fields and unknown, in ascending field number. It fails
 // as [newResolver] states, for an unexported discriminator or unknown
 // field, which the generator rejects, and for a Max below 0 or on a field
-// that is not a slice or a map.
+// of a kind that [boundedKinds] does not list.
 func (r *resolver) describe(l *layout, fields []Field, unknown string) error {
 	for _, f := range fields {
 		sf, ok := l.typ.FieldByName(f.Name)
@@ -363,9 +368,9 @@ func (r *resolver) describe(l *layout, fields []Field, unknown string) error {
 		if f.Max < 0 {
 			return fmt.Errorf("kanontest: the Spec bounds field %s of %s at %d, below 1", f.Name, l.typ, f.Max)
 		}
-		if f.Max > 0 && s.kind != kindSlice && s.kind != kindMap {
-			return fmt.Errorf("kanontest: the Spec bounds field %s of %s, whose type %s is not a slice or a map",
-				f.Name, l.typ, s.typ)
+		if f.Max > 0 && !slices.Contains(boundedKinds, s.kind) {
+			return fmt.Errorf("kanontest: the Spec bounds field %s of %s, whose type %s is not a string, a byte "+
+				"slice, a slice or a map", f.Name, l.typ, s.typ)
 		}
 		for _, c := range f.Types {
 			if !slices.Contains(r.concretes, c.Type) {

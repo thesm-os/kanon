@@ -277,8 +277,8 @@ type suite[T any, P Codec[T]] struct {
 	// the bound.
 	bounds []sample[T]
 	// overs lists, per field of T with the tag option max that takes a value
-	// past its bound, the sample that sets the field alone at one element
-	// more, which fails to encode. The probes of the bound decode its
+	// past its bound, the sample that sets the field alone at a length one
+	// above it, which fails to encode. The probes of the bound decode its
 	// reference encoding.
 	overs []sample[T]
 	// pieces lists the pieces of the samples, which the probes cut and
@@ -328,7 +328,8 @@ type probe struct {
 //     entries per choice of the widest pick, so that every choice meets
 //     every length of a slice;
 //   - per field, the sample of entry 1 that sets that field alone, and per
-//     union member its zero value and a sample per table entry;
+//     union member its zero value and a sample per table entry, each within
+//     the bound of a field with the tag option max;
 //   - per table sample and per value in it that can fail to encode, the
 //     sample in which that value alone fails, once per way to fail it;
 //   - the wide samples, whose maps have more entries than a decode reuses,
@@ -338,8 +339,8 @@ type probe struct {
 //     [resolver.failingSides] finds them, the first wide sample that has
 //     such a map, with one entry of the first such map failing at that side;
 //   - per field with the tag option max, the samples of [suite.bound]: the
-//     field alone at its bound, and at one element more when the field takes
-//     such a value.
+//     field alone at its bound, and at a length one above it when the field
+//     takes such a value.
 //
 // It fails as [Checks] states.
 func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
@@ -370,14 +371,14 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 	s.samples = append([]sample[T]{s.sample("the zero value", reflect.New(l.typ).Elem())}, s.tables...)
 	for _, f := range l.fields {
 		s.samples = append(s.samples,
-			s.sample("the sample of field "+f.Name, s.with(f, r.build(table(fieldEntry), f.shape, nesting))))
+			s.sample("the sample of field "+f.Name, s.with(f, r.build(f.within(table(fieldEntry)), f.shape, nesting))))
 		if f.Union == "" {
 			continue
 		}
 		s.samples = append(s.samples, s.sample("the zero member "+f.Name, s.with(f, reflect.Zero(f.shape.typ))))
 		for i := range tables {
 			s.samples = append(s.samples, s.sample("table sample "+strconv.Itoa(i)+" of member "+f.Name,
-				s.with(f, r.build(table(i), f.shape, nesting))))
+				s.with(f, r.build(f.within(table(i)), f.shape, nesting))))
 		}
 	}
 	for i := range tables {
@@ -414,18 +415,18 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 	return s, nil
 }
 
-// bound returns the samples of the field f of T with the tag option max that
-// set f alone, from a [filled] source: at its bound, and at one element
-// more, whose extra element is the last in the order of the encoding. A
-// slice at its bound leaves out the last element, and a map the entry of its
-// largest key, as [resolver.compareKeys] orders the keys. It reports whether
-// the second sample has more elements than the bound, which a map whose key
-// type has no more keys than the bound does not have: it has every key in
-// both samples.
+// bound returns two samples that set the field f of T with the tag option max
+// alone, from a [filled] source. The first has f at its bound, and the second
+// at a length one above it. The extra byte, element or entry of the second is
+// the last in the order of the encoding. A string, a byte slice and a slice at their bound leave out
+// the last byte or element, and a map the entry of its largest key, as
+// [resolver.compareKeys] orders the keys. It reports whether the second
+// sample is longer than the bound, which a map whose key type has no more
+// keys than the bound is not: it has every key in both samples.
 func (s *suite[T, P]) bound(f *field) (sample[T], sample[T], bool) {
 	over := s.r.build(filled{n: f.Max + 1}, f.shape, nesting)
 	at := s.r.build(filled{n: f.Max + 1}, f.shape, nesting)
-	if f.shape.kind == kindSlice {
+	if f.shape.kind != kindMap {
 		at = at.Slice(0, f.Max)
 	} else if at.Len() > f.Max {
 		last := slices.MaxFunc(at.MapKeys(), func(a, b reflect.Value) int { return s.r.compareKeys(f.shape.key, a, b) })

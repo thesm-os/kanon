@@ -52,6 +52,15 @@ var (
 		Fields:    []kanontest.Field{{Name: "Items", Number: 1, Max: 2}, {Name: "Meta", Number: 2, Max: 1}},
 		Canonical: true,
 	}
+	// noteSpec describes bound.Note, the type of the test vectors of the bound
+	// on a string and a byte slice, with the bound 2 on Label and 3 on Body,
+	// and its view type.
+	noteSpec = kanontest.Spec[bound.Note]{
+		Fields: []kanontest.Field{
+			{Name: "Label", Number: 1, Max: 2}, {Name: "Body", Number: 2, Max: 3}, {Name: "Seq", Number: 3},
+		},
+		View: bound.NoteView(nil),
+	}
 )
 
 // maxOff is a bound.Page whose DecodeKanon reports the offset of an element
@@ -66,6 +75,18 @@ func (m *maxOff) DecodeKanon(data []byte, opts kanon.Options) error {
 		e.Offset++
 	}
 	return err
+}
+
+// lengthPast is a bound.Note whose DecodeKanon decodes a string or a byte
+// slice past its bound without an error.
+type lengthPast struct{ bound.Note }
+
+// DecodeKanon decodes data, and drops an error that wraps kanon.ErrMax.
+func (m *lengthPast) DecodeKanon(data []byte, opts kanon.Options) error {
+	if err := renamed(m.Note.DecodeKanon(data, opts), "Note", "lengthPast"); !errors.Is(err, kanon.ErrMax) {
+		return err
+	}
+	return nil
 }
 
 // lenientOff is a canonical.Maps whose DecodeKanon decodes input that is not
@@ -121,6 +142,7 @@ var valuesSpec = kanontest.Spec[validate.Values]{
 		{Name: "Amount", Number: 2},
 		{Name: "Tick", Number: 3},
 		{Name: "Code", Number: 4},
+		{Name: "Label", Number: 27, Max: 2},
 		{Name: "Ratio", Number: 5},
 		{Name: "Tags", Number: 6},
 		{Name: "Scores", Number: 7},
@@ -330,6 +352,14 @@ func TestProbe(t *testing.T) {
 		t.Run("fails for a codec that reports another offset for an element past a bound", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[maxOff]{Fields: boundSpec.Fields, Canonical: true}, pastCheck, errorCheck)
+		})
+		t.Run("passes a type with a string and a byte slice with a bound", func(t *testing.T) {
+			t.Parallel()
+			passes(t, noteSpec)
+		})
+		t.Run("fails for a codec that decodes a string past its bound", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[lengthPast]{Fields: noteSpec.Fields}, pastCheck, errorCheck)
 		})
 	})
 }

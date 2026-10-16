@@ -61,6 +61,10 @@ const (
 // widePrefix begins every string of a wide sample.
 const widePrefix = "w"
 
+// fillByte is each byte of a string and a byte slice that a [filled] source
+// supplies: a value at or past the bound of its field.
+const fillByte = "f"
+
 // keyLoc is the location of the errors of the encodings of map keys that
 // the builder compares, which it discards.
 const keyLoc = "map.key"
@@ -99,9 +103,10 @@ type partSource interface {
 	count() int
 	// entries returns the number of entries of a map, and -1 for a nil one.
 	entries() int
-	// most returns the most elements of a slice, and entries of a map, that
-	// the builder gives the value of the source. It is the bound of the
-	// field for a [bounded] source, and math.MaxInt for any other source.
+	// most returns the longest length that the builder gives the value of the
+	// source: the bytes of a string or a byte slice, the elements of a slice
+	// and the entries of a map. It is the bound of the field for a [bounded]
+	// source, and math.MaxInt for any other source.
 	most() int
 	// set reports whether a pointer is not nil.
 	set() bool
@@ -251,9 +256,9 @@ func (counting) fail() bool { return false }
 func (counting) failEntry(*shape, bool) bool { return false }
 
 // bounded is the source of the value of a field with the tag option max that
-// keeps to its bound: the values of src, with at most max elements in the
-// slice or the map of the field itself. Its parts are the parts of src,
-// since the bound applies to the field alone.
+// keeps to its bound: the values of src, with a length of at most max in the
+// field itself. Its parts are the parts of src, since the bound applies to
+// the field alone.
 type bounded struct {
 	source
 	max int
@@ -275,13 +280,19 @@ func (l lean) part(k int) source { return lean{l.counting + counting(k)} }
 // entries returns 1.
 func (lean) entries() int { return 1 }
 
-// filled is the source of the value of a field with the tag option max at n
-// elements: n elements in the slice, or n entries in the map, of the field
-// itself, whose parts are lean.
+// filled is the source of the value of a field with the tag option max at a
+// length of n. The field has n bytes, elements or entries. Its parts are
+// lean.
 type filled struct {
 	lean
 	n int
 }
+
+// text returns n bytes of fillByte.
+func (f filled) text() string { return strings.Repeat(fillByte, f.n) }
+
+// bytes returns n bytes of fillByte.
+func (f filled) bytes() []byte { return []byte(f.text()) }
 
 // count returns n.
 func (f filled) count() int { return f.n }
@@ -1025,8 +1036,10 @@ func choices(l *layout) int {
 
 // scalar sets v, a bool, a number, a string, a byte slice or a byte array,
 // or a value of a type that encodes itself, to the value of its Go kind
-// that src supplies. A struct that encodes itself takes the values of its
-// exported fields. Any other value of such a type keeps its zero value.
+// that src supplies. A string and a byte slice take the first bytes of that
+// value, at most as many as src.most returns. A struct that encodes itself
+// takes the values of its exported fields. Any other value of such a type
+// keeps its zero value.
 func (r *resolver) scalar(src source, v reflect.Value, depth int) {
 	t := v.Type()
 	switch t.Kind() {
@@ -1041,10 +1054,11 @@ func (r *resolver) scalar(src source, v reflect.Value, depth int) {
 	case reflect.Complex64, reflect.Complex128:
 		v.SetComplex(complex(src.float(t.Bits()/2), src.part(1).float(t.Bits()/2)))
 	case reflect.String:
-		v.SetString(src.text())
+		s := src.text()
+		v.SetString(s[:min(len(s), src.most())])
 	case reflect.Slice:
 		if b := src.bytes(); b != nil && t.Elem() == reflect.TypeFor[byte]() {
-			v.SetBytes(b)
+			v.SetBytes(b[:min(len(b), src.most())])
 		}
 	case reflect.Array:
 		if src.count() >= 0 && t.Elem() == reflect.TypeFor[byte]() {
@@ -1060,10 +1074,10 @@ func (r *resolver) scalar(src source, v reflect.Value, depth int) {
 
 // fill sets the fields of v, a struct of the layout l, from src: field k of
 // the layout takes part k+1. A field with the tag option max counts as one
-// value that can fail, before the values that it contains: it takes one
-// element more than its bound when its part fails it, as a [filled] source
-// builds it, and at most its bound of elements otherwise, as a [bounded]
-// source builds it. A union takes the member that the part of the number of
+// value that can fail, before the values that it contains: it takes a length
+// one above its bound when its part fails it, as a [filled] source builds it,
+// and a length of at most its bound otherwise, as a [bounded] source builds
+// it. A union takes the member that the part of the number of
 // its first member picks, or the zero discriminator, and every member has a
 // value.
 func (r *resolver) fill(src source, l *layout, v reflect.Value, depth int) {
@@ -1073,10 +1087,7 @@ func (r *resolver) fill(src source, l *layout, v reflect.Value, depth int) {
 			f.of(v).Set(r.build(filled{n: f.Max + 1}, f.shape, depth))
 			continue
 		}
-		if f.Max > 0 {
-			part = bounded{part, f.Max}
-		}
-		f.of(v).Set(r.build(part, f.shape, depth))
+		f.of(v).Set(r.build(f.within(part), f.shape, depth))
 	}
 	for _, members := range l.unions() {
 		d := v.FieldByIndex(members[0].disc)
@@ -1137,4 +1148,13 @@ func newTarget(t reflect.Type) reflect.Value {
 		return reflect.New(holder).Elem().Field(1).Addr()
 	}
 	return reflect.New(t)
+}
+
+// within returns src for the value of f, which a [bounded] source keeps to
+// the bound of f when f has the tag option max.
+func (f *field) within(src source) source {
+	if f.Max == 0 {
+		return src
+	}
+	return bounded{src, f.Max}
 }

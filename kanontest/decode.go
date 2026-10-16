@@ -182,7 +182,9 @@ func byLength(s *shape) bool {
 // member replaces the union: it selects the member, whose value it replaces.
 // A slice and a map with the tag option max fail at the element that would
 // take them past the bound of f, as [decoder.readSlice] and [decoder.readMap]
-// state.
+// state. A string and a byte slice with the option fail at an occurrence
+// longer than the bound, at the offset of its byte past the bound, after the
+// checks of the varint of the length and before the decode of the value.
 func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, off, lv int) (int, error) {
 	s, x, loc, num := f.shape, f.of(v), l.loc(f), f.Number
 	if f.Union != "" {
@@ -213,6 +215,17 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 		return d.mergeInterface(s, x, data, i, off, lv-1, loc, num)
 	case kindPointer:
 		return d.pointerField(s, x, data, i, off, lv, loc, num)
+	case kindString, kindBytes:
+		if f.Max > 0 {
+			start, end, err := d.length(data, i, off, loc, num)
+			if err != nil {
+				return 0, err
+			}
+			if end-start > f.Max {
+				return 0, wire.MaxError(loc, num, off+start+f.Max, f.Max)
+			}
+		}
+		return d.read(s, x, data, i, off, lv-1, loc, num)
 	default:
 		return d.read(s, x, data, i, off, lv-1, loc, num)
 	}

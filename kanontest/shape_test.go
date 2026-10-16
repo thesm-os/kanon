@@ -367,14 +367,15 @@ func TestShape(t *testing.T) {
 			}}
 			rejects(t, spec, specCheck, "the Spec bounds field Lists of bound.Shelf at -1, below 1")
 		})
-		t.Run("fails for a Max on a field that is not a slice or a map", func(t *testing.T) {
+		t.Run("fails for a Max on a field without a length", func(t *testing.T) {
 			t.Parallel()
-			spec := kanontest.Spec[bound.Shelf]{Fields: []kanontest.Field{
-				{Name: "Name", Number: 1, Max: 2},
-				{Name: "Lists", Number: 2},
+			spec := kanontest.Spec[bound.Note]{Fields: []kanontest.Field{
+				{Name: "Label", Number: 1, Max: 2},
+				{Name: "Body", Number: 2, Max: 3},
+				{Name: "Seq", Number: 3, Max: 2},
 			}}
-			rejects(t, spec, specCheck,
-				"the Spec bounds field Name of bound.Shelf, whose type string is not a slice or a map")
+			rejects(t, spec, specCheck, "the Spec bounds field Seq of bound.Note, whose type uint64 is not a "+
+				"string, a byte slice, a slice or a map")
 		})
 	})
 }

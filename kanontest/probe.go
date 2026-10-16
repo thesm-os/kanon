@@ -119,8 +119,9 @@ func (s *suite[T, P]) decodeFamilies() []probeFamily {
 
 // pasts returns the probes of the bound: the reference encoding of each
 // sample of [suite.overs], which sets a field with the tag option max alone
-// at one element past its bound, the last in the order of the encoding. The
-// reference encoder writes the encoding, whose encode fails.
+// at a length one above its bound, with the extra byte, element or entry last
+// in the order of the encoding. The reference encoder writes the encoding,
+// whose encode fails.
 func (s *suite[T, P]) pasts() []probe {
 	out := make([]probe, len(s.overs))
 	for k, x := range s.overs {

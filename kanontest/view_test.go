@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.thesmos.sh/kanon"
+	"go.thesmos.sh/kanon/internal/fixture/bound"
 	"go.thesmos.sh/kanon/internal/fixture/validate"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
@@ -128,6 +129,38 @@ func (v rangeless) IndexKanon() (view.ItemIndex, error) {
 	return x, err
 }
 
+// lengthless is a view of bound.Note whose IndexKanon does not check the
+// bound of Label and of Body.
+type lengthless []byte
+
+// Label returns the Label of the encoding in v.
+func (v lengthless) Label() ([]byte, error) { return bound.NoteView(v).Label() }
+
+// IndexKanon returns the index of the encoding in v. It returns the zero
+// index and no error for an encoding whose scan fails with kanon.ErrMax.
+func (v lengthless) IndexKanon() (bound.NoteIndex, error) {
+	x, err := bound.NoteView(v).IndexKanon()
+	if errors.Is(err, kanon.ErrMax) {
+		return bound.NoteIndex{}, nil
+	}
+	return x, err
+}
+
+// unbounded is a view of bound.Note whose Label returns the bytes of the last
+// Label whatever their length.
+type unbounded []byte
+
+// Label returns the bytes of the last Label of the encoding in v, without the
+// check of its bound.
+func (v unbounded) Label() ([]byte, error) {
+	i, err := wire.Find(v, 1<<3|wire.Bytes, "Note.Label")
+	if err != nil || i < 0 {
+		return nil, err
+	}
+	l, n := wire.Uvarint(v[i:])
+	return v[i+n : i+n+int(l)], nil
+}
+
 // nameless is a view of view.Item whose Name returns no bytes.
 type nameless []byte
 
@@ -225,6 +258,15 @@ func TestView(t *testing.T) {
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: unchecked(nil)}, viewCheck,
 				"unchecked.Count returns the error of the reference decode")
 		})
+		t.Run("passes the view type of a struct with a string and a byte slice with a bound", func(t *testing.T) {
+			t.Parallel()
+			holds(t, noteSpec, viewCheck)
+		})
+		t.Run("fails for a view method that returns a string past its bound", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[bound.Note]{Fields: noteSpec.Fields, View: unbounded(nil)}, viewCheck,
+				"unbounded.Label returns the error of the reference decode")
+		})
 		t.Run("fails for a view method of a struct that returns the last of two occurrences", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Record]{Fields: recordSpec.Fields, View: lastItem(nil)}, viewCheck,
@@ -264,6 +306,15 @@ func TestView(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[view.Item]{Fields: itemSpec.Fields, View: rangeless(nil)}, indexCheck,
 				"rangeless.IndexKanon returns the error of the reference index")
+		})
+		t.Run("passes the index of a struct with a string and a byte slice with a bound", func(t *testing.T) {
+			t.Parallel()
+			holds(t, noteSpec, indexCheck)
+		})
+		t.Run("fails for an IndexKanon that does not check the bound of a string", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[bound.Note]{Fields: noteSpec.Fields, View: lengthless(nil)}, indexCheck,
+				"lengthless.IndexKanon returns the error of the reference index")
 		})
 		t.Run("fails for an index method that returns an error for a field whose read cannot fail", func(t *testing.T) {
 			t.Parallel()
