@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 4 of the generator.
+// The file compiles against a runtime that supports version 5 of the generator.
 const (
-	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
+	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
 )
 
 // The generated types implement kanon.Cloner.
@@ -467,8 +467,9 @@ type PrivateIndex struct {
 // value, at an occurrence of a field that a method reads with another wire
 // format, and at the second occurrence of a struct field. It also fails at an
 // occurrence of an integer field whose value is outside the range of its Go
-// type. A decode fails at the same occurrence. The method of PrivateView checks
-// only the last occurrence.
+// type, and at an occurrence of a string or a byte slice that is longer than
+// the tag option max of its field allows. A decode fails at the same
+// occurrence. The method of PrivateView checks only the last occurrence.
 func (v PrivateView) IndexKanon() (PrivateIndex, error) {
 	ix := PrivateIndex{v: v}
 	for i := 0; i < len(v); {
@@ -743,8 +744,9 @@ type PrivateKeyIndex struct {
 // or value, at an occurrence of a field that a method reads with another wire
 // format, and at the second occurrence of a struct field. It also fails at an
 // occurrence of an integer field whose value is outside the range of its Go
-// type. A decode fails at the same occurrence. The method of PrivateKeyView
-// checks only the last occurrence.
+// type, and at an occurrence of a string or a byte slice that is longer than
+// the tag option max of its field allows. A decode fails at the same
+// occurrence. The method of PrivateKeyView checks only the last occurrence.
 func (v PrivateKeyView) IndexKanon() (PrivateKeyIndex, error) {
 	ix := PrivateKeyIndex{v: v}
 	for i := 0; i < len(v); {

@@ -12,11 +12,11 @@ import (
 	"go.thesmos.sh/kanon/internal/fixture/bound"
 )
 
-// Details of the errors of the test vectors, which state the bound of the
-// field.
+// Details of the errors of the test vectors. Each detail contains the bound
+// of its field.
 const (
-	itemsDetail = "more elements than the max of 2"
-	metaDetail  = "more elements than the max of 1"
+	itemsDetail = "longer than the max of 2"
+	metaDetail  = "longer than the max of 1"
 )
 
 func TestPage(t *testing.T) {

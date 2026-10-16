@@ -31,12 +31,15 @@ type Valid interface {
 // member of the union, which the encode writes at both of its values: a
 // field of a bool is present at true alone, so that the encode of a Flag
 // field would either fail for every value that it writes or for none. The
-// code writes and reads Era without the call.
+// code writes and reads Era without the call. Label is a Code with the tag
+// option max, whose bound the encode and the decode check before they call
+// ValidateKanon.
 type Values struct {
 	Level   Level
 	Amount  Amount
 	Tick    Tick
 	Code    Code
+	Label   Code `kanon:",max=2"`
 	Ratio   Ratio
 	Tags    Tags
 	Scores  Scores

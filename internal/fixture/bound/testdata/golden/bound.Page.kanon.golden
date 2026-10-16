@@ -9,22 +9,22 @@ table sample 6: 0a0201ff12020001
 table sample 7: 0a060004deadbeef
 the sample of field Items: 0a0504deadbeef
 the sample of field Meta: 1207056b616e6f6e7f
-table sample 0 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 0 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 1 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 1 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 2 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 2 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 3 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 3 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 4 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 4 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 5 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 5 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 6 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 6 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
-table sample 7 that fails at value 0: fails: kanon: Page.Items (field 1): more elements than the max of the field
-table sample 7 that fails at value 1: fails: kanon: Page.Meta (field 2): more elements than the max of the field
+table sample 0 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 0 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 1 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 1 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 2 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 2 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 3 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 3 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 4 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 4 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 5 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 5 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 6 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 6 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
+table sample 7 that fails at value 0: fails: kanon: Page.Items (field 1): value longer than the max of its field
+table sample 7 that fails at value 1: fails: kanon: Page.Meta (field 2): value longer than the max of its field
 wide sample 0: 0a03027731120402773203
 wide sample 1: 0a03027732120402773304
 the key sample: 0a820101007f61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161120c056b616e6f6e808080808001

@@ -17,6 +17,7 @@ var kanonSpecValues = kanontest.Spec[Values]{
 		{Name: "Amount", Number: 2},
 		{Name: "Tick", Number: 3},
 		{Name: "Code", Number: 4},
+		{Name: "Label", Number: 27, Max: 2},
 		{Name: "Ratio", Number: 5},
 		{Name: "Tags", Number: 6},
 		{Name: "Scores", Number: 7},

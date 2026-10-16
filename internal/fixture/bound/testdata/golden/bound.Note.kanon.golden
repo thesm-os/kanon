@@ -1,0 +1,46 @@
+the zero value: 
+table sample 0: 0a026b61120100188001
+table sample 1: 0a02c3a9120361616118808080808001
+table sample 2: 0a026161120362626218808080808080808001
+table sample 3: 0a0262621880808080808080808001
+table sample 4: 0a0100120363636318ffffffffffffffffff01
+table sample 5: 0a0263631201ff
+table sample 6: 0a02fffe1801
+table sample 7: 1203deadbe187f
+the sample of field Label: 0a026b61
+the sample of field Body: 1203deadbe
+the sample of field Seq: 1801
+table sample 0 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 0 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 1 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 1 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 2 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 2 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 3 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 3 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 4 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 4 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 5 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 5 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 6 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 6 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+table sample 7 that fails at value 0: fails: kanon: Note.Label (field 1): value longer than the max of its field
+table sample 7 that fails at value 1: fails: kanon: Note.Body (field 2): value longer than the max of its field
+wide sample 0: 0a027731120277321803
+wide sample 1: 0a027732120277331804
+the key sample: 0a02c3a9120361616118808080808001
+the sample of field Label at its bound: 4 bytes, digest 9cf63ed3049cb9d5
+the sample of field Body at its bound: 5 bytes, digest b89698e02aaafb48
+DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode: 956 probes, digest a17c0914158ab024
+DecodeKanon/decodes a field between unknown fields with one value written wrong as the reference decode: 50 probes, digest 63763898bf057e2e
+DecodeKanon/decodes a field between unknown fields with a value that its ValidateKanon rejects as the reference decode: 0 probes, digest cbf29ce484222325
+DecodeKanon/decodes a field between unknown fields with one changed byte as the reference decode: 315 probes, digest 76b6d888a89e5849
+DecodeKanon/decodes a field between unknown fields with its tag in another wire format as the reference decode: 69 probes, digest 84c5a43d8f791d78
+DecodeKanon/decodes a field between unknown fields written twice as the reference decode: 23 probes, digest e51b00af50da09bd
+DecodeKanon/decodes a field between unknown fields under each depth limit as the reference decode: 145 probes, digest 8ac0ff071079fba1
+DecodeKanon/decodes an encoding that writes every field twice as the reference decode: 17 probes, digest 431e3b5bba439f52
+DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probes, digest a13d1fed44540502
+DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 17 probes, digest 74117b7049e37eb2
+DecodeKanon/decodes a field with one element past its bound as the reference decode: 2 probes, digest 29d5bca0dc20b4bb
+the samples that the encode allocation checks measure: 12 samples, digest 4673b390494f9fc
+the samples that the decode allocation check measures: 12 samples, digest 4673b390494f9fc

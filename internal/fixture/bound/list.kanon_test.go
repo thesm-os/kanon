@@ -21,6 +21,7 @@ var kanonSpecList = kanontest.Spec[List]{
 		{Name: "Tables", Number: 9, Max: 2},
 		{Name: "Tags", Number: 6, Union: "Kind", Case: ListKindTags, Max: 2},
 		{Name: "Code", Number: 7, Union: "Kind", Case: ListKindCode},
+		{Name: "Name", Number: 10, Union: "Kind", Case: ListKindName, Max: 2},
 		{Name: "Window", Number: 8},
 	},
 	Structs: []kanontest.Struct{
@@ -29,6 +30,7 @@ var kanonSpecList = kanontest.Spec[List]{
 			Name: "window",
 			Fields: []kanontest.Field{
 				{Name: "Marks", Number: 1, Max: 2},
+				{Name: "Stamp", Number: 2, Max: 2},
 			},
 		},
 	},

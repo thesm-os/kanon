@@ -16,10 +16,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 4 of the generator.
+// The file compiles against a runtime that supports version 5 of the generator.
 const (
-	_ = kanon.EnforceVersion(4 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 4)
+	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
 )
 
 // The generated types implement kanon.Cloner.
@@ -47,8 +47,8 @@ func (m *Failing) SizeKanon() int {
 // fails when the value of a field fails to encode: a type that encodes itself
 // returns an error, ValidateKanon of a type rejects a value, an interface
 // stores a type that the tag option types of its field does not list, a map has
-// a key with a NaN component or two keys of one projection, or a slice or a map
-// has more elements than the tag option max of its field allows.
+// a key with a NaN component or two keys of one projection, or a value is
+// longer than the tag option max of its field allows.
 func (m *Failing) EncodeKanon(buf []byte) (int, error) {
 	if m == nil {
 		return 0, nil
@@ -65,8 +65,8 @@ func (m *Failing) EncodeKanon(buf []byte) (int, error) {
 // fails to encode: a type that encodes itself returns an error, ValidateKanon
 // of a type rejects a value, an interface stores a type that the tag option
 // types of its field does not list, a map has a key with a NaN component or two
-// keys of one projection, or a slice or a map has more elements than the tag
-// option max of its field allows.
+// keys of one projection, or a value is longer than the tag option max of its
+// field allows.
 func (m *Failing) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
 	if m.Word != (codec.Word{}) {
@@ -86,8 +86,8 @@ func (m *Failing) encodeKanon(buf []byte) (int, error) {
 // when the value of a field fails to encode: a type that encodes itself returns
 // an error, ValidateKanon of a type rejects a value, an interface stores a type
 // that the tag option types of its field does not list, a map has a key with a
-// NaN component or two keys of one projection, or a slice or a map has more
-// elements than the tag option max of its field allows.
+// NaN component or two keys of one projection, or a value is longer than the
+// tag option max of its field allows.
 func (m *Failing) AppendBinary(b []byte) ([]byte, error) {
 	if m == nil {
 		return b, nil
@@ -105,7 +105,7 @@ func (m *Failing) AppendBinary(b []byte) ([]byte, error) {
 // encodes itself returns an error, ValidateKanon of a type rejects a value, an
 // interface stores a type that the tag option types of its field does not list,
 // a map has a key with a NaN component or two keys of one projection, or a
-// slice or a map has more elements than the tag option max of its field allows.
+// value is longer than the tag option max of its field allows.
 func (m *Failing) MarshalBinary() ([]byte, error) {
 	return m.AppendBinary(nil)
 }
@@ -247,8 +247,8 @@ func (m *Chain) SizeKanon() int {
 // fails when the value of a field fails to encode: a type that encodes itself
 // returns an error, ValidateKanon of a type rejects a value, an interface
 // stores a type that the tag option types of its field does not list, a map has
-// a key with a NaN component or two keys of one projection, or a slice or a map
-// has more elements than the tag option max of its field allows.
+// a key with a NaN component or two keys of one projection, or a value is
+// longer than the tag option max of its field allows.
 func (m *Chain) EncodeKanon(buf []byte) (int, error) {
 	if m == nil {
 		return 0, nil
@@ -265,8 +265,8 @@ func (m *Chain) EncodeKanon(buf []byte) (int, error) {
 // fails to encode: a type that encodes itself returns an error, ValidateKanon
 // of a type rejects a value, an interface stores a type that the tag option
 // types of its field does not list, a map has a key with a NaN component or two
-// keys of one projection, or a slice or a map has more elements than the tag
-// option max of its field allows.
+// keys of one projection, or a value is longer than the tag option max of its
+// field allows.
 func (m *Chain) encodeKanon(buf []byte) (int, error) {
 	i := len(buf)
 	if len(m.ByName) > 0 {
@@ -309,8 +309,8 @@ func (m *Chain) encodeKanon(buf []byte) (int, error) {
 // when the value of a field fails to encode: a type that encodes itself returns
 // an error, ValidateKanon of a type rejects a value, an interface stores a type
 // that the tag option types of its field does not list, a map has a key with a
-// NaN component or two keys of one projection, or a slice or a map has more
-// elements than the tag option max of its field allows.
+// NaN component or two keys of one projection, or a value is longer than the
+// tag option max of its field allows.
 func (m *Chain) AppendBinary(b []byte) ([]byte, error) {
 	if m == nil {
 		return b, nil
@@ -328,7 +328,7 @@ func (m *Chain) AppendBinary(b []byte) ([]byte, error) {
 // encodes itself returns an error, ValidateKanon of a type rejects a value, an
 // interface stores a type that the tag option types of its field does not list,
 // a map has a key with a NaN component or two keys of one projection, or a
-// slice or a map has more elements than the tag option max of its field allows.
+// value is longer than the tag option max of its field allows.
 func (m *Chain) MarshalBinary() ([]byte, error) {
 	return m.AppendBinary(nil)
 }

@@ -9,14 +9,14 @@ table sample 6: 0a02fffe1212070a056b616e6f6e090a07c3a9e29c93cf89
 table sample 7: 
 the sample of field Title: 0a056b616e6f6e
 the sample of field Entries: 120a090a07c3a9e29c93cf89
-table sample 0 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 1 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 2 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 3 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 4 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 5 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 6 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
-table sample 7 that fails at value 0: fails: kanon: Feed.Entries (field 2): more elements than the max of the field
+table sample 0 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 1 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 2 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 3 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 4 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 5 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 6 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
+table sample 7 that fails at value 0: fails: kanon: Feed.Entries (field 2): value longer than the max of its field
 wide sample 0: 0a0277311205040a027733
 wide sample 1: 0a0277321205040a027734
 the key sample: 0a07c3a9e29c93cf89

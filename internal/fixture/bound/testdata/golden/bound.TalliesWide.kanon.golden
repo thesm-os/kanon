@@ -8,21 +8,21 @@ table sample 5:
 table sample 6: 0a050400000000
 table sample 7: 0a0a04000000000401000000
 the sample of field List: 0a050401000000
-table sample 0 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 0 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 0 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
-table sample 1 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 1 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 1 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
 table sample 1 that fails at value 2: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
-table sample 2 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
-table sample 3 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 2 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
+table sample 3 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 3 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
-table sample 4 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 4 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 4 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
 table sample 4 that fails at value 2: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
-table sample 5 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
-table sample 6 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 5 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
+table sample 6 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 6 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
-table sample 7 that fails at value 0: fails: kanon: TalliesWide.List (field 1): more elements than the max of the field
+table sample 7 that fails at value 0: fails: kanon: TalliesWide.List (field 1): value longer than the max of its field
 table sample 7 that fails at value 1: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
 table sample 7 that fails at value 2: fails: kanon: TalliesWide.List (field 1): bound: the void tally has no encoding
 wide sample 0: 0a050401000000

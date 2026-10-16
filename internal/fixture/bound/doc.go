@@ -1,11 +1,15 @@
 // Copyright ThesmOS B.V. 2026
 // SPDX-License-Identifier: Apache-2.0
 
-// Package bound declares fixtures with slice and map fields that have the
-// tag option max. The generated tests run the checks of kanontest over each
-// of them:
+// Package bound declares fixtures with string, byte slice, slice and map
+// fields that have the tag option max. The generated tests run the checks of
+// kanontest over each of them:
 //
-//   - [Page] is the canonical type of the test vectors of the bound.
+//   - [Page] is the canonical type of the test vectors of the bound on a
+//     slice and a map.
+//   - [Note] is the type of the test vectors of the bound on a string and a
+//     byte slice, with a view type and a streamed byte slice. It accepts
+//     every encoding of a value, so that a field can occur more than once.
 //   - [List] accepts every encoding of a value. An unbounded field and the
 //     elements of a nested slice share its bounded read functions, and it
 //     has a bounded union member, a bounded map with pointer keys and an
