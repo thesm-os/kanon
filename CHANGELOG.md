@@ -1,5 +1,15 @@
 # go.thesmos.sh/kanon
 
+## 0.3.0
+
+### Minor Changes
+
+- b0566b4: Bound the length of a string or a byte slice field with the tag option `max`.
+
+### Patch Changes
+
+- b0566b4: Reword `kanon.ErrMax` and the detail of `wire.MaxError` as "longer than the max" for every kind of bounded field.
+
 ## 0.2.0
 
 ### Minor Changes
