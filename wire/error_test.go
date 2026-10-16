@@ -230,9 +230,9 @@ func TestError(t *testing.T) {
 			},
 		},
 		{
-			name: "MaxError/names the bound at the field of the element",
+			name: "MaxError/locates the value past the bound at the field with the bound in the detail",
 			err:  wire.MaxError(errLoc, errNumber, errOff, errBound),
-			want: located(kanon.ErrMax, "more elements than the max of 65536"),
+			want: located(kanon.ErrMax, "longer than the max of 65536"),
 		},
 	}
 	for _, c := range cases {

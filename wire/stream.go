@@ -47,9 +47,10 @@ type StreamField struct {
 	// Tag is the tag of the field: its number shifted left by three bits,
 	// with the wire format Bytes in the low bits.
 	Tag uint64
-	// Max is the bound of the tag option max of a slice: the most elements
-	// that the slice takes over every occurrence of the field. It is 0 for a
-	// slice without the option, a byte slice and a string.
+	// Max is the bound of the tag option max: the most elements that a slice
+	// takes over every occurrence of the field, and the most bytes of each
+	// occurrence of a byte slice or a string. It is 0 for a field without the
+	// option.
 	Max int
 }
 
@@ -136,7 +137,9 @@ func (r Run) Slab() string {
 // one is in the buffer of the long element, which grows to the longest
 // element. A slice whose [StreamField] has a Max counts its elements over
 // every occurrence of the field, and its element past that bound fails with
-// kanon.ErrMax before Element reads its length.
+// kanon.ErrMax before Element reads its length. A byte slice or a string whose
+// StreamField has a Max fails with kanon.ErrMax in Open when its length is
+// above the Max, before the caller reads a byte of it.
 //
 // # Errors
 //
@@ -157,7 +160,8 @@ func (r Run) Slab() string {
 // # Allocation contract
 //
 // Init allocates the counts of the elements of the streamed slices when a
-// field of the schema has a Max. The first Reset allocates the read buffer.
+// streamed slice of the schema has a Max. The first Reset allocates the read
+// buffer.
 // Next and Value append to the
 // buffer of the decoded fields and to the buffer of the long element, which
 // grow to the decoded fields of an encoding and to its longest element of
@@ -190,7 +194,7 @@ type Stream struct {
 	pending error
 	// counts has, per streamed field of the schema, the number of the
 	// elements that Value returned over every occurrence of the field, when a
-	// field of the schema has a Max, and is nil otherwise.
+	// streamed slice of the schema has a Max, and is nil otherwise.
 	counts []int
 	// cur is the streamed field that Open opened last.
 	cur StreamField
@@ -232,13 +236,14 @@ type Stream struct {
 // it once, before the first Reset. A Buffer of 0 or less selects
 // kanon.DefaultBuffer, and the Depth selects the nesting limit that
 // kanon.Options.Limit returns for it. Init allocates the counts of the
-// elements of the streamed slices when a field of the schema has a Max.
+// elements of the streamed slices when a streamed slice of the schema has a
+// Max.
 func (s *Stream) Init(schema *StreamSchema, opts kanon.StreamOptions) {
 	s.schema = schema
 	bounded := false
 	for _, f := range schema.Fields {
 		s.marks |= 1 << ((f.Tag >> 3) & 63)
-		bounded = bounded || f.Max > 0
+		bounded = bounded || f.Max > 0 && f.Elem != ""
 	}
 	if bounded {
 		s.counts = make([]int, len(schema.Fields))
@@ -312,6 +317,8 @@ func (s *Stream) Next() (Run, error) {
 //     the offset of the length.
 //   - In a canonical decode, a length longer than its shortest form fails at
 //     the same offset.
+//   - A byte slice or a string whose [StreamField] has a Max fails at the
+//     offset of its byte past the Max when its length is above the Max.
 //   - A slice under a negative Depth, which rejects every nested value,
 //     fails at the offset of the value.
 //   - In a canonical decode, a value of no bytes, which the encoding leaves
@@ -340,6 +347,9 @@ func (s *Stream) Open() (int, error) {
 	}
 	if s.schema.Canonical && n > 1 && s.ahead[n-1] == 0 {
 		return 0, s.stop(LongFormError(n, f.Loc, num, int(at)))
+	}
+	if f.Elem == "" && f.Max > 0 && l > uint64(f.Max) {
+		return 0, s.stop(MaxError(f.Loc, num, int(at)+n+f.Max, f.Max))
 	}
 	if f.Elem != "" && s.depth < 1 {
 		return 0, s.stop(DepthError(f.Loc, num, int(at)+n))

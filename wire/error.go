@@ -231,12 +231,13 @@ func LimitError(loc string, num, off, limit int) error {
 	return decodeError(kanon.ErrLimit, loc, num, off, "value takes the buffer past "+strconv.Itoa(limit)+" bytes")
 }
 
-// MaxError returns the error of a decode for the element or the map entry
-// at offset off that would take the slice or the map of the field that loc
-// and num locate past bound elements, the bound of the tag option max of
-// the field. It wraps kanon.ErrMax, and its detail states bound.
+// MaxError returns the error of a decode for a field that is longer than the
+// bound of its tag option max. loc and num locate the field, and bound is the
+// bound. off is the offset of the byte at index bound of a string or a byte
+// slice, or of the element or the map entry at index bound of a slice or a
+// map. The error wraps kanon.ErrMax, and its detail contains bound.
 func MaxError(loc string, num, off, bound int) error {
-	return decodeError(kanon.ErrMax, loc, num, off, "more elements than the max of "+strconv.Itoa(bound))
+	return decodeError(kanon.ErrMax, loc, num, off, "longer than the max of "+strconv.Itoa(bound))
 }
 
 // SizeError returns the error for the encode of a value of a kanon.Sizer,
