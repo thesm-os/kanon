@@ -47,8 +47,11 @@ type decoder struct {
 // has its shortest form, that its field number is above the one before it
 // unless it is 0, that the schema lists the number, that the wire format is
 // the field's, and that the field is the first member of its union in data.
-// It then decodes the value, as [decoder.read] checks it, and last checks
-// the presence of the value, as [decoder.absent] states.
+// It then decodes the value, as [decoder.field] checks it, and checks the
+// presence of the value, as [decoder.absent] states. Last, a value of a
+// kanon.Validator passes its ValidateKanon. The encoder leaves out a value
+// that the encoding leaves out and does not call its ValidateKanon, so an
+// explicit zero fails at the presence rule whatever the method accepts.
 func (d *decoder) fields(l *layout, v reflect.Value, data []byte, off, lv int) error {
 	i := 0
 	var prior uint64
@@ -89,6 +92,9 @@ func (d *decoder) fields(l *layout, v reflect.Value, data []byte, off, lv int) e
 			start := i
 			if i, err = d.field(l, v, f, data, i, off, lv); err == nil {
 				err = d.absent(l, f, f.of(v), data, start, off+at)
+			}
+			if err == nil {
+				err = validated(f.shape, f.of(v), l.loc(f), f.Number, off+start)
 			}
 		}
 		if err != nil {
@@ -185,6 +191,10 @@ func byLength(s *shape) bool {
 // state. A string and a byte slice with the option fail at an occurrence
 // longer than the bound, at the offset of its byte past the bound, after the
 // checks of the varint of the length and before the decode of the value.
+// The value of f does not pass its ValidateKanon here, since
+// [decoder.fields] calls it after the presence rule. A value inside the
+// value of f, such as an element or the value of a pointer, passes its own,
+// as [decoder.read] checks it.
 func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, off, lv int) (int, error) {
 	s, x, loc, num := f.shape, f.of(v), l.loc(f), f.Number
 	if f.Union != "" {
@@ -203,14 +213,9 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 			return 0, err
 		}
 		if s.kind == kindSlice {
-			err = d.readSlice(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
-		} else {
-			err = d.readMap(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
+			return end, d.readSlice(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
 		}
-		if err == nil {
-			err = validated(s, x, loc, num, off+i)
-		}
-		return end, err
+		return end, d.readMap(s, x, data[start:end], off+start, lv-1, f.Max, loc, num)
 	case kindInterface:
 		return d.mergeInterface(s, x, data, i, off, lv-1, loc, num)
 	case kindPointer:
@@ -225,9 +230,9 @@ func (d *decoder) field(l *layout, v reflect.Value, f *field, data []byte, i, of
 				return 0, wire.MaxError(loc, num, off+start+f.Max, f.Max)
 			}
 		}
-		return d.read(s, x, data, i, off, lv-1, loc, num)
+		return d.readKind(s, x, data, i, off, lv-1, loc, num)
 	default:
-		return d.read(s, x, data, i, off, lv-1, loc, num)
+		return d.readKind(s, x, data, i, off, lv-1, loc, num)
 	}
 }
 
@@ -379,8 +384,9 @@ func (d *decoder) merge(s *shape, x reflect.Value, data []byte, i, off int, loc 
 
 // read decodes the value of s at data[i], at level lv, into x, which takes
 // the decoded value whole, and returns the offset after the value. loc and
-// num locate the value in errors. A kanon.Validator then passes its
-// ValidateKanon, whose error names the offset of the value.
+// num locate the value in errors. A value of a kanon.Validator then passes
+// its ValidateKanon. A value that the method rejects fails at the offset of
+// the value.
 func (d *decoder) read(s *shape, x reflect.Value, data []byte, i, off, lv int, loc string, num int) (int, error) {
 	end, err := d.readKind(s, x, data, i, off, lv, loc, num)
 	if err == nil {

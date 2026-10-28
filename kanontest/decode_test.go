@@ -13,6 +13,7 @@ import (
 	"go.thesmos.sh/kanon/internal/fixture/union"
 	"go.thesmos.sh/kanon/internal/fixture/view"
 	"go.thesmos.sh/kanon/kanontest"
+	"go.thesmos.sh/kanon/wire"
 )
 
 // Names of the decode checks that the cases run.
@@ -20,13 +21,14 @@ const (
 	unmarshalCheck = "UnmarshalBinary/decodes the reference encoding of each sample as the reference decode"
 	slabCheck      = "DecodeKanon/decodes an encoding in a slab at its offset as the reference decode"
 	prefixCheck    = "DecodeKanon/decodes each prefix of a field between unknown fields as the reference decode"
+	zeroCheck      = "DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode"
 )
 
 // scalarsSpec describes canonical.Scalars, a canonical struct with a field of
 // each kind of number, bools, text, arrays, a time, and types that encode
 // themselves, of which Count, Digest, Stamp and Serial, a kanon.Exact type,
 // are absent at their zero value and Gauge is present when its encoding has
-// bytes.
+// bytes. The ValidateKanon of Port rejects its zero value.
 var scalarsSpec = kanontest.Spec[canonical.Scalars]{
 	Fields: []kanontest.Field{
 		{Name: "Bool", Number: 1},
@@ -67,6 +69,7 @@ var scalarsSpec = kanontest.Spec[canonical.Scalars]{
 		{Name: "Serial", Number: 36},
 		{Name: "Serials", Number: 37},
 		{Name: "Era", Number: 38},
+		{Name: "Port", Number: 39},
 	},
 	Canonical: true,
 }
@@ -152,6 +155,23 @@ func (m *kindOff) DecodeKanon(data []byte, opts kanon.Options) error {
 	return err
 }
 
+// presenceLate is a canonical.Scalars whose DecodeKanon calls the
+// ValidateKanon of an explicit zero Port before the presence rule.
+type presenceLate struct{ canonical.Scalars }
+
+// DecodeKanon decodes data. It returns the error of the ValidateKanon of a
+// zero Port, at the offset of the value, in place of the error of the
+// presence rule for Port.
+func (m *presenceLate) DecodeKanon(data []byte, opts kanon.Options) error {
+	err := renamed(m.Scalars.DecodeKanon(data, opts), "Scalars", "presenceLate")
+	e, failed := errors.AsType[*kanon.DecodeError](err)
+	if !failed || err.Error() != wire.AbsentError("presenceLate.Port", e.Number, e.Offset).Error() {
+		return err
+	}
+	return wire.UnmarshalError(m.Port.ValidateKanon(), "presenceLate.Port", e.Number,
+		e.Offset+wire.SizeUvarint(uint64(e.Number)<<3))
+}
+
 // nanOff is a view.Record whose DecodeKanon decodes a NaN of Float64 as a
 // NaN of another payload.
 type nanOff struct{ view.Record }
@@ -194,6 +214,10 @@ func TestDecode(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[kindOff]{Fields: signedSpec.Fields}, slabCheck,
 				"DecodeKanon decodes the value of the reference decode")
+		})
+		t.Run("fails for a codec that validates an explicit zero before the presence rule", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[presenceLate]{Fields: scalarsSpec.Fields, Canonical: true}, zeroCheck, errorCheck)
 		})
 		t.Run("passes a codec that decodes a NaN to a NaN of another payload", func(t *testing.T) {
 			t.Parallel()
