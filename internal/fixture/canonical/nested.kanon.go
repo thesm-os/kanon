@@ -502,11 +502,11 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			return seen, err
 		}
 		i += int(l)
-		if err := m.Tags.ValidateKanon(); err != nil {
-			return seen, wire.UnmarshalError(err, "Deep.Tags", 10, from)
-		}
 		if l == 0 {
 			return seen, wire.AbsentError("Deep.Tags", 10, off+at)
+		}
+		if err := m.Tags.ValidateKanon(); err != nil {
+			return seen, wire.UnmarshalError(err, "Deep.Tags", 10, from)
 		}
 	}
 	if i < len(data) && data[i] == 11<<3|wire.Bytes {

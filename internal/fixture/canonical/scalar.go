@@ -31,7 +31,9 @@ type (
 // decodes without a second encode, and Serials encodes the zero Serial, so
 // that the put function of an element of a kanon.Exact type fails. Era is a
 // kanon.Validator of another package whose directive has no -validate, which
-// the code writes and reads without a call of its ValidateKanon.
+// the code writes and reads without a call of its ValidateKanon. The
+// ValidateKanon of Port rejects the zero value, so the canonical decode of an
+// explicit zero Port fails at the presence rule, before it calls the method.
 type Scalars struct {
 	Bool       bool
 	Flag       Flag
@@ -71,4 +73,5 @@ type Scalars struct {
 	Serial     codec.Serial
 	Serials    []codec.Serial
 	Era        validate.Era
+	Port       validate.Port
 }

@@ -50,6 +50,7 @@ var kanonSpecScalars = kanontest.Spec[Scalars]{
 		{Name: "Serial", Number: 36},
 		{Name: "Serials", Number: 37},
 		{Name: "Era", Number: 38},
+		{Name: "Port", Number: 39},
 	},
 	Canonical: true,
 }
