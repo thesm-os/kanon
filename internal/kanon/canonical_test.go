@@ -41,6 +41,14 @@ const canonicalStructs = "import \"time\"\n\n" +
 	"\tNamed map[Temp]bool\n\tPairs map[[2]float64]bool\n\tOne map[struct{}]int32\n\tMemo Note\n\tMark Seal\n}\n\n" +
 	"type E struct{}\n"
 
+// validatedTypes is the source of P, S and M, an integer, a slice and a map
+// type whose directive sets -validate. The decode of a struct with fields of
+// them calls their ValidateKanon.
+const validatedTypes = "//go:generate go tool kanon -type=P,S,M -validate=valid\n\n" +
+	"type P uint16\n\nfunc (p P) valid() error { return nil }\n\n" +
+	"type S []string\n\nfunc (s S) valid() error { return nil }\n\n" +
+	"type M map[string]int32\n\nfunc (m M) valid() error { return nil }\n"
+
 // generateCanonical returns the files that Generate returns with -canonical
 // for the types that types names, from a.go in dir, by name, and its error.
 func generateCanonical(t *testing.T, dir, types string) (map[string]string, error) {
@@ -378,6 +386,34 @@ func TestCanonical(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				assert.Contains(t, exact[codeName], tt.want, "the code file writes the check")
+			})
+		}
+		validated, validatedErr := generateCanonical(t, module(t, map[string]string{
+			"v.go": validatedTypes,
+			source: structA("Port P", "Names S", "Scores M"),
+		}), "A")
+		assert.NoError(t, validatedErr, "Generate generates the canonical struct type with kanon.Validator fields")
+		validatedChecks := []struct {
+			name string
+			want string
+		}{
+			{
+				name: "checks the presence of an integer field before its ValidateKanon",
+				want: "wire.AbsentError(\"A.Port\", 1, off+at)\n\t\t}\n\t\tif err := m.Port.ValidateKanon(); err != nil {",
+			},
+			{
+				name: "checks the presence of a slice field before its ValidateKanon",
+				want: "wire.AbsentError(\"A.Names\", 2, off+at)\n\t\t}\n\t\tif err := m.Names.ValidateKanon(); err != nil {",
+			},
+			{
+				name: "checks the presence of a map field before its ValidateKanon",
+				want: "wire.AbsentError(\"A.Scores\", 3, off+at)\n\t\t}\n\t\tif err := m.Scores.ValidateKanon(); err != nil {",
+			},
+		}
+		for _, tt := range validatedChecks {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, validated[codeName], tt.want, "the code file writes the check")
 			})
 		}
 		t.Run("encodes no value of a kanon.Exact type again", func(t *testing.T) {

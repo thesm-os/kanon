@@ -421,7 +421,11 @@ func (e *emitter) skipField(m *target) {
 //
 // The body checks the wire format of the tag first. The ordered decode of a
 // canonical code file matches the tag, wire format included, before the
-// body, and its body has no such check.
+// body, and its body has no such check. In a canonical code file the body
+// checks the presence of the value before the ValidateKanon of a
+// kanon.Validator. The encoder leaves out a value that the encoding leaves
+// out and does not call its ValidateKanon, so an explicit zero fails at the
+// presence rule whatever the method accepts.
 func (e *emitter) readField(m *target, f *field) {
 	x, v := "m."+f.name, f.val
 	p := place{loc: fieldLoc(m, f), num: strconv.Itoa(f.num), k: 1, bound: f.tag.max}
@@ -470,8 +474,8 @@ func (e *emitter) readField(m *target, f *field) {
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
-		e.validRead(v, x, p)
 		e.absent(f, x, p)
+		e.validRead(v, x, p)
 	case kindMap:
 		collect := trueName
 		if f.member == nil {
@@ -484,8 +488,8 @@ func (e *emitter) readField(m *target, f *field) {
 		e.fail("err")
 		e.line("}")
 		e.line("i += int(l)")
-		e.validRead(v, x, p)
 		e.absent(f, x, p)
+		e.validRead(v, x, p)
 	case kindBinary:
 		if e.canonical && f.member == nil && v.self.exact {
 			e.readExactField(v, x, p)
@@ -500,8 +504,10 @@ func (e *emitter) readField(m *target, f *field) {
 		e.read(v, x, p, "")
 		e.absent(f, x, p)
 	default:
-		e.read(v, x, p, "")
+		e.validFrom(v, p)
+		e.readKind(v, x, p, "")
 		e.absent(f, x, p)
+		e.validRead(v, x, p)
 	}
 	if _, ok := e.bits[f]; ok {
 		_, set := e.seen(f)
@@ -638,8 +644,16 @@ func (e *emitter) readExact(p place, size int64) {
 // statements then call ValidateKanon on dst and fail with its error at the
 // offset of the value.
 func (e *emitter) read(v *value, dst string, p place, merge string) {
-	w := e.wire()
 	e.validFrom(v, p)
+	e.readKind(v, dst, p, merge)
+	e.validRead(v, dst, p)
+}
+
+// readKind writes the statements of [emitter.read] by the kind of v, without
+// the call of ValidateKanon. The decode of a field calls the method after the
+// presence rule, as [emitter.readField] writes it.
+func (e *emitter) readKind(v *value, dst string, p place, merge string) {
+	w := e.wire()
 	switch v.kind {
 	case kindBool, kindInt, kindUint:
 		e.line("u, n := %sUvarint(data[i:])", w)
@@ -763,7 +777,6 @@ func (e *emitter) read(v *value, dst string, p place, merge string) {
 		e.check()
 		e.line("i += used")
 	}
-	e.validRead(v, dst, p)
 }
 
 // varint returns the expression of the value of v, a bool or an integer,
