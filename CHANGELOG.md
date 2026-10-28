@@ -1,5 +1,13 @@
 # go.thesmos.sh/kanon
 
+## 0.3.1
+
+### Patch Changes
+
+- 236ecc6: Fix the canonical decode of a validated field to return `kanon.ErrNotCanonical` for an explicit zero before it calls `ValidateKanon`.
+- 685fdc4: Fix the reference decode of `kanontest` to apply the presence rule of a canonical field before `ValidateKanon`.
+- 7275b48: Require `go.dokimi.dev/assert` v0.10.0.
+
 ## 0.3.0
 
 ### Minor Changes
