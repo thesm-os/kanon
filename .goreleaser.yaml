@@ -104,9 +104,9 @@ homebrew_casks:
       template: "https://github.com/thesm-os/kanon/releases/download/v{{ .Version }}/{{ .ArtifactName }}"
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/kanon"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/kanon"], must_succeed: false
           end
     repository:
       owner: thesm-os
