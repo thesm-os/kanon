@@ -267,9 +267,10 @@ type bounded struct {
 // most returns the bound of the field.
 func (b bounded) most() int { return b.max }
 
-// lean is the source of the parts of the value of a field at its bound: the
-// values of a wide sample, with one entry in every map, so that the time of
-// the checks of the value grows linearly with the bound.
+// lean is the source of a full sample and of the parts of the value of a
+// field at its bound: the values of a wide sample, with one entry in every
+// map. The time of the checks of a value at its bound then grows linearly
+// with the bound.
 type lean struct {
 	counting
 }

@@ -281,6 +281,14 @@ type suite[T any, P Codec[T]] struct {
 	// above it, which fails to encode. The probes of the bound decode its
 	// reference encoding.
 	overs []sample[T]
+	// full lists the full samples of a canonical Spec, one per choice of the
+	// widest pick. A full sample has the values of a wide sample with one
+	// element in every slice and map, nesting levels deep. Every bool in it is
+	// true, so two adjacent bools of a struct are present together. No table
+	// sample has two adjacent bools that are both true. The probes that break
+	// a rule of the canonical encoding in the encoding of a sample also change
+	// each full sample.
+	full []sample[T]
 	// pieces lists the pieces of the samples, which the probes cut and
 	// change, as [suite.piecesOf] returns them.
 	pieces []piece
@@ -340,7 +348,9 @@ type probe struct {
 //     such a map, with one entry of the first such map failing at that side;
 //   - per field with the tag option max, the samples of [suite.bound]: the
 //     field alone at its bound, and at a length one above it when the field
-//     takes such a value.
+//     takes such a value;
+//   - for a canonical Spec, per choice of the widest pick, a full sample,
+//     which a [lean] source fills nesting levels deep.
 //
 // It fails as [Checks] states.
 func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
@@ -409,6 +419,11 @@ func newSuite[T any, P Codec[T]](spec Spec[T]) (*suite[T, P], error) {
 		s.bounds = append(s.bounds, at)
 		if past {
 			s.overs = append(s.overs, over)
+		}
+	}
+	if r.canonical {
+		for n := range choices(l) {
+			s.full = append(s.full, s.sample("full sample "+strconv.Itoa(n), s.fill(lean{counting(n)}, nesting)))
 		}
 	}
 	s.pieces = s.piecesOf(s.samples)

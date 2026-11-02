@@ -64,3 +64,37 @@ func BenchmarkKanonDeep(b *testing.B) {
 func FuzzKanonDeep(f *testing.F) {
 	kanontest.Fuzz(f, kanonSpecDeep)
 }
+
+// kanonSpecBox describes Box to the conformance suite.
+var kanonSpecBox = kanontest.Spec[Box]{
+	Fields: []kanontest.Field{
+		{Name: "Count", Number: 1},
+		{Name: "Flags", Number: 2},
+	},
+	Structs: []kanontest.Struct{
+		{
+			Type: reflect.TypeFor[Flags](),
+			Name: "Flags",
+			Fields: []kanontest.Field{
+				{Name: "A", Number: 1},
+				{Name: "B", Number: 2},
+			},
+		},
+	},
+	Canonical: true,
+}
+
+// TestKanonBox runs the conformance suite on Box.
+func TestKanonBox(t *testing.T) {
+	kanontest.Run(t, kanonSpecBox)
+}
+
+// BenchmarkKanonBox measures the codec of Box.
+func BenchmarkKanonBox(b *testing.B) {
+	kanontest.Bench(b, kanonSpecBox)
+}
+
+// FuzzKanonBox fuzzes the decode of Box.
+func FuzzKanonBox(f *testing.F) {
+	kanontest.Fuzz(f, kanonSpecBox)
+}

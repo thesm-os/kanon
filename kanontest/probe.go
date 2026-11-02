@@ -133,7 +133,8 @@ func (s *suite[T, P]) pasts() []probe {
 // breachFamilies returns the families of the probes of a canonical Spec that
 // break one rule of the canonical encoding, one family per breach: in each
 // piece for breachLong, as [suite.longForms] returns them, and in the
-// encoding of each sample for the others, as [suite.breaching] returns them.
+// encoding of each sample and each full sample for the others, as
+// [suite.breaching] returns them.
 func (s *suite[T, P]) breachFamilies() []probeFamily {
 	return []probeFamily{
 		{
@@ -485,11 +486,11 @@ func (s *suite[T, P]) pieceLongForms(p *piece) []probe {
 }
 
 // breaching returns the function that returns the probes of the encoding of
-// every sample that encodes with the rule of the breach b broken at one of
-// its sites, as [suite.breaches] returns them.
+// every sample that encodes and of every full sample with the rule of the
+// breach b broken at one of its sites, as [suite.breaches] returns them.
 func (s *suite[T, P]) breaching(b breach) func() []probe {
 	return func() []probe {
-		xs := encodes(s.samples)
+		xs := encodes(slices.Concat(s.samples, s.full))
 		each := make([][]probe, len(xs))
 		for k, x := range xs {
 			each[k] = s.breaches(x, b)

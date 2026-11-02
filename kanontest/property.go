@@ -150,12 +150,13 @@ func (s *suite[T, P]) drawProbe(c *prop.Case, xs []sample[T]) probe {
 	return probes[c.Draw(prop.Integer(0, len(probes)-1), probeDraw)]
 }
 
-// over returns a copy of s whose samples and table samples are xs. The copy
-// has the pieces of xs, and no bulk samples and no samples of a bound, so
-// that the families of the decode checks derive their probes from xs alone.
+// over returns a copy of s whose samples and table samples are xs, and whose
+// pieces are the pieces of xs. The copy leaves out the bulk samples, the
+// samples of a bound and the full samples of s, so that the families of the
+// decode checks derive their probes from xs alone.
 func (s *suite[T, P]) over(xs []sample[T]) *suite[T, P] {
 	d := *s
-	d.samples, d.tables, d.bulk, d.bounds, d.overs = xs, xs, nil, nil, nil
+	d.samples, d.tables, d.bulk, d.bounds, d.overs, d.full = xs, xs, nil, nil, nil, nil
 	d.pieces = d.piecesOf(xs)
 	return &d
 }

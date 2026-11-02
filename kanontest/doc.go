@@ -143,6 +143,13 @@
 //   - the bytes of a value with a length written as zero bytes, which decode
 //     a type that encodes itself to its zero value.
 //
+// The last seven families also change the encoding of each full sample. A
+// canonical Spec has a full sample per choice of the widest pick. A full
+// sample has the values of a wide sample with one element in every slice and
+// map, and nests as deep as a table sample. Every bool in it is true. The
+// probes then swap two adjacent bools of a struct, which no table sample sets
+// together.
+//
 // A further check tests the reference decoder itself. The reference decode
 // of the encoding of each sample and of each probe succeeds exactly when the
 // input round-trips: the decode without the canonical rules succeeds, and

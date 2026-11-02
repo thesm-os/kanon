@@ -42,12 +42,12 @@ DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probe
 DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 16 probes, digest bea4d700e2f9e552
 DecodeKanon/decodes a field with one element past its bound as the reference decode: 2 probes, digest a9439f1e06c7b93d
 DecodeKanon/decodes a field with a varint one byte longer than its shortest form as the reference decode: 49 probes, digest 72c38a4c5182e194
-DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode: 3 probes, digest 49466839b8ad45a2
+DecodeKanon/decodes an encoding with two adjacent fields swapped as the reference decode: 4 probes, digest 3f6ae8d745e1b5e3
 DecodeKanon/decodes an encoding with two adjacent map entries swapped as the reference decode: 0 probes, digest cbf29ce484222325
-DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode: 24 probes, digest 5a339ecebd0fe1
-DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode: 22 probes, digest 591b7ad1d32b9c18
-DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode: 72 probes, digest bc83e7f956a50efb
+DecodeKanon/decodes an encoding with unknown fields at a field boundary as the reference decode: 27 probes, digest eac6c91562883e03
+DecodeKanon/decodes an encoding with a field written at its zero value as the reference decode: 24 probes, digest 59f38413b5b43830
+DecodeKanon/decodes an encoding with a malformed tag at a field boundary as the reference decode: 81 probes, digest a1e7f323358d4d63
 DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as the reference decode: 0 probes, digest cbf29ce484222325
-DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 29 probes, digest de0e4e8b529910c5
+DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 33 probes, digest a7a275c61831d688
 the samples that the encode allocation checks measure: 11 samples, digest 67e2785fc80dd786
 the samples that the decode allocation check measures: 11 samples, digest 67e2785fc80dd786

@@ -46,6 +46,15 @@ var (
 	// scoresSpec describes canonical.Keys, whose map with float64 keys gives
 	// the probes the sites of breachNegZero.
 	scoresSpec = kanontest.Spec[canonical.Keys]{Fields: fields("Scores", "Refs"), Canonical: true}
+	// boxSpec describes canonical.Box, whose inline struct Flags has two bools
+	// that no table sample sets together.
+	boxSpec = kanontest.Spec[canonical.Box]{
+		Fields: fields("Count", "Flags"),
+		Structs: []kanontest.Struct{
+			{Type: reflect.TypeFor[canonical.Flags](), Name: "Flags", Fields: fields("A", "B")},
+		},
+		Canonical: true,
+	}
 	// boundSpec describes bound.Page, the type of the test vectors of the
 	// bound, with the bound 2 on Items and 1 on Meta.
 	boundSpec = kanontest.Spec[bound.Page]{
@@ -110,6 +119,21 @@ type signOff struct{ canonical.Keys }
 // kanon.ErrNotCanonical.
 func (m *signOff) DecodeKanon(data []byte, opts kanon.Options) error {
 	if err := renamed(m.Keys.DecodeKanon(data, opts), "Keys", "signOff"); !errors.Is(err, kanon.ErrNotCanonical) {
+		return err
+	}
+	return nil
+}
+
+// orderOff is a canonical.Box whose DecodeKanon decodes the two bools of
+// Flags in either order.
+type orderOff struct{ canonical.Box }
+
+// DecodeKanon decodes data, and drops the error for the field A of Flags
+// after its field B.
+func (m *orderOff) DecodeKanon(data []byte, opts kanon.Options) error {
+	err := renamed(m.Box.DecodeKanon(data, opts), "Box", "orderOff")
+	e, failed := errors.AsType[*kanon.DecodeError](err)
+	if !failed || err.Error() != wire.OrderError(1, 2, "Flags", 0, e.Offset).Error() {
 		return err
 	}
 	return nil
@@ -344,6 +368,11 @@ func TestProbe(t *testing.T) {
 		t.Run("fails for a canonical codec that decodes a map key of -0.0", func(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[signOff]{Fields: scoresSpec.Fields, Canonical: true}, negZeroCheck, errorCheck)
+		})
+		t.Run("fails for a canonical codec that decodes two bools of a struct out of order", func(t *testing.T) {
+			t.Parallel()
+			spec := kanontest.Spec[orderOff]{Fields: boxSpec.Fields, Structs: boxSpec.Structs, Canonical: true}
+			rejects(t, spec, fieldOrderCheck, errorCheck)
 		})
 		t.Run("passes a canonical type with a slice and a map with a bound", func(t *testing.T) {
 			t.Parallel()

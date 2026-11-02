@@ -2,8 +2,10 @@
 // source: nested.go
 
 //kanon:numbers Deep Cell=1 CellPtr=2 Cells=3 ByName=4 Grid=5 Groups=6 Pairs=7 Proof=8 Proofs=9 Tags=10 Anonym=11
+//kanon:numbers Box Count=1 Flags=2
 //kanon:numbers Cell Row=1 Col=2 Value=3
 //kanon:numbers Deep.Anonym A=1 B=2
+//kanon:numbers Flags A=1 B=2
 
 package canonical
 
@@ -28,6 +30,7 @@ const (
 // The generated types implement kanon.Cloner.
 var (
 	_ kanon.Cloner[Deep] = (*Deep)(nil)
+	_ kanon.Cloner[Box]  = (*Box)(nil)
 )
 
 // SizeKanon returns the length of the encoding of m in bytes, and 0 for a
@@ -598,6 +601,224 @@ func (m *Deep) cloneKanon(c *Deep) {
 	c.Proofs = _nested_cloneSlicePtrExternalProof(m.Proofs)
 	c.Tags = _nested_cloneValidateTags(m.Tags)
 	c.Anonym = m.Anonym
+}
+
+// SizeKanon returns the length of the encoding of m in bytes, and 0 for a
+// nil m.
+func (m *Box) SizeKanon() int {
+	if m == nil {
+		return 0
+	}
+	n := 0
+	if m.Count != 0 {
+		n += 1 + wire.SizeUvarint(uint64(m.Count))
+	}
+	if s := _nested_sizeFlags(&m.Flags); s > 0 {
+		n += 1 + wire.SizeBytes(s)
+	}
+	return n
+}
+
+// EncodeKanon writes the encoding of m into the last SizeKanon bytes of buf and
+// returns their count. A nil m writes nothing. When buf is shorter than
+// SizeKanon bytes, EncodeKanon writes nothing and returns io.ErrShortBuffer.
+// The error is always nil.
+func (m *Box) EncodeKanon(buf []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	if len(buf) < m.SizeKanon() {
+		return 0, io.ErrShortBuffer
+	}
+	return m.encodeKanon(buf)
+}
+
+// encodeKanon writes the encoding of m into the end of buf, which has room for
+// it, and returns its length. The encoding methods of m and of the structs of
+// the package that contain one call it. The error is always nil.
+func (m *Box) encodeKanon(buf []byte) (int, error) {
+	i := len(buf)
+	if w := _nested_putFlags(buf[:i], &m.Flags); w > 0 {
+		i -= w
+		i = wire.PutUvarint(buf, i, uint64(w))
+		i = wire.PutTag(buf, i, 2<<3|wire.Bytes)
+	}
+	if m.Count != 0 {
+		i = wire.PutUvarint(buf, i, uint64(m.Count))
+		i = wire.PutTag(buf, i, 1<<3|wire.Varint)
+	}
+	return len(buf) - i, nil
+}
+
+// AppendBinary appends the encoding of m to b and returns the extended slice.
+// It does not allocate when b has SizeKanon bytes of spare capacity. The error
+// is always nil.
+func (m *Box) AppendBinary(b []byte) ([]byte, error) {
+	if m == nil {
+		return b, nil
+	}
+	size := m.SizeKanon()
+	out := slices.Grow(b, size)[:len(b)+size]
+	m.encodeKanon(out)
+	return out, nil
+}
+
+// MarshalBinary returns the encoding of m in a new slice, and nil for an empty
+// encoding. The error is always nil.
+func (m *Box) MarshalBinary() ([]byte, error) {
+	return m.AppendBinary(nil)
+}
+
+// UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
+// the zero Options, which do not copy data, since Box contains no string.
+func (m *Box) UnmarshalBinary(data []byte) error {
+	return m.DecodeKanon(data, kanon.Options{})
+}
+
+// DecodeKanon sets m to the value encoded in data and reuses the memory of m:
+// the values that its pointers point at, its nested structs, the capacity of
+// its slices and maps, and up to 16 values of each map whose values refer to
+// memory. It first clears the fields that the encoding leaves out, as Reset
+// does. Every decoded string is a substring of the slab of opts. It accepts
+// only the canonical encoding of a value, the input that EncodeKanon writes for
+// it, and returns a *kanon.DecodeError that wraps kanon.ErrNotCanonical for any
+// other input that the wire format lets a decoder accept. It returns a
+// *kanon.DecodeError for malformed input, after which m contains the fields
+// decoded before the error.
+func (m *Box) DecodeKanon(data []byte, opts kanon.Options) error {
+	slab, off := "", opts.Offset
+	return m.decodeKanon(data, slab, off, opts.Limit())
+}
+
+// MergeKanon decodes data into m without resetting m first, with the options
+// and the errors of DecodeKanon. A slice appends the elements in data, a map
+// adds its entries, a nested struct merges, an interface that stores the
+// concrete type in data merges as that type merges, a union member replaces the
+// union, and any other field takes the value in data. The fields that the
+// encoding leaves out keep their values.
+func (m *Box) MergeKanon(data []byte, opts kanon.Options) error {
+	slab, off := "", opts.Offset
+	return m.mergeKanon(data, slab, off, opts.Limit())
+}
+
+// decodeKanon sets m to the value encoded in data, which starts at offset off
+// of slab, as DecodeKanon does. The decode enters depth levels below m at most.
+// DecodeKanon and the decode of the structs of the package that contain Box
+// call it.
+func (m *Box) decodeKanon(data []byte, slab string, off, depth int) error {
+	m.Count = 0
+	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	if seen[0]&(1<<0) == 0 {
+		_nested_resetFlags(&m.Flags)
+	}
+	return err
+}
+
+// mergeKanon merges the encoding in data, which starts at offset off of slab,
+// into m, as MergeKanon does. The decode enters depth levels below m at most.
+// MergeKanon and the decode of the structs of the package that contain Box call
+// it.
+func (m *Box) mergeKanon(data []byte, slab string, off, depth int) error {
+	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
+	return err
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// returns seen with the bits of the tracked fields that data contains.
+func (m *Box) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+	var prior uint64
+	i := 0
+	if i < len(data) && data[i] == 1<<3|wire.Varint {
+		at := i
+		i++
+		prior = 1
+		u, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return seen, wire.ReadError(n, "Box.Count", 1, off+i)
+		}
+		if u != uint64(uint32(u)) {
+			return seen, wire.RangeError(u, "uint32", "Box.Count", 1, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return seen, wire.LongFormError(n, "Box.Count", 1, off+i)
+		}
+		m.Count = uint32(u)
+		i += n
+		if m.Count == 0 {
+			return seen, wire.AbsentError("Box.Count", 1, off+at)
+		}
+	}
+	if i < len(data) && data[i] == 2<<3|wire.Bytes {
+		at := i
+		i++
+		prior = 2
+		l, n := wire.Uvarint(data[i:])
+		if n <= 0 || uint64(len(data)-i-n) < l {
+			return seen, wire.ReadError(n, "Box.Flags", 2, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return seen, wire.LongFormError(n, "Box.Flags", 2, off+i)
+		}
+		i += n
+		if depth < 1 {
+			return seen, wire.DepthError("Flags", 0, off+i)
+		}
+		var err error
+		if seen[0]&(1<<0) == 0 {
+			seen[0] |= 1 << 0
+			err = _nested_readFlags(&m.Flags, data[i:i+int(l)], slab, off+i, depth-1)
+		} else {
+			err = _nested_mergeFlags(&m.Flags, data[i:i+int(l)], slab, off+i, depth-1)
+		}
+		if err != nil {
+			return seen, err
+		}
+		i += int(l)
+		if l == 0 {
+			return seen, wire.AbsentError("Box.Flags", 2, off+at)
+		}
+	}
+	if i != len(data) {
+		return seen, _nested_tagBox(data, i, prior, off)
+	}
+	return seen, nil
+}
+
+// Reset clears every field of m, the fields that the encoding leaves out
+// included. An encoded pointer or interface becomes nil. An encoded slice or
+// map becomes empty and keeps its storage for a decode to reuse, with every
+// element in the capacity of a slice reset, so that no decoded content remains
+// in m or in the storage that it keeps.
+func (m *Box) Reset() {
+	if m == nil {
+		return
+	}
+	m.Count = 0
+	_nested_resetFlags(&m.Flags)
+}
+
+// CloneKanon returns a copy of m that shares no memory with m or with the slab
+// that m decoded from: its strings, slices, maps and the values of its pointers
+// and interfaces are copies. The copy has the fields of the encoding, the union
+// discriminators and the unknown fields of m, and the zero value in every other
+// field, map keys included. A nil m returns nil.
+func (m *Box) CloneKanon() *Box {
+	if m == nil {
+		return nil
+	}
+	c := new(Box)
+	m.cloneKanon(c)
+	return c
+}
+
+// cloneKanon copies m into c, as CloneKanon does. The fields of c that the copy
+// does not set keep their values. CloneKanon and the clone of the structs of
+// the package that contain Box call it.
+func (m *Box) cloneKanon(c *Box) {
+	c.Count = m.Count
+	c.Flags = m.Flags
 }
 
 // _nested_sizeCell returns the length of the encoding of the Cell that m points
@@ -1522,6 +1743,128 @@ func _nested_cloneValidateTags(x validate.Tags) validate.Tags {
 	return c
 }
 
+// _nested_sizeFlags returns the length of the encoding of the Flags that m
+// points at.
+func _nested_sizeFlags(m *Flags) int {
+	n := 0
+	if m.A {
+		n += 2
+	}
+	if m.B {
+		n += 2
+	}
+	return n
+}
+
+// _nested_putFlags writes the encoding of the Flags that m points at into the
+// end of buf, which has room for it, and returns its length.
+func _nested_putFlags(buf []byte, m *Flags) int {
+	i := len(buf)
+	if m.B {
+		i = wire.PutBool(buf, i, m.B)
+		i = wire.PutTag(buf, i, 2<<3|wire.Varint)
+	}
+	if m.A {
+		i = wire.PutBool(buf, i, m.A)
+		i = wire.PutTag(buf, i, 1<<3|wire.Varint)
+	}
+	return len(buf) - i
+}
+
+// _nested_resetFlags clears the Flags that m points at and keeps the memory
+// that a decode reuses, as Reset does.
+func _nested_resetFlags(m *Flags) {
+	m.A = false
+	m.B = false
+}
+
+// _nested_readFlags sets the Flags that m points at to the value encoded in
+// data and reuses its memory, as DecodeKanon does. data starts at offset off of
+// slab, and the decode enters depth levels below the value at most.
+func _nested_readFlags(m *Flags, data []byte, slab string, off, depth int) error {
+	m.A = false
+	m.B = false
+	return _nested_mergeFlags(m, data, slab, off, depth)
+}
+
+// _nested_mergeFlags merges the encoding in data, which starts at offset off of
+// slab, into the Flags that m points at, as MergeKanon does. The decode enters
+// depth levels below m at most.
+func _nested_mergeFlags(m *Flags, data []byte, slab string, off, depth int) error {
+	var prior uint64
+	i := 0
+	if i < len(data) && data[i] == 1<<3|wire.Varint {
+		at := i
+		i++
+		prior = 1
+		u, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Flags.A", 1, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return wire.LongFormError(n, "Flags.A", 1, off+i)
+		}
+		if u > 1 {
+			return wire.BoolError(u, "Flags.A", 1, off+i)
+		}
+		m.A = u != 0
+		i += n
+		if !m.A {
+			return wire.AbsentError("Flags.A", 1, off+at)
+		}
+	}
+	if i < len(data) && data[i] == 2<<3|wire.Varint {
+		at := i
+		i++
+		prior = 2
+		u, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Flags.B", 2, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return wire.LongFormError(n, "Flags.B", 2, off+i)
+		}
+		if u > 1 {
+			return wire.BoolError(u, "Flags.B", 2, off+i)
+		}
+		m.B = u != 0
+		i += n
+		if !m.B {
+			return wire.AbsentError("Flags.B", 2, off+at)
+		}
+	}
+	if i != len(data) {
+		return _nested_tagFlags(data, i, prior, off)
+	}
+	return nil
+}
+
+// _nested_tagBox returns the error of the canonical decode of Box for the tag
+// at data[i], which begins no field after the fields that the decode read
+// before it. data starts at offset off of the slab.
+func _nested_tagBox(data []byte, i int, prior uint64, off int) error {
+	tag, n := wire.Uvarint(data[i:])
+	if n <= 0 {
+		return wire.ReadError(n, "Box", 0, off+i)
+	}
+	if n > 1 && data[i+n-1] == 0 {
+		return wire.LongFormError(n, "Box", 0, off+i)
+	}
+	if tag>>3 == 0 {
+		return wire.TagError(tag, "Box", 0, off+i)
+	}
+	if tag>>3 <= prior {
+		return wire.OrderError(tag>>3, prior, "Box", 0, off+i)
+	}
+	switch tag >> 3 {
+	case 1:
+		return wire.FormatError(tag, wire.Varint, "Box.Count", off+i)
+	case 2:
+		return wire.FormatError(tag, wire.Bytes, "Box.Flags", off+i)
+	}
+	return wire.UnknownFieldError(tag>>3, "Box", 0, off+i)
+}
+
 // _nested_sizeSliceInt32 returns the length of the encoding of the elements of
 // x, a []int32.
 func _nested_sizeSliceInt32(x []int32) int {
@@ -1705,4 +2048,30 @@ func _nested_clonePtrExternalProof(x *external.Proof) *external.Proof {
 		return nil
 	}
 	return x.CloneKanon()
+}
+
+// _nested_tagFlags returns the error of the canonical decode of Flags for the
+// tag at data[i], which begins no field after the fields that the decode read
+// before it. data starts at offset off of the slab.
+func _nested_tagFlags(data []byte, i int, prior uint64, off int) error {
+	tag, n := wire.Uvarint(data[i:])
+	if n <= 0 {
+		return wire.ReadError(n, "Flags", 0, off+i)
+	}
+	if n > 1 && data[i+n-1] == 0 {
+		return wire.LongFormError(n, "Flags", 0, off+i)
+	}
+	if tag>>3 == 0 {
+		return wire.TagError(tag, "Flags", 0, off+i)
+	}
+	if tag>>3 <= prior {
+		return wire.OrderError(tag>>3, prior, "Flags", 0, off+i)
+	}
+	switch tag >> 3 {
+	case 1:
+		return wire.FormatError(tag, wire.Varint, "Flags.A", off+i)
+	case 2:
+		return wire.FormatError(tag, wire.Varint, "Flags.B", off+i)
+	}
+	return wire.UnknownFieldError(tag>>3, "Flags", 0, off+i)
 }
