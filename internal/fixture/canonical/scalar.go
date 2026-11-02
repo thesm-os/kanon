@@ -34,6 +34,8 @@ type (
 // the code writes and reads without a call of its ValidateKanon. The
 // ValidateKanon of Port rejects the zero value, so the canonical decode of an
 // explicit zero Port fails at the presence rule, before it calls the method.
+// Mode declares kanon.Strict, so the canonical decode of Mode and of the
+// elements of Modes does not encode a value again.
 type Scalars struct {
 	Bool       bool
 	Flag       Flag
@@ -74,4 +76,6 @@ type Scalars struct {
 	Serials    []codec.Serial
 	Era        validate.Era
 	Port       validate.Port
+	Mode       Mode
+	Modes      []Mode
 }

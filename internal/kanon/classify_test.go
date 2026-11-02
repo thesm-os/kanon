@@ -24,12 +24,14 @@ const (
 )
 
 // Methods of a type T that declares kanon.Exact, each followed by a blank
-// line, from which the classify tests leave one out or add another.
+// line, from which the classify tests leave one out or add another. strictT
+// is the method of kanon.Strict.
 const (
 	appendT    = "func (t T) AppendBinary(b []byte) ([]byte, error) { return append(b, 0), nil }\n\n"
 	unmarshalT = "func (t *T) UnmarshalBinary(d []byte) error { return nil }\n\n"
 	sizeT      = "func (T) SizeKanon() int { return 1 }\n\n"
 	exactT     = "func (T) ExactKanon() {}\n\n"
+	strictT    = "func (T) StrictKanon() {}\n\n"
 	validateT  = "func (T) ValidateKanon() error { return nil }\n\n"
 	// appendKanonT is the method of kanon.Appender, and erringKanonT the
 	// method under its name with the error result of AppendBinary.
@@ -152,6 +154,20 @@ func TestClassify(t *testing.T) {
 				},
 				want: "kanon: a.go:16:2: A.T: example.com/m.T.AppendKanon has the signature func(b []byte) ([]byte, " +
 					"error): declare it as func([]byte) []byte",
+			},
+			{
+				name:  "returns an error for a type that declares StrictKanon without the methods of a family",
+				files: map[string]string{source: "type T [2]byte\n\n" + strictT + structA("T T")},
+				want: "kanon: a.go:8:2: A.T: example.com/m.T declares StrictKanon, and does not encode itself " +
+					"through binary, gob or text methods",
+			},
+			{
+				name: "returns an error for a kanon.Validator that declares StrictKanon",
+				files: map[string]string{
+					source: "type T [2]byte\n\n" + validateT + appendT + unmarshalT + strictT + structA("T T"),
+				},
+				want: "kanon: a.go:14:2: A.T: example.com/m.T declares StrictKanon, and does not encode itself " +
+					"through binary, gob or text methods",
 			},
 		}
 		// hiddenPart is the reason of the errors for the types that contain

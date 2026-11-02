@@ -6,9 +6,10 @@
 // a code file declares one [Spec] per struct type and calls [Run], [Bench]
 // and [Fuzz] with it, and calls [RunValue] on each named type that is not a
 // struct. The package that declares a kanon.Exact type calls [RunExact] on
-// it in a test of its own. [Checks], [ValueChecks] and [ExactChecks] return
-// the checks of [Run], [RunValue] and [RunExact], so that a test runs them
-// against a codec of its own.
+// it in a test of its own, and the package that declares a kanon.Strict type
+// calls [RunStrict]. [Checks], [ValueChecks], [ExactChecks] and
+// [StrictChecks] return the checks of [Run], [RunValue], [RunExact] and
+// [RunStrict], so that a test runs them against a codec of its own.
 //
 // # Reference
 //
@@ -307,6 +308,17 @@
 //   - For a kanon.Appender, AppendKanon appends the bytes that the append
 //     method appends, which returns no error, for every one of those
 //     values, the zero value included.
+//
+// # Strict types
+//
+// The reference decoder encodes a value of a kanon.Strict type again, as it
+// encodes every value of a type that encodes itself. The decode checks of a
+// struct with a field of such a type then fail for a type whose decode
+// method accepts bytes that its encode method does not write. [RunStrict]
+// checks the guarantee on the type itself, with the inputs of the decode
+// check of [RunExact]: for every input that the decode method accepts, the
+// encode method of the family of the type writes the input for the decoded
+// value.
 //
 // # Allocations
 //

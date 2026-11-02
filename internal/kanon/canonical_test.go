@@ -41,6 +41,19 @@ const canonicalStructs = "import \"time\"\n\n" +
 	"\tNamed map[Temp]bool\n\tPairs map[[2]float64]bool\n\tOne map[struct{}]int32\n\tMemo Note\n\tMark Seal\n}\n\n" +
 	"type E struct{}\n"
 
+// strictStructs is the source of Level, a type that encodes itself through
+// its text methods and declares kanon.Strict, and of the struct types A, with
+// a field Tier of Level, B, with a slice of it, and C, with a union member of
+// it.
+const strictStructs = "type Mode uint8\n\nconst ModeOne Mode = 1\n\n" +
+	"type Level uint8\n\n" +
+	"func (v Level) MarshalText() ([]byte, error) { return []byte{byte(v)}, nil }\n\n" +
+	"func (v *Level) UnmarshalText(d []byte) error { *v = Level(d[0]); return nil }\n\n" +
+	"func (Level) StrictKanon() {}\n\n" +
+	"type A struct {\n\tTier Level\n\tX int32\n}\n\n" +
+	"type B struct {\n\tLevels []Level\n}\n\n" +
+	"type C struct {\n\tKind Mode\n\tOne Level `kanon:\",union=Kind\"`\n}\n"
+
 // validatedTypes is the source of P, S and M, an integer, a slice and a map
 // type whose directive sets -validate. The decode of a struct with fields of
 // them calls their ValidateKanon.
@@ -164,8 +177,18 @@ func TestCanonical(t *testing.T) {
 				name: "returns ErrNotCanonical for bytes that the encode method does not write",
 				want: `return seen, wire.EncodingError("A.Token", 14, off+i)`,
 			},
-			{name: "tests the presence of a value of a type that encodes itself", want: "if m.Token == (Tok{}) {"},
-			{name: "tests the presence of a value of a type with an IsZero method", want: "if m.Mark.IsZero() {"},
+			{
+				name: "tests the presence of a value of a type that encodes itself",
+				want: "if err := m.Token.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Token == (Tok{}) {",
+			},
+			{
+				name: "returns the error of wire.ExactError for a field of a type that encodes itself",
+				want: `return seen, wire.ExactError(err, "A.Token", 14, off+at, off+i)`,
+			},
+			{
+				name: "tests the presence of a value of a type with an IsZero method",
+				want: "if err := m.Mark.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Mark.IsZero() {",
+			},
 			{name: "declares the key before the current one", want: "var pk float64"},
 			{name: "finds a float64 key of -0.0", want: "if mk == 0 && math.Signbit(mk) {"},
 			{name: "finds a float32 key of -0.0", want: "if mk == 0 && math.Signbit(float64(mk)) {"},
@@ -420,6 +443,42 @@ func TestCanonical(t *testing.T) {
 			t.Parallel()
 			assert.NotContains(t, exact[codeName], "EncodingError",
 				"kanon.Exact guarantees that the decode method accepts only the bytes of the append method")
+		})
+		strict, strictErr := generateCanonical(t, module(t, map[string]string{source: strictStructs}), "A,B,C")
+		assert.NoError(t, strictErr, "Generate generates the canonical struct types with values of a kanon.Strict type")
+		strictChecks := []struct {
+			name string
+			want string
+		}{
+			{
+				name: "decodes a field of a kanon.Strict type with its presence in one statement",
+				want: "if err := m.Tier.UnmarshalText(data[i : i+int(l)]); err != nil || m.Tier == 0 {",
+			},
+			{
+				name: "returns the error of wire.ExactError for a field of a kanon.Strict type",
+				want: "return wire.ExactError(err, \"A.Tier\", 1, off+at, off+i)\n\t\t}\n\t\ti += int(l)",
+			},
+			{
+				name: "decodes an element of a kanon.Strict type with the error of its decode method",
+				want: "if err := x[last].UnmarshalText(data[i : i+int(l)]); err != nil {\n" +
+					"\t\t\treturn wire.UnmarshalError(err, loc, num, off+i)\n\t\t}\n\t\ti += int(l)",
+			},
+			{
+				name: "decodes a union member of a kanon.Strict type with the error of its decode method",
+				want: "if err := m.One.UnmarshalText(data[i : i+int(l)]); err != nil {\n" +
+					"\t\t\treturn wire.UnmarshalError(err, \"C.One\", 1, off+i)\n\t\t}\n\t\ti += int(l)",
+			},
+		}
+		for _, tt := range strictChecks {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, strict[codeName], tt.want, "the code file writes the check")
+			})
+		}
+		t.Run("encodes no value of a kanon.Strict type again", func(t *testing.T) {
+			t.Parallel()
+			assert.NotContains(t, strict[codeName], "EncodingError",
+				"kanon.Strict guarantees that the decode method accepts only the bytes of the encode method")
 		})
 		t.Run("returns an error for a struct type whose kanon codec is written by hand", func(t *testing.T) {
 			t.Parallel()

@@ -5,12 +5,10 @@ package kanontest
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"reflect"
 	"slices"
-	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -47,41 +45,19 @@ const (
 // from each.
 type exactSuite struct {
 	// values are the zero value and the values that entry 0 to 7 of the
-	// value tables build, as [resolver.self] builds them.
-	values []exactValue
+	// value tables build, as [tableValues] builds them.
+	values []markedValue
 	// decoded are the values that the decode method decodes from the inputs
-	// that [newExactSuite] derives, for each input that it accepts, in their
-	// order.
-	decoded []exactValue
+	// that [decodedFrom] derives from the values of the value tables.
+	decoded []markedValue
 }
 
-// exactValue is a value of a kanon.Exact type that the checks run on.
-type exactValue struct {
-	v reflect.Value
-	// name names the value in failures, and is empty for a decoded value,
-	// whose input names it.
-	name string
-	// input is the input that the decode method decodes a decoded value
-	// from.
-	input []byte
-}
-
-// String returns the name of x in failures.
-func (x exactValue) String() string {
-	if x.name != "" {
-		return x.name
-	}
-	return fmt.Sprintf("the value that the decode method decodes from %x", x.input)
-}
-
-// newExactSuite returns the suite of t. Its inputs are the encoding of each
-// value of the value tables that encodes, as [variants] derives inputs from
-// it, and the bytes that [counted] returns for every length from 0 to the
-// size of a value of t in memory. It fails for a type that kanon does not
-// encode, and for a type that does not meet the requirements of kanon.Exact
-// that the generator checks: t encodes itself through the append method of
-// its family, as [methodsOf] reports, and == compares every bit of it, as
-// [bitwiseType] reports.
+// newExactSuite returns the suite of t, whose decoded values [decodedFrom]
+// derives from the values of the value tables. It fails for a type that kanon
+// does not encode, and for a type that does not meet the requirements of
+// kanon.Exact that the generator checks: t encodes itself through the append
+// method of its family, as [methodsOf] reports, and == compares every bit of
+// it, as [bitwiseType] reports.
 func newExactSuite(t reflect.Type) (*exactSuite, error) {
 	r := resolverFor(t.PkgPath())
 	s, err := r.shapeOf(t, opts{seen: make(map[seenKey]*shape), loose: true})
@@ -95,31 +71,16 @@ func newExactSuite(t reflect.Type) (*exactSuite, error) {
 	if !s.zeroAbsent {
 		return nil, fmt.Errorf("kanontest: %v declares ExactKanon, and == does not compare every bit of it", t)
 	}
-	es := &exactSuite{values: []exactValue{{v: reflect.New(t).Elem(), name: "the zero value"}}}
-	var inputs [][]byte
-	for i := range drawCount {
-		v := reflect.New(t).Elem()
-		r.self(table(i), v, 0)
-		es.values = append(es.values, exactValue{v: v, name: "value " + strconv.Itoa(i) + " of the value tables"})
-		if enc, err := marshal(v); err == nil {
-			inputs = append(inputs, variants(enc)...)
-		}
-	}
-	for n := range int(t.Size()) + 1 {
-		inputs = append(inputs, counted(n))
-	}
-	for _, b := range inputs {
-		v := reflect.New(t).Elem()
-		if unmarshal(v, b) == nil {
-			es.decoded = append(es.decoded, exactValue{v: v, input: b})
-		}
-	}
-	return es, nil
+	values := tableValues(r, t)
+	return &exactSuite{
+		values:  append([]markedValue{{v: reflect.New(t).Elem(), name: "the zero value"}}, values...),
+		decoded: decodedFrom(t, values),
+	}, nil
 }
 
 // all returns the values that the checks of the first guarantee of
 // kanon.Exact run on: the values of es, then the decoded values.
-func (es *exactSuite) all() []exactValue {
+func (es *exactSuite) all() []markedValue {
 	return slices.Concat(es.values, es.decoded)
 }
 
@@ -184,21 +145,11 @@ func (es *exactSuite) appender(tb assert.TB) {
 	}
 }
 
-// decode checks the second guarantee of kanon.Exact: for each input that
-// the decode method accepts, the append method writes the input for the
-// value that the decode method sets. It fails with an err-absent record of
-// the error of the append method, and with an equal record of the bytes.
+// decode checks the second guarantee of kanon.Exact, as [rewrites] checks it
+// with the append method of the family.
 func (es *exactSuite) decode(tb assert.TB) {
 	tb.Helper()
-	for _, x := range es.decoded {
-		enc, err := marshal(x.v)
-		if err != nil || !bytes.Equal(enc, x.input) {
-			contract := "input " + hex.EncodeToString(x.input) +
-				": the append method writes the input for the value that the decode method decodes from it"
-			assert.NoError(tb, err, contract)
-			assert.Equal(tb, enc, x.input, contract)
-		}
-	}
+	rewrites(tb, es.decoded, "the append method")
 }
 
 // ExactChecks returns the checks of T, a type that declares kanon.Exact,
@@ -250,23 +201,4 @@ func ExactChecks[T kanon.Exact]() []Check {
 func RunExact[T kanon.Exact](t *testing.T) {
 	t.Helper()
 	run(t, ExactChecks[T]())
-}
-
-// variants returns the inputs that the decode check derives from enc, the
-// encoding of a value: enc, every prefix of it, enc with each of its bytes
-// changed to each other value of a byte, which adds 1 to 255 to the byte
-// modulo 256, and enc with one more byte, 0. Each input is a copy.
-func variants(enc []byte) [][]byte {
-	out := [][]byte{bytes.Clone(enc)}
-	for n := range len(enc) {
-		out = append(out, bytes.Clone(enc[:n]))
-	}
-	for k := range enc {
-		for d := byte(1); d != 0; d++ {
-			b := bytes.Clone(enc)
-			b[k] += d
-			out = append(out, b)
-		}
-	}
-	return append(out, append(bytes.Clone(enc), 0))
 }

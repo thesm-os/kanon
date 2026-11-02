@@ -210,11 +210,12 @@ func EncodingError(loc string, num, off int) error {
 	return decodeError(kanon.ErrNotCanonical, loc, num, off, "bytes differ from the encoding of the decoded value")
 }
 
-// ExactError returns the error of the canonical decode of a field of a
-// kanon.Exact type, whose decode method returned err or set the zero value:
-// the error of [UnmarshalError] at the offset valueOff of the value for an
-// err that is not nil, and the error of [AbsentError] at the offset tagOff
-// of the tag of the field otherwise.
+// ExactError returns the error of the canonical decode of a field of a type
+// that encodes itself and whose == compares every bit, such as a kanon.Exact
+// type, whose decode method returned err or set the zero value: the error of
+// [UnmarshalError] at the offset valueOff of the value for an err that is not
+// nil, and the error of [AbsentError] at the offset tagOff of the tag of the
+// field otherwise.
 func ExactError(err error, loc string, num, tagOff, valueOff int) error {
 	if err != nil {
 		return UnmarshalError(err, loc, num, valueOff)

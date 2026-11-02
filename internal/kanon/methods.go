@@ -33,6 +33,10 @@ const (
 	// exactKanonName names the marker method of kanon.Exact, with which a
 	// type that encodes itself states the guarantees of its methods.
 	exactKanonName = "ExactKanon"
+	// strictKanonName names the marker method of kanon.Strict, with which a
+	// type that encodes itself states that its decode method accepts only the
+	// bytes that its encode method writes.
+	strictKanonName = "StrictKanon"
 	// appendKanonName names the append method of kanon.Appender, which
 	// returns no error.
 	appendKanonName = "AppendKanon"
@@ -71,6 +75,12 @@ type selfCodec struct {
 	// decodes. The encode of a field of the type then has no error path, and
 	// a canonical decode does not encode its values again.
 	exact bool
+	// strict reports that the type declares StrictKanon(), the marker of
+	// kanon.Strict: the decode method accepts only the bytes that the encode
+	// method of the family writes for the value that it decodes. A canonical
+	// decode then does not encode its values again, and the encode keeps the
+	// error path of the encode method.
+	strict bool
 	// appendsKanon reports that the type is a kanon.Appender: it declares
 	// ExactKanon() and AppendKanon([]byte) []byte, an append method without an
 	// error result, which the generated code calls in every position without
@@ -97,8 +107,8 @@ func selfCodecs() []selfCodec {
 // has, with the signatures of packages encoding and encoding/gob. The
 // appender of the result is empty when t has the encode method of the
 // family alone. The result records whether the pointer to t has SizeKanon()
-// int, IsZero() bool and ExactKanon(), and with ExactKanon() whether it has
-// AppendKanon([]byte) []byte.
+// int, IsZero() bool, ExactKanon() and StrictKanon(), and with ExactKanon()
+// whether it has AppendKanon([]byte) []byte.
 func selfCodecOf(t *types.Named) (selfCodec, bool) {
 	s := methodsOf(t)
 	encoded := []types.Type{byteSlice(), errorType()}
@@ -114,10 +124,19 @@ func selfCodecOf(t *types.Named) (selfCodec, bool) {
 		c.sizer = s.has(sizeKanonName, nil, []types.Type{types.Typ[types.Int]})
 		c.zeroer = s.has(isZeroName, nil, []types.Type{types.Typ[types.Bool]})
 		c.exact = s.has(exactKanonName, nil, nil)
+		c.strict = s.has(strictKanonName, nil, nil)
 		c.appendsKanon = c.exact && s.has(appendKanonName, []types.Type{byteSlice()}, []types.Type{byteSlice()})
 		return c, true
 	}
 	return selfCodec{}, false
+}
+
+// strictDecode reports whether the decode method of the type accepts only
+// the bytes that the encode method of its family writes for the value that
+// it decodes: the type declares kanon.Exact or kanon.Strict. A canonical
+// decode then does not encode its values again.
+func (c selfCodec) strictDecode() bool {
+	return c.exact || c.strict
 }
 
 // methodSet is the method set of the pointer to a named type.

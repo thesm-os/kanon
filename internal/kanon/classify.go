@@ -159,6 +159,9 @@ func (c *classifier) tree(t types.Type, o treeOpts, at site) (*value, error) {
 		if err := c.exactable(named); err != nil {
 			return nil, err
 		}
+		if err := c.strictable(named); err != nil {
+			return nil, err
+		}
 		validates, err := c.validator(named)
 		if err != nil {
 			return nil, err
@@ -313,6 +316,18 @@ func (c *classifier) exactable(t *types.Named) error {
 		return fmt.Errorf("kanon: %s declares %s, and == does not compare every bit of it", name, exactKanonName)
 	}
 	return nil
+}
+
+// strictable fails for the named type t when it declares StrictKanon, the
+// method of kanon.Strict, and does not encode itself through the methods of
+// a family, as [classifier.binaryType] reports: a nested struct, a
+// kanon.Validator and a type without the methods of a family.
+func (c *classifier) strictable(t *types.Named) error {
+	if !methodsOf(t).has(strictKanonName, nil, nil) || c.binaryType(t) {
+		return nil
+	}
+	return fmt.Errorf("kanon: %s declares %s, and does not encode itself through binary, gob or text methods",
+		types.TypeString(t, nil), strictKanonName)
 }
 
 // validates reports whether the named type t is a kanon.Validator, as

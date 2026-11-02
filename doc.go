@@ -32,7 +32,10 @@
 // generated code writes a field of such a type without an error path, and a
 // canonical decode does not encode its values again. An [Appender], an Exact
 // type whose AppendKanon returns no error, is written without an error path
-// in every position.
+// in every position. A [Strict] type guarantees that its decode method
+// accepts only the bytes that its encode method writes, and a canonical
+// decode does not encode its values again either. Its encode keeps the error
+// path of its encode method.
 //
 // # Decoding without a copy
 //

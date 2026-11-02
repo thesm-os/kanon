@@ -223,11 +223,8 @@ func (m *Proof) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		i += n
 		m.Code = 0
-		if err := m.Code.UnmarshalBinary(data[i : i+int(l)]); err != nil {
-			return wire.UnmarshalError(err, "Proof.Code", 3, off+i)
-		}
-		if m.Code == 0 {
-			return wire.AbsentError("Proof.Code", 3, off+at)
+		if err := m.Code.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Code == 0 {
+			return wire.ExactError(err, "Proof.Code", 3, off+at, off+i)
 		}
 		{
 			enc, err := m.Code.MarshalBinary()

@@ -14,7 +14,9 @@
 // which == does not compare. The decode method of each also decodes bytes
 // that its encode method does not write for the decoded value, which a
 // canonical decode rejects, and each has a value without an encoding, so
-// that an encode fails for it.
+// that an encode fails for it. [Mode] encodes itself as the name of its
+// variant. Its decode method accepts only those names, and it declares
+// kanon.Strict.
 //
 // # Dependency position
 //

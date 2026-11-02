@@ -122,8 +122,8 @@ func fieldWire(f *field) int {
 // readsTagOffset reports whether the canonical decode of the field f of m
 // reads at, the offset of its tag: for the error of a second member of a
 // union, as [emitter.member] writes it, and for the error of a value that
-// the encoding leaves out, as [emitter.absent] and [emitter.readExactField]
-// write it.
+// the encoding leaves out, as [emitter.absent] and [emitter.readSelf] write
+// it.
 func readsTagOffset(m *target, f *field) bool {
 	if f.member != nil {
 		first, _ := unionEnds(m, f)
@@ -271,11 +271,11 @@ func byLength(v *value) bool {
 // set from data[i:i+int(l)], when the encode method of its family does not
 // write those bytes for it: through the append method into a stack array
 // when the type has one, and through the encode method otherwise. The error
-// names the offset of the value. A type that declares kanon.Exact gets no
-// statements, since kanon.Exact guarantees that its decode method accepts
-// only those bytes.
+// names the offset of the value. A type that declares kanon.Exact or
+// kanon.Strict gets no statements, since its declaration guarantees that its
+// decode method accepts only those bytes.
 func (e *emitter) reencode(v *value, dst string, p place) {
-	if !e.canonical || v.self.exact {
+	if !e.canonical || v.self.strictDecode() {
 		return
 	}
 	e.line("{")

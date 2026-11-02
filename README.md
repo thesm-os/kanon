@@ -296,6 +296,17 @@ func TestDigest(t *testing.T) {
 }
 ```
 
+A type that keeps the second guarantee alone declares `StrictKanon()`, the method of [`kanon.Strict`](https://pkg.go.dev/go.thesmos.sh/kanon#Strict).
+An enumeration whose text methods write and parse the names of its variants is such a type: its encode method fails for a value outside the variants.
+A canonical decode does not encode a value of a strict type again, and the encode keeps the error of its encode method.
+Check the guarantee in a test of the package that declares the type:
+
+```go
+func TestMode(t *testing.T) {
+	kanontest.RunStrict[Mode](t)
+}
+```
+
 ## Read one field with a view
 
 Add `-views` to the directive to generate a view type per struct type:
@@ -623,7 +634,7 @@ These numbers come from an AMD Ryzen 9 9950X3D with Go 1.27.1 and `GOMAXPROCS=4`
 | [`go.thesmos.sh/kanon/wire`](https://pkg.go.dev/go.thesmos.sh/kanon/wire) | The primitives that the generated code calls. Applications use package `kanon` instead. |
 | [`go.thesmos.sh/kanon/frame`](https://pkg.go.dev/go.thesmos.sh/kanon/frame) | Messages on a byte stream, one frame per message |
 | [`go.thesmos.sh/kanon/batch`](https://pkg.go.dev/go.thesmos.sh/kanon/batch) | Many messages in one buffer, with an index of their offsets |
-| [`go.thesmos.sh/kanon/kanontest`](https://pkg.go.dev/go.thesmos.sh/kanon/kanontest) | The conformance checks that the generated tests run, and `RunExact` |
+| [`go.thesmos.sh/kanon/kanontest`](https://pkg.go.dev/go.thesmos.sh/kanon/kanontest) | The conformance checks that the generated tests run, `RunExact` and `RunStrict` |
 | [`go.thesmos.sh/kanon/cmd/kanon`](https://pkg.go.dev/go.thesmos.sh/kanon/cmd/kanon) | The generator and `kanon inspect` |
 
 ## Design documents
@@ -639,6 +650,7 @@ RFCs under [docs/rfc](docs/rfc/README.md) specify the design, and ADRs under [do
 - [Stream decoding](docs/rfc/0007-stream-decoding.md) specifies the tag option `stream` and the stream decoder.
 - [Element bounds](docs/rfc/0008-element-bounds.md) specifies the tag option `max`.
 - [Length bounds](docs/rfc/0009-length-bounds.md) extends the tag option `max` to strings and byte slices.
+- [Strict types](docs/rfc/0010-strict-types.md) specifies `kanon.Strict` and the canonical decode of a type that encodes itself.
 
 ## Contributing
 

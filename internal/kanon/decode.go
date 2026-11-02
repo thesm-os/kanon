@@ -491,14 +491,9 @@ func (e *emitter) readField(m *target, f *field) {
 		e.absent(f, x, p)
 		e.validRead(v, x, p)
 	case kindBinary:
-		if e.canonical && f.member == nil && v.self.exact {
-			e.readExactField(v, x, p)
-			break
-		}
 		if e.canonical && f.member == nil && zeroAbsent(v) {
-			// The encoder never encodes the zero value of such a type, so the
-			// decode checks the presence of the value before it encodes it.
-			e.readSelf(v, x, p, func() { e.absent(f, x, p) })
+			_, absent := e.presence(v, x)
+			e.readSelf(v, x, p, absent)
 			break
 		}
 		e.read(v, x, p, "")
@@ -733,7 +728,7 @@ func (e *emitter) readKind(v *value, dst string, p place, merge string) {
 		}
 		e.line("i += int(l)")
 	case kindBinary:
-		e.readSelf(v, dst, p, nil)
+		e.readSelf(v, dst, p, "")
 	case kindArray:
 		if v.size == 0 {
 			e.readExact(p, 0)
@@ -809,37 +804,27 @@ func (e *emitter) varint(v *value, u string, p place) string {
 
 // readSelf writes the statements that decode the value dst of v, a type that
 // encodes itself, at p and move i past it: its length, the decode method of
-// its family into the zero value, the statements of check when it is not
-// nil, and in a canonical code file the encode method of the value, as
-// [emitter.reencode] writes it.
-func (e *emitter) readSelf(v *value, dst string, p place, check func()) {
+// its family into the zero value, and in a canonical code file the encode
+// method of the value, as [emitter.reencode] writes it. absent is the absence
+// condition of a field of a type whose == compares every bit in a canonical
+// code file, and empty in any other position. With absent, one statement
+// fails for an error of the method and for the zero value, which the
+// encoding leaves out, as wire.ExactError tells them apart. The encoder never
+// passes the zero value of such a type to its encode method, so the statement
+// comes before the second encode.
+func (e *emitter) readSelf(v *value, dst string, p place, absent string) {
 	e.readLength(p)
 	e.line("%s = %s", dst, e.zero(v.typ))
-	e.line("if err := %s(data[i:i+int(l)]); err != nil {", method(dst, v.self.unmarshaler))
-	e.fail(e.wire() + "UnmarshalError(err, " + p.loc + ", " + p.num + ", off+i)")
-	e.line("}")
-	if check != nil {
-		check()
+	decode := method(dst, v.self.unmarshaler)
+	if absent == "" {
+		e.line("if err := %s(data[i:i+int(l)]); err != nil {", decode)
+		e.fail(e.wire() + "UnmarshalError(err, " + p.loc + ", " + p.num + ", off+i)")
+	} else {
+		e.line("if err := %s(data[i:i+int(l)]); err != nil || %s {", decode, absent)
+		e.fail(e.wire() + "ExactError(err, " + p.loc + ", " + p.num + ", off+at, off+i)")
 	}
-	e.reencode(v, dst, p)
-	e.line("i += int(l)")
-}
-
-// readExactField writes, in a canonical code file, the statements that decode
-// the field x of v, a type that declares kanon.Exact, at p and move i past
-// it: its length, the decode method of its family into the zero value, and
-// one statement that fails for an error of the method and for the zero value,
-// which the encoding leaves out, as wire.ExactError tells them apart.
-// kanon.Exact guarantees that the method accepts only the bytes that the
-// append method writes for the value, so the decode does not encode the value
-// again.
-func (e *emitter) readExactField(v *value, x string, p place) {
-	e.readLength(p)
-	e.line("%s = %s", x, e.zero(v.typ))
-	_, absent := e.presence(v, x)
-	e.line("if err := %s(data[i:i+int(l)]); err != nil || %s {", method(x, v.self.unmarshaler), absent)
-	e.fail(e.wire() + "ExactError(err, " + p.loc + ", " + p.num + ", off+at, off+i)")
 	e.line("}")
+	e.reencode(v, dst, p)
 	e.line("i += int(l)")
 }
 

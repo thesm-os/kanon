@@ -220,6 +220,9 @@ type Sizer interface {
 //     append method writes that byte string for the value that the decode
 //     method sets.
 //
+// The second guarantee is the guarantee of [Strict], so an Exact type need
+// not declare StrictKanon.
+//
 // # Encoding
 //
 // The generated code writes a field of an Exact type without an error path,
@@ -265,6 +268,30 @@ type Appender interface {
 	// AppendKanon appends the encoding of the receiver to dst and returns the
 	// extended slice.
 	AppendKanon(dst []byte) []byte
+}
+
+// Strict is the method set of a type that encodes itself through its binary,
+// gob or text methods, and whose decode method accepts a byte string only
+// when the encode method of its family writes that byte string for the value
+// that the decode method sets. The guarantee is the second guarantee of
+// [Exact], without the first, so the encode method can fail for any value.
+// An enumeration whose text methods write and parse the names of its
+// variants keeps it, and fails to encode a value outside its variants.
+//
+// # Encoding
+//
+// A canonical decode does not encode a decoded value of a Strict type again,
+// in any position. The encode returns the error of the encode method, as it
+// does for every type that encodes itself and is not Exact. The generation
+// fails for a type that declares StrictKanon and does not encode itself
+// through the methods of a family, such as a [Validator] or a struct with a
+// kanon codec.
+//
+// [go.thesmos.sh/kanon/kanontest.RunStrict] checks the guarantee, in the
+// package that declares the type.
+type Strict interface {
+	// StrictKanon marks the type. No code calls it.
+	StrictKanon()
 }
 
 // Options set the slab and the nesting limit of a decode, and with the zero

@@ -2219,11 +2219,8 @@ func (m *Opaque) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		i += n
 		m.Digest = Digest{}
-		if err := m.Digest.UnmarshalBinary(data[i : i+int(l)]); err != nil {
-			return wire.UnmarshalError(err, "Opaque.Digest", 1, off+i)
-		}
-		if m.Digest == (Digest{}) {
-			return wire.AbsentError("Opaque.Digest", 1, off+at)
+		if err := m.Digest.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Digest == (Digest{}) {
+			return wire.ExactError(err, "Opaque.Digest", 1, off+at, off+i)
 		}
 		{
 			var scratch [128]byte
@@ -2247,11 +2244,8 @@ func (m *Opaque) mergeKanon(data []byte, slab string, off, depth int) error {
 		}
 		i += n
 		m.Stamp = 0
-		if err := m.Stamp.UnmarshalBinary(data[i : i+int(l)]); err != nil {
-			return wire.UnmarshalError(err, "Opaque.Stamp", 2, off+i)
-		}
-		if m.Stamp == 0 {
-			return wire.AbsentError("Opaque.Stamp", 2, off+at)
+		if err := m.Stamp.UnmarshalBinary(data[i : i+int(l)]); err != nil || m.Stamp == 0 {
+			return wire.ExactError(err, "Opaque.Stamp", 2, off+at, off+i)
 		}
 		{
 			enc, err := m.Stamp.MarshalBinary()
