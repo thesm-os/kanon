@@ -1,5 +1,17 @@
 # go.thesmos.sh/kanon
 
+## 0.4.0
+
+### Minor Changes
+
+- 77e2bf6: Add `kanon.Strict`, whose method `StrictKanon` marks a type whose decode method accepts only the bytes that its encode method writes, so that a canonical decode does not encode its values again.
+- 77e2bf6: Add `kanontest.StrictChecks` and `kanontest.RunStrict`, which check the guarantee of `kanon.Strict`.
+
+### Patch Changes
+
+- 77e2bf6: Check the error of the decode method and the presence rule of a canonical field of a type that encodes itself in one statement.
+- dac27e4: Fix `kanontest` to probe the field order of an inline struct whose table samples set one field each.
+
 ## 0.3.1
 
 ### Patch Changes
