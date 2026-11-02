@@ -18,3 +18,4 @@ An RFC argues for a design. An ADR under `../adr` records the decision it produc
 | [0007](0007-stream-decoding.md) | Decoding a message from a stream, one field at a time | Draft |
 | [0008](0008-element-bounds.md) | A bound on the elements of a slice or a map field | Draft |
 | [0009](0009-length-bounds.md) | A bound on the length of a string or a byte slice field | Draft |
+| [0010](0010-strict-types.md) | Strict types that encode themselves | Accepted |
