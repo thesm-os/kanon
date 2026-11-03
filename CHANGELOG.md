@@ -1,5 +1,17 @@
 # go.thesmos.sh/kanon
 
+## 0.5.0
+
+### Minor Changes
+
+- 2551cb7: Add the `kanontest` checks that a decode keeps the strings that its input repeats, copies its input once for the strings that change, and takes every string from a slab.
+- 2551cb7: Add `wire.Slab`, the slab of the strings of one decode, which the generated decode functions share.
+- 2551cb7: Keep each string of the receiver that the input repeats in a decode with the zero `kanon.Options`, and copy the input once for the first string that changes.
+
+### Patch Changes
+
+- 57b7737: Require `go.dokimi.dev/assert` v0.16.0.
+
 ## 0.4.0
 
 ### Minor Changes
