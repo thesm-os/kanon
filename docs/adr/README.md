@@ -20,7 +20,7 @@ under `../rfc`.
 | [0008](0008-lock-field-numbers-and-check-them.md) | Lock field numbers in the generated file and check them against a revision | Accepted |
 | [0009](0009-generated-code-imports-a-runtime.md) | Generated code imports a small runtime | Accepted |
 | [0010](0010-nesting-limit-on-decode.md) | Bound the nesting depth of a decode, 100 levels by default | Accepted |
-| [0011](0011-decode-options-in-one-struct.md) | Pass decode options in one struct | Accepted |
+| [0011](0011-decode-options-in-one-struct.md) | Pass decode options in one struct | Superseded by [0026](0026-zero-options-copy-only-for-changed-strings.md) |
 | [0012](0012-unknown-fields-retention-and-rule.md) | Keep unknown fields through an opt-in field, and rewrite records as opaque bytes otherwise | Accepted |
 | [0013](0013-generated-views-for-single-fields.md) | Generate view types that read one field from an encoding | Superseded by [0021](0021-views-read-opaque-fields.md) |
 | [0014](0014-frame-layout.md) | Frame messages on a stream with length, version, flags, type ID and optional CRC-32C | Accepted |
@@ -35,3 +35,4 @@ under `../rfc`.
 | [0023](0023-view-index-in-one-scan.md) | Generate an index per view type that reads its fields after one scan | Superseded by [0025](0025-index-errors-only-where-reads-fail.md) |
 | [0024](0024-opaque-types-size-and-presence.md) | Size an opaque value with SizeKanon and test its presence with IsZero | Accepted |
 | [0025](0025-index-errors-only-where-reads-fail.md) | Generate an index per view type whose methods return an error only for a read that can fail | Accepted |
+| [0026](0026-zero-options-copy-only-for-changed-strings.md) | Pass decode options in one struct whose zero value copies the input only for a string that changes | Accepted |

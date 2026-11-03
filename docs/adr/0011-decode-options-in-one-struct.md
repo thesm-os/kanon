@@ -1,10 +1,10 @@
 ---
 adr: 0011
 title: Pass decode options in one struct
-status: Accepted
+status: Superseded
 date: 2026-09-27
 supersedes: none
-superseded-by: none
+superseded-by: ADR-0026
 rfc: RFC-0002
 ---
 
@@ -17,7 +17,7 @@ rfc: RFC-0002
 
 ## Status
 
-Accepted
+Superseded by [ADR-0026](0026-zero-options-copy-only-for-changed-strings.md).
 
 ## Context
 
