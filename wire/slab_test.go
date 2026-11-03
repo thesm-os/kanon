@@ -42,7 +42,6 @@ var callerOptions = kanon.Options{Slab: slabPrefix + slabInput, Offset: len(slab
 var (
 	sinkString  string
 	sinkOptions kanon.Options
-	sinkError   error
 )
 
 func TestSlab(t *testing.T) {
@@ -229,10 +228,9 @@ func TestSlab(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				cause := wire.ReadError(0, "T.F", 1, slabErrorAt)
-				var err error = cause
+				err := wire.ReadError(0, "T.F", 1, slabErrorAt)
 				if tt.giveWrapped {
-					err = fmt.Errorf("decode: %w", cause)
+					err = fmt.Errorf("decode: %w", err)
 				}
 				got := tt.giveSlab().Locate(err, slabNestedAt)
 				assert.Equal(t, got, err, "Locate returns the error of the nested decode", assert.ByIdentity())
@@ -295,7 +293,7 @@ func TestSlabAllocs(t *testing.T) {
 	})
 	t.Run("Locate/allocates nothing", func(t *testing.T) {
 		err := wire.ReadError(0, "T.F", 1, slabErrorAt)
-		assert.MaxAllocs(t, func() { sinkError = lazy.Locate(err, 0) }, 0, "Locate allocates nothing")
+		assert.MaxAllocs(t, func() { errSink = lazy.Locate(err, 0) }, 0, "Locate allocates nothing")
 	})
 }
 
