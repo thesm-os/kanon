@@ -77,23 +77,25 @@ func (p place) deep() string {
 //   - a map, whose first occurrence clears it and moves up to
 //     freeListLength of its values that refer to memory into a free list,
 //     and which a decode that does not see it clears;
-//   - an array of values that refer to memory, which decodes into the
-//     memory of its elements, and which a decode that does not see it
-//     resets.
+//   - an array of values that the decode reuses, as [emitter.reuses]
+//     reports, which decodes into the memory of its elements, and which a
+//     decode that does not see it resets;
+//   - a string, which a decode compares with the decoded bytes before it
+//     replaces it, and which a decode that does not see it sets to "".
 //
 // An inert field, as [value.inert] reports, needs no reset and is not
 // tracked.
-func tracked(m *target) map[*field]int {
+func (e *emitter) tracked(m *target) map[*field]int {
 	bits := make(map[*field]int)
 	for _, f := range m.fields {
 		if f.val.inert() {
 			continue
 		}
 		switch f.val.kind {
-		case kindPointer, kindStruct, kindInterface, kindMap:
+		case kindPointer, kindStruct, kindInterface, kindMap, kindString:
 			bits[f] = len(bits)
 		case kindArray:
-			if f.val.holdsMemory() {
+			if e.reuses(f.val) {
 				bits[f] = len(bits)
 			}
 		default:
@@ -101,6 +103,14 @@ func tracked(m *target) map[*field]int {
 		}
 	}
 	return bits
+}
+
+// reuses reports whether a decode reuses the value of v that the receiver
+// has: v refers to memory, as [value.holdsMemory] reports, or is or contains
+// a string, which the decode keeps when it equals the decoded bytes, as
+// [classifier.holdsString] finds it.
+func (e *emitter) reuses(v *value) bool {
+	return v.holdsMemory() || e.cls.holdsString(v.typ)
 }
 
 // mergingValues returns the ids of the values of structs whose read
@@ -154,10 +164,10 @@ func checksLevel(v *value) bool {
 // fields methods, which the decode of the structs of the package that
 // contain one call.
 func (e *emitter) decodeMethods(m *target) {
-	e.bits = tracked(m)
+	e.bits = e.tracked(m)
 	typ := e.p.typ(m.typ)
 	opts := e.rt() + optionsName
-	copied := "which copy data once"
+	copied := "which copy data once for the strings that change"
 	if !m.tree {
 		copied = "which do not copy data, since " + m.name + " contains no string"
 	}
@@ -172,14 +182,15 @@ func (e *emitter) decodeMethods(m *target) {
 	e.line("}")
 	e.line("")
 	e.doc("DecodeKanon sets m to the value encoded in data and reuses the memory of m: the values that its " +
-		"pointers point at, its nested structs, the capacity of its slices and maps, and up to " +
-		strconv.Itoa(freeListLength) + " values of each map whose values refer to memory. It first clears the " +
-		"fields that the encoding leaves out, as Reset does. Every decoded string is a substring of the slab of " +
-		"opts." + canonical + " It returns a *kanon.DecodeError for malformed input, after which m contains the " +
-		"fields decoded before the error.")
+		"pointers point at, its nested structs, the capacity of its slices and maps, up to " +
+		strconv.Itoa(freeListLength) + " values of each map whose values refer to memory, and its strings. It " +
+		"first clears the fields that the encoding leaves out, as Reset does. With a slab in opts, every decoded " +
+		"string is a substring of the slab. Without one, the decode keeps each string of m that data repeats at " +
+		"its place, and takes every other string from one copy of data." + canonical + " It returns a " +
+		"*kanon.DecodeError for malformed input, after which m contains the fields decoded before the error.")
 	e.line("func (m *%s) DecodeKanon(data []byte, opts %s) error {", typ, opts)
 	e.source(m)
-	e.line("return m.%s(data, slab, off, opts.Limit())", decodeMethod)
+	e.line("return m.%s(data, &slab, off, opts.Limit())", decodeMethod)
 	e.line("}")
 	e.line("")
 	e.doc("MergeKanon decodes data into m without resetting m first, with the options and the errors of " +
@@ -189,7 +200,7 @@ func (e *emitter) decodeMethods(m *target) {
 		"their values.")
 	e.line("func (m *%s) MergeKanon(data []byte, opts %s) error {", typ, opts)
 	e.source(m)
-	e.line("return m.%s(data, slab, off, opts.Limit())", mergeMethod)
+	e.line("return m.%s(data, &slab, off, opts.Limit())", mergeMethod)
 	e.line("}")
 	e.line("")
 	callers := " and the decode of the structs of the package that contain " + m.name + " call it."
@@ -201,36 +212,35 @@ func (e *emitter) decodeMethods(m *target) {
 	}
 	e.doc(decodeMethod + " sets m to the value encoded in data, which starts at offset off of slab, as " +
 		"DecodeKanon does. The decode enters depth levels below m at most. DecodeKanon" + callers)
-	e.line("func (m *%s) %s(data []byte, slab string, off, depth int) error {", typ, decodeMethod)
+	e.line("func (m *%s) %s(data []byte, slab *%sSlab, off, depth int) error {", typ, decodeMethod, e.wire())
 	e.decodeBody(m, call)
 	e.doc(mergeMethod + " merges the encoding in data, which starts at offset off of slab, into m, as " +
 		"MergeKanon does. The decode enters depth levels below m at most. MergeKanon" + callers)
-	e.line("func (m *%s) %s(data []byte, slab string, off, depth int) error {", typ, mergeMethod)
+	e.line("func (m *%s) %s(data []byte, slab *%sSlab, off, depth int) error {", typ, mergeMethod, e.wire())
 	if e.seenWords() == 0 {
 		e.fieldsBody(m)
 		return
 	}
 	e.mergeBody(call(opFields))
 	e.fieldsDoc(fieldsMethod, decodeMethod+" and "+mergeMethod)
-	e.line("func (m *%s) %s(data []byte, slab string, off, depth int, seen %s) (%s, error) {",
-		typ, fieldsMethod, e.bitmap(), e.bitmap())
+	e.line("func (m *%s) %s(data []byte, slab *%sSlab, off, depth int, seen *%s) error {",
+		typ, fieldsMethod, e.wire(), e.bitmap())
 	e.fieldsBody(m)
 }
 
-// source writes the statements of DecodeKanon and MergeKanon of m that set
-// slab and off, the slab of the decode and the offset of data in it: those
-// of opts, or a copy of data at offset 0 when opts has no slab, as
-// kanon.Options.Source returns them. A struct that contains no string reads
-// nothing from the slab, so its decode copies nothing and takes the offset
-// of opts as the base of the offsets of its errors, also without a slab. The
-// decode of a struct without strings passes the offset of a nested struct of
-// another package that way, since it has no slab to pass.
+// source writes the statements of DecodeKanon and MergeKanon of m that
+// declare slab and off, the wire.Slab of the decode and the offset of data in
+// it, as wire.Slab.Reset sets and returns them for data and opts. A struct
+// that contains no string reads nothing from the slab. Its decode takes the
+// zero wire.Slab and the offset of opts as the base of the offsets of its
+// errors, also without a slab in opts.
 func (e *emitter) source(m *target) {
+	e.line("var slab %sSlab", e.wire())
 	if m.tree {
-		e.line("slab, off := opts.Source(data)")
+		e.line("off := slab.Reset(data, opts)")
 		return
 	}
-	e.line(`slab, off := "", opts.Offset`)
+	e.line("off := opts.Offset")
 }
 
 // seenWords returns the length in 64-bit words of the seen bitmap of the
@@ -263,9 +273,9 @@ func (e *emitter) bit(f *field) (string, string) {
 // the value encoded in data, and the end of the function: the statements of
 // [emitter.decodePrologue], and then the decode of the fields of data.
 // Without tracked fields they return the merge of data. With them they call
-// the function of the loop with a clear seen bitmap, and then the
-// statements of [emitter.decodeEpilogue]. call returns the beginning of the
-// call of the merge, for opMerge, and of the function of the loop, for
+// the function of the loop with a pointer to a clear seen bitmap, and then
+// the statements of [emitter.decodeEpilogue]. call returns the beginning of
+// the call of the merge, for opMerge, and of the function of the loop, for
 // opFields, up to the argument data.
 func (e *emitter) decodeBody(m *target, call func(op) string) {
 	e.decodePrologue(m)
@@ -275,7 +285,8 @@ func (e *emitter) decodeBody(m *target, call func(op) string) {
 		e.line("")
 		return
 	}
-	e.line("seen, err := %sdata, slab, off, depth, %s{})", call(opFields), e.bitmap())
+	e.line("var seen %s", e.bitmap())
+	e.line("err := %sdata, slab, off, depth, &seen)", call(opFields))
 	e.decodeEpilogue(m)
 	e.line("return err")
 	e.line("}")
@@ -284,11 +295,11 @@ func (e *emitter) decodeBody(m *target, call func(op) string) {
 
 // decodePrologue writes the statements of a decode that precede the decode
 // of the fields of the struct that m points at: they clear the fields that
-// the encoding leaves out, keeping the memory of every encoded field, and
-// reset every field that the decode does not track, the discriminators and
-// the unknown fields.
+// the encoding leaves out, keeping every encoded field that the decode
+// reuses, as [emitter.reuses] reports, and reset every field that the decode
+// does not track, the discriminators and the unknown fields.
 func (e *emitter) decodePrologue(m *target) {
-	e.clearLeftOut(m, func(f *field) bool { return f.val.holdsMemory() })
+	e.clearLeftOut(m, func(f *field) bool { return e.reuses(f.val) })
 	for _, f := range m.fields {
 		if _, ok := e.bits[f]; !ok {
 			e.resetField(f, false)
@@ -326,14 +337,15 @@ func (e *emitter) decodeEpilogue(m *target) {
 // mergeBody writes the statements that merge the encoding in data into the
 // struct that m points at, and the end of the function: the call of the
 // function of the loop, which fields begins up to the argument data, with a
-// seen bitmap with every bit set, so that every nested struct merges.
+// pointer to a seen bitmap with every bit set, so that every nested struct
+// merges.
 func (e *emitter) mergeBody(fields string) {
 	all := make([]string, e.seenWords())
 	for k := range all {
 		all[k] = "^uint64(0)"
 	}
-	e.line("_, err := %sdata, slab, off, depth, %s{%s})", fields, e.bitmap(), strings.Join(all, ", "))
-	e.line("return err")
+	e.line("seen := %s{%s}", e.bitmap(), strings.Join(all, ", "))
+	e.line("return %sdata, slab, off, depth, &seen)", fields)
 	e.line("}")
 	e.line("")
 }
@@ -343,7 +355,7 @@ func (e *emitter) mergeBody(fields string) {
 func (e *emitter) fieldsDoc(name, callers string) {
 	e.doc(name + " decodes the fields in data into m for " + callers + ". The first occurrence of a tracked " +
 		"field whose bit in seen is clear decodes into the memory of the field, and every other occurrence " +
-		"merges. " + name + " returns seen with the bits of the tracked fields that data contains.")
+		"merges. " + name + " sets the bits of the tracked fields that data contains in seen.")
 }
 
 // fieldsBody writes the statements of the loop that decodes the fields in
@@ -356,9 +368,6 @@ func (e *emitter) fieldsDoc(name, callers string) {
 // their order instead, as [emitter.decodeInOrder] writes it.
 func (e *emitter) fieldsBody(m *target) {
 	e.ret = retError
-	if e.seenWords() > 0 {
-		e.ret = retSeen
-	}
 	if e.canonical {
 		e.decodeInOrder(m)
 		return
@@ -686,7 +695,11 @@ func (e *emitter) readKind(v *value, dst string, p place, merge string) {
 	case kindString:
 		e.readLength(p)
 		e.lengthCheck(p, "off+i")
-		e.line("%s = %s", dst, e.cast(v, "slab[off+i:off+i+int(l)]", types.String))
+		old := dst
+		if !types.Identical(v.typ, types.Typ[types.String]) {
+			old = "string(" + dst + ")"
+		}
+		e.line("%s = %s", dst, e.cast(v, "slab.String("+old+", data[i:i+int(l)], off+i)", types.String))
 		e.line("i += int(l)")
 	case kindBytes:
 		e.readLength(p)
@@ -871,7 +884,9 @@ func (e *emitter) fixed(v *value, u string) string {
 // x of v at p with the operation o, opRead or opMerge, and returns its
 // error: the unexported methods of a -type struct of the package,
 // DecodeKanon and MergeKanon of any other struct with a kanon codec, and
-// the functions of the code file for an inline struct.
+// the functions of the code file for an inline struct. The call of any
+// other struct takes the options that wire.Slab.Nested returns, and
+// wire.Slab.Locate locates its error in the slab.
 func (e *emitter) structCall(v *value, x string, p place, o op) string {
 	args := "data[i:i+int(l)], slab, off+i, " + p.depth()
 	if v.inline != nil {
@@ -888,7 +903,7 @@ func (e *emitter) structCall(v *value, x string, p place, o op) string {
 	if o == opMerge {
 		name = mergeKanonName
 	}
-	return method(x, name) + "(data[i:i+int(l)], " + e.wire() + "Nested(slab, off+i, " + p.depth() + "))"
+	return "slab.Locate(" + method(x, name) + "(data[i:i+int(l)], slab.Nested(off+i, " + p.depth() + ")), off+i)"
 }
 
 // structLevel writes the statements that reject the struct of v at p, whose
@@ -917,31 +932,33 @@ func (e *emitter) readHelper(name string, v *value) {
 	typ := e.p.typ(v.typ)
 	about := " data starts at offset off of slab, and the decode enters depth levels below the value at most."
 	errs := " loc and num locate the field in errors."
+	slab := e.wire() + "Slab"
 	switch v.kind {
 	case kindStruct:
 		m := v.inline
-		e.bits = tracked(m)
+		e.bits = e.tracked(m)
 		e.doc(name + " sets the " + m.name + " that m points at to the value encoded in data and reuses its " +
 			"memory, as DecodeKanon does." + about)
-		e.line("func %s(m *%s, data []byte, slab string, off, depth int) error {", name, typ)
+		e.line("func %s(m *%s, data []byte, slab *%s, off, depth int) error {", name, typ, slab)
 		e.decodeBody(m, func(o op) string { return e.fn(o, v) + "(m, " })
 	case kindSlice:
 		e.doc(name + " appends the elements that data encodes, a " + typ + " without its length, to *dst." +
 			about + e.boundDoc(v, "an element", "the slice") + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth%s int, loc string, num int) error {", name,
-			typ, e.boundParam(v))
+		e.line("func %s(dst *%s, data []byte, slab *%s, off, depth%s int, loc string, num int) error {", name,
+			typ, slab, e.boundParam(v))
 		e.readSlice(v)
 	case kindArray:
 		e.doc(name + " decodes the elements that data encodes, a " + typ + " without its length, into *dst. " +
 			"It fails unless data encodes exactly " + strconv.FormatInt(v.size, 10) + " elements." + about + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth int, loc string, num int) error {", name, typ)
+		e.line("func %s(dst *%s, data []byte, slab *%s, off, depth int, loc string, num int) error {", name, typ,
+			slab)
 		e.readArray(v)
 	case kindMap:
 		e.doc(name + " adds the entries that data encodes, a " + typ + " without its length, to *dst. With " +
 			"collect set, it clears *dst first, and the entries reuse the memory of up to " +
 			strconv.Itoa(freeListLength) + " of its values." + about + e.boundDoc(v, "an entry", "the map") + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth%s int, collect bool, loc string, num int) "+
-			"error {", name, typ, e.boundParam(v))
+		e.line("func %s(dst *%s, data []byte, slab *%s, off, depth%s int, collect bool, loc string, num int) "+
+			"error {", name, typ, slab, e.boundParam(v))
 		e.readMap(v)
 	case kindPointer:
 		merging := ""
@@ -951,8 +968,8 @@ func (e *emitter) readHelper(name string, v *value) {
 		e.doc(name + " decodes the " + typ + " at the start of data into *dst and returns the length of its " +
 			"encoding: nil for the presence byte 0, and for the presence byte 1 the value that follows, into the " +
 			"value that *dst points at or into a new one." + merging + about + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth int, %sloc string, num int) (int, error) {",
-			name, typ, e.mergeParams(v))
+		e.line("func %s(dst *%s, data []byte, slab *%s, off, depth int, %sloc string, num int) (int, error) {",
+			name, typ, slab, e.mergeParams(v))
 		e.readPointer(v)
 	default:
 		merging := ""
@@ -964,8 +981,8 @@ func (e *emitter) readHelper(name string, v *value) {
 			"encoding: the number of its concrete type and the value of that type, into the value that *dst " +
 			"stores when it has that type. It fails for a type number that the list does not name." + merging +
 			about + errs)
-		e.line("func %s(dst *%s, data []byte, slab string, off, depth int, %sloc string, num int) (int, error) {",
-			name, typ, e.mergeParams(v))
+		e.line("func %s(dst *%s, data []byte, slab *%s, off, depth int, %sloc string, num int) (int, error) {",
+			name, typ, slab, e.mergeParams(v))
 		e.readInterface(v)
 	}
 }
@@ -976,8 +993,8 @@ func (e *emitter) readHelper(name string, v *value) {
 // too. Pointers and interfaces take no capacity, since their count takes a
 // walk of every value they contain. A function with a bound fails at an
 // element when the slice has bound elements, before it reads the element. An
-// element that refers to memory decodes into the element in the spare
-// capacity, which a decode before left there.
+// element that the decode reuses, as [emitter.reuses] reports, decodes into
+// the element in the spare capacity, which a decode before left there.
 func (e *emitter) readSlice(v *value) {
 	e.ret = retError
 	e.levelCheck()
@@ -998,7 +1015,7 @@ func (e *emitter) readSlice(v *value) {
 		e.fail(e.wire() + "MaxError(loc, num, off+i, " + boundName + ")")
 		e.line("}")
 	}
-	if v.elem.holdsMemory() {
+	if e.reuses(v.elem) {
 		e.line("if len(x) < cap(x) {")
 		e.line("x = x[:len(x)+1]")
 		e.line("} else {")
@@ -1227,8 +1244,9 @@ func (e *emitter) mergeParams(v *value) string {
 
 // readInterface writes the body of the read function of the interface
 // value of v: one switch over the type numbers of its concrete types. A
-// concrete type whose values refer to memory decodes into the value that
-// the interface stores when that value has the type. When the function
+// concrete type whose values the decode reuses, as [emitter.reuses] reports,
+// decodes into the value that the interface stores when that value has the
+// type. When the function
 // takes the merge flag, a concrete type that merges, as [value.merges]
 // reports, decodes into that value whatever its memory, and merges into it
 // when the flag is set.
@@ -1251,7 +1269,7 @@ func (e *emitter) readInterface(v *value) {
 			merge = mergeParam
 		}
 		e.line("case %d:", c.c.num)
-		if c.val.holdsMemory() || merge != "" {
+		if e.reuses(c.val) || merge != "" {
 			e.line("x, _ := (*dst).(%s)", typ)
 		} else {
 			e.line("var x %s", typ)
@@ -1278,10 +1296,10 @@ func (e *emitter) levelCheck() {
 // mergeHelper writes the merge function of the inline struct of v.
 func (e *emitter) mergeHelper(name string, v *value) {
 	m := v.inline
-	e.bits = tracked(m)
+	e.bits = e.tracked(m)
 	e.doc(name + " merges the encoding in data, which starts at offset off of slab, into the " + m.name +
 		" that m points at, as MergeKanon does. The decode enters depth levels below m at most.")
-	e.line("func %s(m *%s, data []byte, slab string, off, depth int) error {", name, e.p.typ(m.typ))
+	e.line("func %s(m *%s, data []byte, slab *%sSlab, off, depth int) error {", name, e.p.typ(m.typ), e.wire())
 	if e.seenWords() == 0 {
 		e.fieldsBody(m)
 		return
@@ -1293,10 +1311,10 @@ func (e *emitter) mergeHelper(name string, v *value) {
 // struct of v, which has tracked fields.
 func (e *emitter) fieldsHelper(name string, v *value) {
 	m := v.inline
-	e.bits = tracked(m)
+	e.bits = e.tracked(m)
 	e.fieldsDoc(name, "the decode and the merge of "+m.name)
-	e.line("func %s(m *%s, data []byte, slab string, off, depth int, seen %s) (%s, error) {", name,
-		e.p.typ(m.typ), e.bitmap(), e.bitmap())
+	e.line("func %s(m *%s, data []byte, slab *%sSlab, off, depth int, seen *%s) error {", name,
+		e.p.typ(m.typ), e.wire(), e.bitmap())
 	e.fieldsBody(m)
 }
 

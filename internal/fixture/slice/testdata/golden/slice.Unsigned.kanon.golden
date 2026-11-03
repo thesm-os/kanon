@@ -33,3 +33,4 @@ DecodeKanon/decodes two concatenated encodings as the reference decode: 64 probe
 DecodeKanon/decodes an encoding in a slab at its offset as the reference decode: 23 probes, digest 364c5d2b14db5e1d
 the samples that the encode allocation checks measure: 20 samples, digest 1e5b1857ea9e0468
 the samples that the decode allocation check measures: 20 samples, digest 1e5b1857ea9e0468
+the samples that the decode allocation checks with the zero Options measure: 20 samples, digest 1e5b1857ea9e0468

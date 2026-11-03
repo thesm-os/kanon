@@ -114,6 +114,8 @@ func (s *suite[T, P]) golden(tb assert.TB) {
 		names(s.measured(encodeAllocates)) + "\n")
 	b.WriteString("the samples that the decode allocation check measures: " +
 		names(s.measured(s.r.decodeAllocates)) + "\n")
+	b.WriteString("the samples that the decode allocation checks with the zero Options measure: " +
+		names(s.measured(s.r.keepAllocates)) + "\n")
 	path := filepath.Join(filepath.FromSlash(goldenDir), s.l.typ.String()+goldenSuffix)
 	golden.MatchAt(tb, path, []byte(b.String()), golden.ShouldUpdate())
 }

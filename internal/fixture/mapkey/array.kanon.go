@@ -18,10 +18,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -178,21 +178,24 @@ func (m *Arrays) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Arrays) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Arrays) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -202,16 +205,18 @@ func (m *Arrays) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Arrays) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Arrays
 // call it.
-func (m *Arrays) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Arrays) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Int32)
 	}
@@ -249,173 +254,173 @@ func (m *Arrays) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Arrays
 // call it.
-func (m *Arrays) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Arrays) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Arrays) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Arrays) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Arrays", 0, off+i)
+			return wire.ReadError(n, "Arrays", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Int32", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Int32", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Int32", 1, off+i)
+				return wire.ReadError(n, "Arrays.Int32", 1, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2Int32String(&m.Int32, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "Arrays.Int32", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Point", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Point", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Point", 2, off+i)
+				return wire.ReadError(n, "Arrays.Point", 2, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2PointString(&m.Point, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "Arrays.Point", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Float", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Float", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Float", 3, off+i)
+				return wire.ReadError(n, "Arrays.Float", 3, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2Float64String(&m.Float, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Arrays.Float", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Time", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Time", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Time", 4, off+i)
+				return wire.ReadError(n, "Arrays.Time", 4, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2TimeTimeString(&m.Time, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Arrays.Time", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.One", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.One", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.One", 5, off+i)
+				return wire.ReadError(n, "Arrays.One", 5, off+i)
 			}
 			i += n
 			if err := _array_readMapArray1Int32String(&m.One, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) == 0, "Arrays.One", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Empty", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Empty", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Empty", 6, off+i)
+				return wire.ReadError(n, "Arrays.Empty", 6, off+i)
 			}
 			i += n
 			if err := _array_readMapArray0Int32String(&m.Empty, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<5) == 0, "Arrays.Empty", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 5
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Void", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Void", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Void", 7, off+i)
+				return wire.ReadError(n, "Arrays.Void", 7, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2Array0Int32String(&m.Void, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<6) == 0, "Arrays.Void", 7); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 6
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Bool", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Bool", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Bool", 8, off+i)
+				return wire.ReadError(n, "Arrays.Bool", 8, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2BoolString(&m.Bool, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<7) == 0, "Arrays.Bool", 8); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 7
 		case 9:
 			if tag != 9<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.Points", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.Points", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.Points", 9, off+i)
+				return wire.ReadError(n, "Arrays.Points", 9, off+i)
 			}
 			i += n
 			if err := _array_readMapArray2PointPoint(&m.Points, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<8) == 0, "Arrays.Points", 9); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 8
 		case 10:
 			if tag != 10<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Arrays.NoPoint", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Arrays.NoPoint", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Arrays.NoPoint", 10, off+i)
+				return wire.ReadError(n, "Arrays.NoPoint", 10, off+i)
 			}
 			i += n
 			if err := _array_readMapArray0PointPoint(&m.NoPoint, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<9) == 0, "Arrays.NoPoint", 10); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 9
 		default:
 			n, err := wire.Skip(data[i:], tag, "Arrays", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -803,7 +808,7 @@ func _array_putMapArray2Int32String(buf []byte, x map[[2]int32]string) int {
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray2Int32String(dst *map[[2]int32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2Int32String(dst *map[[2]int32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -835,7 +840,7 @@ func _array_readMapArray2Int32String(dst *map[[2]int32]string, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -848,7 +853,7 @@ func _array_readMapArray2Int32String(dst *map[[2]int32]string, data []byte, slab
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray2PointString(dst *map[[2]Point]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2PointString(dst *map[[2]Point]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -880,7 +885,7 @@ func _array_readMapArray2PointString(dst *map[[2]Point]string, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -893,7 +898,7 @@ func _array_readMapArray2PointString(dst *map[[2]Point]string, data []byte, slab
 // clears *dst first, and the entries reuse the memory of up to 16 of its
 // values. data starts at offset off of slab, and the decode enters depth levels
 // below the value at most. loc and num locate the field in errors.
-func _array_readMapArray2Float64String(dst *map[[2]float64]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2Float64String(dst *map[[2]float64]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -929,7 +934,7 @@ func _array_readMapArray2Float64String(dst *map[[2]float64]string, data []byte, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -942,7 +947,7 @@ func _array_readMapArray2Float64String(dst *map[[2]float64]string, data []byte, 
 // clears *dst first, and the entries reuse the memory of up to 16 of its
 // values. data starts at offset off of slab, and the decode enters depth levels
 // below the value at most. loc and num locate the field in errors.
-func _array_readMapArray2TimeTimeString(dst *map[[2]time.Time]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2TimeTimeString(dst *map[[2]time.Time]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -981,7 +986,7 @@ func _array_readMapArray2TimeTimeString(dst *map[[2]time.Time]string, data []byt
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -998,7 +1003,7 @@ func _array_readMapArray2TimeTimeString(dst *map[[2]time.Time]string, data []byt
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray1Int32String(dst *map[[1]int32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray1Int32String(dst *map[[1]int32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1030,7 +1035,7 @@ func _array_readMapArray1Int32String(dst *map[[1]int32]string, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1043,7 +1048,7 @@ func _array_readMapArray1Int32String(dst *map[[1]int32]string, data []byte, slab
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray0Int32String(dst *map[[0]int32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray0Int32String(dst *map[[0]int32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1075,7 +1080,7 @@ func _array_readMapArray0Int32String(dst *map[[0]int32]string, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1088,7 +1093,7 @@ func _array_readMapArray0Int32String(dst *map[[0]int32]string, data []byte, slab
 // clears *dst first, and the entries reuse the memory of up to 16 of its
 // values. data starts at offset off of slab, and the decode enters depth levels
 // below the value at most. loc and num locate the field in errors.
-func _array_readMapArray2Array0Int32String(dst *map[[2][0]int32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2Array0Int32String(dst *map[[2][0]int32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1120,7 +1125,7 @@ func _array_readMapArray2Array0Int32String(dst *map[[2][0]int32]string, data []b
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1133,7 +1138,7 @@ func _array_readMapArray2Array0Int32String(dst *map[[2][0]int32]string, data []b
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray2BoolString(dst *map[[2]bool]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2BoolString(dst *map[[2]bool]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1165,7 +1170,7 @@ func _array_readMapArray2BoolString(dst *map[[2]bool]string, data []byte, slab s
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1178,7 +1183,7 @@ func _array_readMapArray2BoolString(dst *map[[2]bool]string, data []byte, slab s
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray2PointPoint(dst *map[[2]Point]Point, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray2PointPoint(dst *map[[2]Point]Point, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1225,7 +1230,7 @@ func _array_readMapArray2PointPoint(dst *map[[2]Point]Point, data []byte, slab s
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _array_readMapArray0PointPoint(dst *map[[0]Point]Point, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _array_readMapArray0PointPoint(dst *map[[0]Point]Point, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1561,7 +1566,7 @@ func _array_putArray2Int32(buf []byte, x *[2]int32) int {
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2Int32(dst *[2]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2Int32(dst *[2]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -1585,7 +1590,7 @@ func _array_readArray2Int32(dst *[2]int32, data []byte, slab string, off, depth 
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2Point(dst *[2]Point, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2Point(dst *[2]Point, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1611,7 +1616,7 @@ func _array_readArray2Point(dst *[2]Point, data []byte, slab string, off, depth 
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2Float64(dst *[2]float64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2Float64(dst *[2]float64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])
@@ -1643,7 +1648,7 @@ func _array_canonArray2TimeTime(x [2]time.Time) bool {
 // [2]time.Time without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2TimeTime(dst *[2]time.Time, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2TimeTime(dst *[2]time.Time, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1668,7 +1673,7 @@ func _array_readArray2TimeTime(dst *[2]time.Time, data []byte, slab string, off,
 // without its length, into *dst. It fails unless data encodes exactly 1
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _array_readArray1Int32(dst *[1]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray1Int32(dst *[1]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -1692,7 +1697,7 @@ func _array_readArray1Int32(dst *[1]int32, data []byte, slab string, off, depth 
 // [2][0]int32 without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2Array0Int32(dst *[2][0]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2Array0Int32(dst *[2][0]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1715,7 +1720,7 @@ func _array_readArray2Array0Int32(dst *[2][0]int32, data []byte, slab string, of
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _array_readArray2Bool(dst *[2]bool, data []byte, slab string, off, depth int, loc string, num int) error {
+func _array_readArray2Bool(dst *[2]bool, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])

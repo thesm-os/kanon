@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -119,21 +119,24 @@ func (m *ByteArrays) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *ByteArrays) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *ByteArrays) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -143,16 +146,18 @@ func (m *ByteArrays) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *ByteArrays) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // ByteArrays call it.
-func (m *ByteArrays) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *ByteArrays) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Byte0)
 	}
@@ -178,117 +183,117 @@ func (m *ByteArrays) decodeKanon(data []byte, slab string, off, depth int) error
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain
 // ByteArrays call it.
-func (m *ByteArrays) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *ByteArrays) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *ByteArrays) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *ByteArrays) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "ByteArrays", 0, off+i)
+			return wire.ReadError(n, "ByteArrays", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte0", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte0", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte0", 1, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte0", 1, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringArray0Byte(&m.Byte0, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "ByteArrays.Byte0", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte1", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte1", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte1", 2, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte1", 2, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringArray1Byte(&m.Byte1, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "ByteArrays.Byte1", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte32", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte32", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte32", 3, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte32", 3, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringArray32Byte(&m.Byte32, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "ByteArrays.Byte32", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte127", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte127", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte127", 4, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte127", 4, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringArray127Byte(&m.Byte127, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "ByteArrays.Byte127", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte128", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte128", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte128", 5, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte128", 5, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringArray128Byte(&m.Byte128, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) == 0, "ByteArrays.Byte128", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Digest", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Digest", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Digest", 6, off+i)
+				return wire.ReadError(n, "ByteArrays.Digest", 6, off+i)
 			}
 			i += n
 			if err := _bytes_readMapStringDigest(&m.Digest, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<5) == 0, "ByteArrays.Digest", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 5
 		default:
 			n, err := wire.Skip(data[i:], tag, "ByteArrays", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -538,7 +543,7 @@ func _bytes_putMapStringArray0Byte(buf []byte, x map[string][0]byte) int {
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringArray0Byte(dst *map[string][0]byte, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringArray0Byte(dst *map[string][0]byte, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -559,7 +564,7 @@ func _bytes_readMapStringArray0Byte(dst *map[string][0]byte, data []byte, slab s
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -583,7 +588,7 @@ func _bytes_readMapStringArray0Byte(dst *map[string][0]byte, data []byte, slab s
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringArray1Byte(dst *map[string][1]byte, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringArray1Byte(dst *map[string][1]byte, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -604,7 +609,7 @@ func _bytes_readMapStringArray1Byte(dst *map[string][1]byte, data []byte, slab s
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -628,7 +633,7 @@ func _bytes_readMapStringArray1Byte(dst *map[string][1]byte, data []byte, slab s
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringArray32Byte(dst *map[string][32]byte, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringArray32Byte(dst *map[string][32]byte, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -649,7 +654,7 @@ func _bytes_readMapStringArray32Byte(dst *map[string][32]byte, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -673,7 +678,7 @@ func _bytes_readMapStringArray32Byte(dst *map[string][32]byte, data []byte, slab
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringArray127Byte(dst *map[string][127]byte, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringArray127Byte(dst *map[string][127]byte, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -694,7 +699,7 @@ func _bytes_readMapStringArray127Byte(dst *map[string][127]byte, data []byte, sl
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -718,7 +723,7 @@ func _bytes_readMapStringArray127Byte(dst *map[string][127]byte, data []byte, sl
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringArray128Byte(dst *map[string][128]byte, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringArray128Byte(dst *map[string][128]byte, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -739,7 +744,7 @@ func _bytes_readMapStringArray128Byte(dst *map[string][128]byte, data []byte, sl
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -763,7 +768,7 @@ func _bytes_readMapStringArray128Byte(dst *map[string][128]byte, data []byte, sl
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _bytes_readMapStringDigest(dst *map[string]Digest, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _bytes_readMapStringDigest(dst *map[string]Digest, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -784,7 +789,7 @@ func _bytes_readMapStringDigest(dst *map[string]Digest, data []byte, slab string
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{

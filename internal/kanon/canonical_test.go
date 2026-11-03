@@ -98,7 +98,7 @@ func TestCanonical(t *testing.T) {
 			{name: "records the number of a field whose tag matches", want: "prior = 16"},
 			{
 				name: "returns the error of the tag function for a byte that begins no field after the fields before it",
-				want: "return seen, _a_tagA(data, i, prior, off)",
+				want: "return _a_tagA(data, i, prior, off)",
 			},
 			{
 				name: "returns ErrNotCanonical for a tag that is not in its shortest form",
@@ -122,7 +122,7 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "returns ErrNotCanonical for a second member of a union",
-				want: `return seen, wire.MemberError("Kind", "A.Code", 7, off+at)`,
+				want: `return wire.MemberError("Kind", "A.Code", 7, off+at)`,
 			},
 			{name: "records the member of a union", want: "members[0] |= 1 << 0"},
 			{
@@ -131,17 +131,17 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "returns ErrNotCanonical for a bool above 1",
-				want: `return seen, wire.BoolError(u, "A.Flag", 1, off+i)`,
+				want: `return wire.BoolError(u, "A.Flag", 1, off+i)`,
 			},
 			{name: "tests the presence of a bool field", want: "if !m.Flag {"},
 			{
 				name: "returns ErrNotCanonical for a bool field of false",
-				want: `return seen, wire.AbsentError("A.Flag", 1, off+at)`,
+				want: `return wire.AbsentError("A.Flag", 1, off+at)`,
 			},
 			{name: "tests the presence of an integer field", want: "if m.Count == 0 {"},
 			{
 				name: "returns ErrNotCanonical for a varint of an int that is not in its shortest form",
-				want: `return seen, wire.LongFormError(n, "A.Size", 3, off+i)`,
+				want: `return wire.LongFormError(n, "A.Size", 3, off+i)`,
 			},
 			{
 				name: "decodes a time through wire.CanonicalTime",
@@ -153,11 +153,11 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "returns ErrNotCanonical for a slice field of no elements",
-				want: `return seen, wire.AbsentError("A.Tags", 8, off+at)`,
+				want: `return wire.AbsentError("A.Tags", 8, off+at)`,
 			},
 			{
 				name: "returns ErrNotCanonical for a length that is not in its shortest form",
-				want: `return seen, wire.LongFormError(n, "A.Tags", 8, off+i)`,
+				want: `return wire.LongFormError(n, "A.Tags", 8, off+i)`,
 			},
 			{name: "tests the presence of an array field", want: "if m.Grid == ([2]int8{}) {"},
 			{name: "tests the presence of an interface field", want: "if m.Any == nil {"},
@@ -175,7 +175,7 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "returns ErrNotCanonical for bytes that the encode method does not write",
-				want: `return seen, wire.EncodingError("A.Token", 14, off+i)`,
+				want: `return wire.EncodingError("A.Token", 14, off+i)`,
 			},
 			{
 				name: "tests the presence of a value of a type that encodes itself",
@@ -183,7 +183,7 @@ func TestCanonical(t *testing.T) {
 			},
 			{
 				name: "returns the error of wire.ExactError for a field of a type that encodes itself",
-				want: `return seen, wire.ExactError(err, "A.Token", 14, off+at, off+i)`,
+				want: `return wire.ExactError(err, "A.Token", 14, off+at, off+i)`,
 			},
 			{
 				name: "tests the presence of a value of a type with an IsZero method",

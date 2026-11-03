@@ -44,7 +44,7 @@ const (
 
 // generatorVersion is the version of the generator, which the EnforceVersion
 // constants of every code file state.
-const generatorVersion = 5
+const generatorVersion = 6
 
 // Names of the parameters of the helpers that locate a value in errors: the
 // location, "Type.Field", and the field number.
@@ -65,8 +65,6 @@ const (
 	retError = ""
 	// retLength precedes the error of a function that returns a length.
 	retLength = "0, "
-	// retSeen precedes the error of a decode that returns its seen bitmap.
-	retSeen = "seen, "
 )
 
 // Go spellings of the predeclared constants and of nil, which the generated
@@ -107,10 +105,11 @@ type emitter struct {
 	words  map[string]string
 	owners map[string]string
 	// bits maps each field that the decode of the struct being written
-	// tracks, as [tracked] numbers them, to its bit in the seen bitmap.
+	// tracks, as [emitter.tracked] numbers them, to its bit in the seen
+	// bitmap.
 	bits map[*field]int
 	// ret precedes the error in the return statements of the function being
-	// written: retSeen, retLength or retError.
+	// written: retLength or retError.
 	ret string
 	// cls classifies the fields of the struct types of map keys in lookup
 	// mode.

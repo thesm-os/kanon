@@ -24,9 +24,9 @@ const DefaultDepth = 100
 //     slice;
 //   - a value of a [Validator] whose ValidateKanon allocates for it.
 //
-// DecodeKanon and MergeKanon with a slab in their [Options], into a receiver
-// that decoded the same input before, do not allocate, except for these
-// values:
+// DecodeKanon and MergeKanon into a receiver that decoded the same input
+// before do not allocate, with a slab in their [Options] or without one,
+// except for these values:
 //
 //   - a value of a type that decodes itself;
 //   - a time in a zone that is neither UTC, the local zone at that instant,
@@ -35,10 +35,15 @@ const DefaultDepth = 100
 //   - a map of more than 16 entries whose values refer to memory, and a map
 //     key that refers to memory;
 //   - a value that an interface stores by value;
-//   - a value of a [Validator] whose ValidateKanon allocates for it.
+//   - a value of a [Validator] whose ValidateKanon allocates for it;
+//   - without a slab, a map key that contains a string that is not empty,
+//     and a map value that contains such a string and does not refer to
+//     memory.
 //
-// Without a slab, a decode allocates one copy of its input when T contains
-// a string.
+// Without a slab, a decode keeps each string of the receiver that the input
+// repeats at its place, and copies its input once, for the first string that
+// changes, as [Options] states. The strings of the exceptions without a slab
+// take a substring of that copy.
 //
 // # Concurrency
 //
@@ -78,9 +83,12 @@ type Message interface {
 
 	// DecodeKanon sets the receiver to the value encoded in data and reuses
 	// the memory of the receiver: the capacity of its slices, the entries of
-	// its maps, the values its pointers point at and its nested structs. It
-	// first clears the fields that the encoding leaves out, as Reset does.
-	// Every decoded string is a substring of the slab of opts. It returns a
+	// its maps, the values its pointers point at, its nested structs and its
+	// strings. It first clears the fields that the encoding leaves out, as
+	// Reset does. With a slab in opts, every decoded string is a substring of
+	// the slab. Without one, the decode keeps each string of the receiver
+	// that data repeats at its place, and takes every other string from one
+	// copy of data, as [Options] states. It returns a
 	// [*DecodeError] for malformed input, and for a value that the
 	// ValidateKanon of a [Validator] rejects. The decode of a type whose
 	// directive has the -canonical flag also returns a [*DecodeError] that
@@ -294,17 +302,41 @@ type Strict interface {
 	StrictKanon()
 }
 
-// Options set the slab and the nesting limit of a decode, and with the zero
-// Options a decode copies its input once, uses the copy as the slab and
-// applies [DefaultDepth].
+// Options set the slab and the nesting limit of a decode. With the zero
+// Options, a decode keeps the strings of its receiver that the input
+// repeats, copies its input once for the strings that change, and applies
+// [DefaultDepth].
+//
+// # Strings without a slab
+//
+// A decode with an empty Slab keeps each string of the receiver that equals
+// the decoded string at its place. The places are a field of a struct, an
+// element in the capacity of a slice, an element of an array, the value that
+// a pointer points at, a map value that the decode takes from the values of
+// the map, and the value of an interface that stores the same concrete type.
+// The decode copies its input once, for the first decoded string that is not
+// empty and that the receiver does not have at its place. Every later such
+// string is a substring of the copy. The strings of a map key, and of a map
+// value that does not refer to memory, take substrings of the copy, since the
+// decode clears a map before it reads its entries. A nested struct of
+// another package decodes with the copy as its
+// slab when the decode has made the copy, and with an empty Slab before, so
+// that it copies its own encoding for a string that changes.
+//
+// A kept string refers to the memory that it referred to before the decode.
+// When an earlier decode took a string of the receiver from a Slab over a
+// buffer that the caller reuses, the kept string changes with the buffer.
+// Reset clears the strings of a receiver, so a decode after Reset does not
+// keep such a string.
 type Options struct {
 	// Slab is a string of which the input is the substring that starts at
 	// Offset. Every decoded string is a substring of Slab, so the decode
-	// allocates nothing for its strings. A Slab that aliases the input's
-	// memory, as unsafe.String over the input returns it, makes every
-	// decoded string alias that memory, and the caller must not change the
-	// memory while the decoded value is in use. An empty Slab makes the
-	// decode copy the input.
+	// allocates nothing for its strings and does not keep a string of the
+	// receiver. A Slab that aliases the input's memory, as unsafe.String over
+	// the input returns it, makes every decoded string alias that memory, and
+	// the caller must not change the memory while the decoded value is in
+	// use. An empty Slab makes the decode keep the strings of the receiver
+	// that the input repeats, and copy the input for the strings that change.
 	Slab string
 	// Offset is the index in Slab of the first byte of the input. Offsets in
 	// a [DecodeError] are offsets in Slab. The decode of a struct that
@@ -321,7 +353,8 @@ type Options struct {
 
 // Source returns the slab and the offset of data in it for a decode of
 // data: Slab and Offset, or a copy of data as a string and 0 when Slab is
-// empty. The copy is the one allocation of a decode without a slab.
+// empty. The code of generator versions 1 to 5 takes the slab of every
+// decode from it.
 func (o Options) Source(data []byte) (string, int) {
 	if o.Slab == "" {
 		return string(data), 0

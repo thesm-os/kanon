@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -98,21 +98,24 @@ func (m *Aliases) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Aliases) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Aliases) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -122,15 +125,16 @@ func (m *Aliases) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Aliases) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Aliases
 // call it.
-func (m *Aliases) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Aliases) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Int32 = m.Int32[:0]
 	m.Name = m.Name[:0]
 	m.Slice = m.Slice[:0]
@@ -141,7 +145,7 @@ func (m *Aliases) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Aliases
 // call it.
-func (m *Aliases) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Aliases) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -308,7 +312,7 @@ func _alias_putSliceInt32(buf []byte, x []Int32Alias) int {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _alias_readSliceInt32(dst *[]Int32Alias, data []byte, slab string, off, depth int, loc string, num int) error {
+func _alias_readSliceInt32(dst *[]Int32Alias, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -338,7 +342,7 @@ func _alias_readSliceInt32(dst *[]Int32Alias, data []byte, slab string, off, dep
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _alias_readSliceName(dst *[]NameAlias, data []byte, slab string, off, depth int, loc string, num int) error {
+func _alias_readSliceName(dst *[]NameAlias, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -347,14 +351,18 @@ func _alias_readSliceName(dst *[]NameAlias, data []byte, slab string, off, depth
 		x = make([]NameAlias, 0, wire.SliceCap[Name](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = Name(slab[off+i : off+i+int(l)])
+		x[last] = Name(slab.String(string(x[last]), data[i:i+int(l)], off+i))
 		i += int(l)
 	}
 	*dst = x
@@ -365,7 +373,7 @@ func _alias_readSliceName(dst *[]NameAlias, data []byte, slab string, off, depth
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _alias_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _alias_readSliceInt64(dst *[]int64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}

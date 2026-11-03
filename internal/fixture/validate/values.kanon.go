@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -385,21 +385,24 @@ func (m *Values) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Values) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Values) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -409,20 +412,19 @@ func (m *Values) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Values) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Values
 // call it.
-func (m *Values) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Values) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Level = 0
 	m.Amount = 0
 	m.Tick = 0
-	m.Code = ""
-	m.Label = ""
 	m.Ratio = 0
 	m.Tags = m.Tags[:0]
 	m.Hash = Hash{}
@@ -435,26 +437,35 @@ func (m *Values) decodeKanon(data []byte, slab string, off, depth int) error {
 	m.Grade = 0
 	m.Codes = m.Codes[:0]
 	m.Pair = [2]Amount{}
-	m.Text = ""
 	m.Count = 0
 	m.Flag = false
 	m.Fixed = 0
 	m.Era = 0
 	m.Kind = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
-		clear(m.Scores)
+		m.Code = ""
 	}
 	if seen[0]&(1<<1) == 0 {
-		m.Next = nil
+		m.Label = ""
 	}
 	if seen[0]&(1<<2) == 0 {
-		clear(m.Index)
+		clear(m.Scores)
 	}
 	if seen[0]&(1<<3) == 0 {
-		m.Any = nil
+		m.Next = nil
 	}
 	if seen[0]&(1<<4) == 0 {
+		clear(m.Index)
+	}
+	if seen[0]&(1<<5) == 0 {
+		m.Text = ""
+	}
+	if seen[0]&(1<<6) == 0 {
+		m.Any = nil
+	}
+	if seen[0]&(1<<7) == 0 {
 		m.Checked = nil
 	}
 	return err
@@ -464,256 +475,258 @@ func (m *Values) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Values
 // call it.
-func (m *Values) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Values) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Values) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Values", 0, off+i)
+			return wire.ReadError(n, "Values", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Level", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Level", off+at)
 			}
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Level", 1, off+i)
+				return wire.ReadError(n, "Values.Level", 1, off+i)
 			}
 			if u != uint64(uint8(u)) {
-				return seen, wire.RangeError(u, "uint8", "Values.Level", 1, off+i)
+				return wire.RangeError(u, "uint8", "Values.Level", 1, off+i)
 			}
 			m.Level = Level(u)
 			i += n
 			if err := m.Level.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Level", 1, from)
+				return wire.UnmarshalError(err, "Values.Level", 1, from)
 			}
 		case 2:
 			if tag != 2<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Amount", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Amount", off+at)
 			}
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Amount", 2, off+i)
+				return wire.ReadError(n, "Values.Amount", 2, off+i)
 			}
 			m.Amount = Amount(wire.Unzigzag(u))
 			i += n
 			if err := m.Amount.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Amount", 2, from)
+				return wire.UnmarshalError(err, "Values.Amount", 2, from)
 			}
 		case 3:
 			if tag != 3<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Tick", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Tick", off+at)
 			}
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Tick", 3, off+i)
+				return wire.ReadError(n, "Values.Tick", 3, off+i)
 			}
 			m.Tick = Tick(u)
 			i += n
 			if err := m.Tick.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Tick", 3, from)
+				return wire.UnmarshalError(err, "Values.Tick", 3, from)
 			}
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Code", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Code", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Code", 4, off+i)
+				return wire.ReadError(n, "Values.Code", 4, off+i)
 			}
 			i += n
-			m.Code = Code(slab[off+i : off+i+int(l)])
+			m.Code = Code(slab.String(string(m.Code), data[i:i+int(l)], off+i))
 			i += int(l)
 			if err := m.Code.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Code", 4, from)
+				return wire.UnmarshalError(err, "Values.Code", 4, from)
 			}
+			seen[0] |= 1 << 0
 		case 27:
 			if tag != 27<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Label", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Label", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Label", 27, off+i)
+				return wire.ReadError(n, "Values.Label", 27, off+i)
 			}
 			i += n
 			if l > 2 {
-				return seen, wire.MaxError("Values.Label", 27, off+i+2, 2)
+				return wire.MaxError("Values.Label", 27, off+i+2, 2)
 			}
-			m.Label = Code(slab[off+i : off+i+int(l)])
+			m.Label = Code(slab.String(string(m.Label), data[i:i+int(l)], off+i))
 			i += int(l)
 			if err := m.Label.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Label", 27, from)
+				return wire.UnmarshalError(err, "Values.Label", 27, from)
 			}
+			seen[0] |= 1 << 1
 		case 5:
 			if tag != 5<<3|wire.Fixed64 {
-				return seen, wire.FormatError(tag, wire.Fixed64, "Values.Ratio", off+at)
+				return wire.FormatError(tag, wire.Fixed64, "Values.Ratio", off+at)
 			}
 			from := off + i
 			u, n := wire.Uint64(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Ratio", 5, off+i)
+				return wire.ReadError(n, "Values.Ratio", 5, off+i)
 			}
 			m.Ratio = Ratio(math.Float64frombits(u))
 			i += n
 			if err := m.Ratio.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Ratio", 5, from)
+				return wire.UnmarshalError(err, "Values.Ratio", 5, from)
 			}
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Tags", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Tags", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Tags", 6, off+i)
+				return wire.ReadError(n, "Values.Tags", 6, off+i)
 			}
 			i += n
 			if err := _values_readTags(&m.Tags, data[i:i+int(l)], slab, off+i, depth-1, "Values.Tags", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			if err := m.Tags.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Tags", 6, from)
+				return wire.UnmarshalError(err, "Values.Tags", 6, from)
 			}
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Scores", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Scores", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Scores", 7, off+i)
+				return wire.ReadError(n, "Values.Scores", 7, off+i)
 			}
 			i += n
-			if err := _values_readScores(&m.Scores, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "Values.Scores", 7); err != nil {
-				return seen, err
+			if err := _values_readScores(&m.Scores, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Values.Scores", 7); err != nil {
+				return err
 			}
 			i += int(l)
 			if err := m.Scores.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Scores", 7, from)
+				return wire.UnmarshalError(err, "Values.Scores", 7, from)
 			}
-			seen[0] |= 1 << 0
+			seen[0] |= 1 << 2
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Hash", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Hash", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 4 {
-				return seen, wire.LengthError(l, 4, "Values.Hash", 8, off+i)
+				return wire.LengthError(l, 4, "Values.Hash", 8, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Hash", 8, off+i)
+				return wire.ReadError(n, "Values.Hash", 8, off+i)
 			}
 			i += n
 			i += copy(m.Hash[:], data[i:])
 			if err := m.Hash.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Hash", 8, from)
+				return wire.UnmarshalError(err, "Values.Hash", 8, from)
 			}
 		case 9:
 			if tag != 9<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Blob", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Blob", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Blob", 9, off+i)
+				return wire.ReadError(n, "Values.Blob", 9, off+i)
 			}
 			i += n
 			m.Blob = append(m.Blob[:0], data[i:i+int(l)]...)
 			i += int(l)
 			if err := m.Blob.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Blob", 9, from)
+				return wire.UnmarshalError(err, "Values.Blob", 9, from)
 			}
 		case 10:
 			if tag != 10<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Span", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Span", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Span", 10, off+i)
+				return wire.ReadError(n, "Values.Span", 10, off+i)
 			}
 			i += n
 			if err := _values_readSpan(&m.Span, data[i:i+int(l)], slab, off+i, depth-1, "Values.Span", 10); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			if err := m.Span.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Span", 10, from)
+				return wire.UnmarshalError(err, "Values.Span", 10, from)
 			}
 		case 25:
 			if tag != 25<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Port", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Port", off+at)
 			}
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Port", 25, off+i)
+				return wire.ReadError(n, "Values.Port", 25, off+i)
 			}
 			if u != uint64(uint16(u)) {
-				return seen, wire.RangeError(u, "uint16", "Values.Port", 25, off+i)
+				return wire.RangeError(u, "uint16", "Values.Port", 25, off+i)
 			}
 			m.Port = Port(u)
 			i += n
 			if err := m.Port.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Port", 25, from)
+				return wire.UnmarshalError(err, "Values.Port", 25, from)
 			}
 		case 12:
 			if tag != 12<<3|wire.Fixed32 {
-				return seen, wire.FormatError(tag, wire.Fixed32, "Values.Weight", off+at)
+				return wire.FormatError(tag, wire.Fixed32, "Values.Weight", off+at)
 			}
 			from := off + i
 			u, n := wire.Uint32(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Weight", 12, off+i)
+				return wire.ReadError(n, "Values.Weight", 12, off+i)
 			}
 			m.Weight = Weight(math.Float32frombits(u))
 			i += n
 			if err := m.Weight.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Weight", 12, from)
+				return wire.UnmarshalError(err, "Values.Weight", 12, from)
 			}
 		case 13:
 			if tag != 13<<3|wire.Fixed64 {
-				return seen, wire.FormatError(tag, wire.Fixed64, "Values.Wave", off+at)
+				return wire.FormatError(tag, wire.Fixed64, "Values.Wave", off+at)
 			}
 			from := off + i
 			u, n := wire.Uint64(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Wave", 13, off+i)
+				return wire.ReadError(n, "Values.Wave", 13, off+i)
 			}
 			m.Wave = Wave(complex(math.Float32frombits(uint32(u)), math.Float32frombits(uint32(u>>32))))
 			i += n
 			if err := m.Wave.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Wave", 13, from)
+				return wire.UnmarshalError(err, "Values.Wave", 13, from)
 			}
 		case 14:
 			if tag != 14<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Phase", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Phase", off+at)
 			}
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 16 {
-				return seen, wire.LengthError(l, 16, "Values.Phase", 14, off+i)
+				return wire.LengthError(l, 16, "Values.Phase", 14, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Phase", 14, off+i)
+				return wire.ReadError(n, "Values.Phase", 14, off+i)
 			}
 			i += n
 			re, _ := wire.Uint64(data[i:])
@@ -721,32 +734,32 @@ func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			m.Phase = Phase(complex(math.Float64frombits(re), math.Float64frombits(im)))
 			i += 16
 			if err := m.Phase.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Phase", 14, from)
+				return wire.UnmarshalError(err, "Values.Phase", 14, from)
 			}
 		case 15:
 			if tag != 15<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Grade", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Grade", off+at)
 			}
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Grade", 15, off+i)
+				return wire.ReadError(n, "Values.Grade", 15, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int16(s)) {
-				return seen, wire.RangeError(s, "int16", "Values.Grade", 15, off+i)
+				return wire.RangeError(s, "int16", "Values.Grade", 15, off+i)
 			}
 			m.Grade = Grade(s)
 			i += n
 			if err := m.Grade.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Grade", 15, from)
+				return wire.UnmarshalError(err, "Values.Grade", 15, from)
 			}
 		case 16:
 			if tag != 16<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Next", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Next", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Values.Next", 16, off+i)
+				return wire.DepthError("Values.Next", 16, off+i)
 			}
 			if m.Next == nil {
 				m.Next = new(Level)
@@ -754,60 +767,60 @@ func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Next", 16, off+i)
+				return wire.ReadError(n, "Values.Next", 16, off+i)
 			}
 			if u != uint64(uint8(u)) {
-				return seen, wire.RangeError(u, "uint8", "Values.Next", 16, off+i)
+				return wire.RangeError(u, "uint8", "Values.Next", 16, off+i)
 			}
 			*m.Next = Level(u)
 			i += n
 			if err := m.Next.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Next", 16, from)
+				return wire.UnmarshalError(err, "Values.Next", 16, from)
 			}
-			seen[0] |= 1 << 1
+			seen[0] |= 1 << 3
 		case 17:
 			if tag != 17<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Codes", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Codes", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Codes", 17, off+i)
+				return wire.ReadError(n, "Values.Codes", 17, off+i)
 			}
 			i += n
 			if err := _values_readSliceCode(&m.Codes, data[i:i+int(l)], slab, off+i, depth-1, "Values.Codes", 17); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 18:
 			if tag != 18<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Pair", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Pair", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Pair", 18, off+i)
+				return wire.ReadError(n, "Values.Pair", 18, off+i)
 			}
 			i += n
 			if err := _values_readArray2Amount(&m.Pair, data[i:i+int(l)], slab, off+i, depth-1, "Values.Pair", 18); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 19:
 			if tag != 19<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Index", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Index", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Index", 19, off+i)
+				return wire.ReadError(n, "Values.Index", 19, off+i)
 			}
 			i += n
-			if err := _values_readMapCodeLevel(&m.Index, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Values.Index", 19); err != nil {
-				return seen, err
+			if err := _values_readMapCodeLevel(&m.Index, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) == 0, "Values.Index", 19); err != nil {
+				return err
 			}
 			i += int(l)
-			seen[0] |= 1 << 2
+			seen[0] |= 1 << 4
 		case 20:
 			if tag != 20<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Text", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Text", off+at)
 			}
 			if m.Kind != KindText {
 				_values_deselectValuesKind(m)
@@ -816,17 +829,18 @@ func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			from := off + i
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Text", 20, off+i)
+				return wire.ReadError(n, "Values.Text", 20, off+i)
 			}
 			i += n
-			m.Text = Code(slab[off+i : off+i+int(l)])
+			m.Text = Code(slab.String(string(m.Text), data[i:i+int(l)], off+i))
 			i += int(l)
 			if err := m.Text.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Text", 20, from)
+				return wire.UnmarshalError(err, "Values.Text", 20, from)
 			}
+			seen[0] |= 1 << 5
 		case 21:
 			if tag != 21<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Count", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Count", off+at)
 			}
 			if m.Kind != KindCount {
 				_values_deselectValuesKind(m)
@@ -835,19 +849,19 @@ func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Count", 21, off+i)
+				return wire.ReadError(n, "Values.Count", 21, off+i)
 			}
 			if u != uint64(uint8(u)) {
-				return seen, wire.RangeError(u, "uint8", "Values.Count", 21, off+i)
+				return wire.RangeError(u, "uint8", "Values.Count", 21, off+i)
 			}
 			m.Count = Level(u)
 			i += n
 			if err := m.Count.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Count", 21, from)
+				return wire.UnmarshalError(err, "Values.Count", 21, from)
 			}
 		case 11:
 			if tag != 11<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Flag", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Flag", off+at)
 			}
 			if m.Kind != KindFlag {
 				_values_deselectValuesKind(m)
@@ -856,82 +870,82 @@ func (m *Values) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 			from := off + i
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Flag", 11, off+i)
+				return wire.ReadError(n, "Values.Flag", 11, off+i)
 			}
 			m.Flag = Flag(u != 0)
 			i += n
 			if err := m.Flag.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Flag", 11, from)
+				return wire.UnmarshalError(err, "Values.Flag", 11, from)
 			}
 		case 22:
 			if tag != 22<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Any", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Any", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Any", 22, off+i)
+				return wire.ReadError(n, "Values.Any", 22, off+i)
 			}
 			i += n
-			used, err := _values_readAny(&m.Any, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) != 0, "Values.Any", 22)
+			used, err := _values_readAny(&m.Any, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<6) != 0, "Values.Any", 22)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Values.Any", 22, off+i+used)
+				return wire.TrailingError(int(l)-used, "Values.Any", 22, off+i+used)
 			}
 			i += int(l)
-			seen[0] |= 1 << 3
+			seen[0] |= 1 << 6
 		case 23:
 			if tag != 23<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Values.Checked", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Values.Checked", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Values.Checked", 23, off+i)
+				return wire.ReadError(n, "Values.Checked", 23, off+i)
 			}
 			i += n
 			used, err := _values_readValid(&m.Checked, data[i:i+int(l)], slab, off+i, depth-1, "Values.Checked", 23)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Values.Checked", 23, off+i+used)
+				return wire.TrailingError(int(l)-used, "Values.Checked", 23, off+i+used)
 			}
 			i += int(l)
-			seen[0] |= 1 << 4
+			seen[0] |= 1 << 7
 		case 24:
 			if tag != 24<<3|wire.Fixed64 {
-				return seen, wire.FormatError(tag, wire.Fixed64, "Values.Fixed", off+at)
+				return wire.FormatError(tag, wire.Fixed64, "Values.Fixed", off+at)
 			}
 			from := off + i
 			u, n := wire.Uint64(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Fixed", 24, off+i)
+				return wire.ReadError(n, "Values.Fixed", 24, off+i)
 			}
 			m.Fixed = Tick(u)
 			i += n
 			if err := m.Fixed.ValidateKanon(); err != nil {
-				return seen, wire.UnmarshalError(err, "Values.Fixed", 24, from)
+				return wire.UnmarshalError(err, "Values.Fixed", 24, from)
 			}
 		case 26:
 			if tag != 26<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Values.Era", off+at)
+				return wire.FormatError(tag, wire.Varint, "Values.Era", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Values.Era", 26, off+i)
+				return wire.ReadError(n, "Values.Era", 26, off+i)
 			}
 			m.Era = Era(u)
 			i += n
 		default:
 			n, err := wire.Skip(data[i:], tag, "Values", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -1969,7 +1983,7 @@ func _values_putTags(buf []byte, x Tags) int {
 // _values_readTags appends the elements that data encodes, a Tags without its
 // length, to *dst. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _values_readTags(dst *Tags, data []byte, slab string, off, depth int, loc string, num int) error {
+func _values_readTags(dst *Tags, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1978,14 +1992,18 @@ func _values_readTags(dst *Tags, data []byte, slab string, off, depth int, loc s
 		x = make(Tags, 0, wire.SliceCap[string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = slab[off+i : off+i+int(l)]
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
 		i += int(l)
 	}
 	*dst = x
@@ -1997,7 +2015,7 @@ func _values_readTags(dst *Tags, data []byte, slab string, off, depth int, loc s
 // reuse the memory of up to 16 of its values. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _values_readScores(dst *Scores, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _values_readScores(dst *Scores, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2018,7 +2036,7 @@ func _values_readScores(dst *Scores, data []byte, slab string, off, depth int, c
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -2042,7 +2060,7 @@ func _values_readScores(dst *Scores, data []byte, slab string, off, depth int, c
 // length, into *dst. It fails unless data encodes exactly 2 elements. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _values_readSpan(dst *Span, data []byte, slab string, off, depth int, loc string, num int) error {
+func _values_readSpan(dst *Span, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -2066,7 +2084,7 @@ func _values_readSpan(dst *Span, data []byte, slab string, off, depth int, loc s
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _values_readSliceCode(dst *[]Code, data []byte, slab string, off, depth int, loc string, num int) error {
+func _values_readSliceCode(dst *[]Code, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2075,7 +2093,11 @@ func _values_readSliceCode(dst *[]Code, data []byte, slab string, off, depth int
 		x = make([]Code, 0, wire.SliceCap[Code](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		from := off + i
 		l, n := wire.Uvarint(data[i:])
@@ -2083,7 +2105,7 @@ func _values_readSliceCode(dst *[]Code, data []byte, slab string, off, depth int
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = Code(slab[off+i : off+i+int(l)])
+		x[last] = Code(slab.String(string(x[last]), data[i:i+int(l)], off+i))
 		i += int(l)
 		if err := x[last].ValidateKanon(); err != nil {
 			return wire.UnmarshalError(err, loc, num, from)
@@ -2097,7 +2119,7 @@ func _values_readSliceCode(dst *[]Code, data []byte, slab string, off, depth int
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _values_readArray2Amount(dst *[2]Amount, data []byte, slab string, off, depth int, loc string, num int) error {
+func _values_readArray2Amount(dst *[2]Amount, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		from := off + i
@@ -2122,7 +2144,7 @@ func _values_readArray2Amount(dst *[2]Amount, data []byte, slab string, off, dep
 // entries reuse the memory of up to 16 of its values. data starts at offset off
 // of slab, and the decode enters depth levels below the value at most. loc and
 // num locate the field in errors.
-func _values_readMapCodeLevel(dst *map[Code]Level, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _values_readMapCodeLevel(dst *map[Code]Level, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2144,7 +2166,7 @@ func _values_readMapCodeLevel(dst *map[Code]Level, data []byte, slab string, off
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = Code(slab[off+i : off+i+int(l)])
+			mk = Code(slab.String(string(mk), data[i:i+int(l)], off+i))
 			i += int(l)
 			if err := mk.ValidateKanon(); err != nil {
 				return wire.UnmarshalError(err, loc, num, from)
@@ -2191,7 +2213,7 @@ func _values_deselectValuesKind(m *Values) {
 // repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _values_readAny(dst *any, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _values_readAny(dst *any, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2249,7 +2271,7 @@ func _values_readAny(dst *any, data []byte, slab string, off, depth int, merge b
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _values_readValid(dst *Valid, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _values_readValid(dst *Valid, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}

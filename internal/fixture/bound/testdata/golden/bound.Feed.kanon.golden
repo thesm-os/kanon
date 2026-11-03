@@ -34,3 +34,4 @@ DecodeKanon/decodes an encoding in a slab at its offset as the reference decode:
 DecodeKanon/decodes a field with one element past its bound as the reference decode: 1 probes, digest da503143c6efaad3
 the samples that the encode allocation checks measure: 11 samples, digest 833d773f510f7809
 the samples that the decode allocation check measures: 11 samples, digest 833d773f510f7809
+the samples that the decode allocation checks with the zero Options measure: 11 samples, digest 833d773f510f7809

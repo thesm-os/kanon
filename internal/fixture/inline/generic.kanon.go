@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -120,21 +120,24 @@ func (m *Generic) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Generic) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Generic) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -144,16 +147,18 @@ func (m *Generic) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Generic) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Generic
 // call it.
-func (m *Generic) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Generic) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_generic_resetBoxInt32(&m.Box)
 	}
@@ -176,35 +181,35 @@ func (m *Generic) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Generic
 // call it.
-func (m *Generic) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Generic) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Generic) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Generic) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Generic", 0, off+i)
+			return wire.ReadError(n, "Generic", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Generic.Box", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Generic.Box", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Generic.Box", 1, off+i)
+				return wire.ReadError(n, "Generic.Box", 1, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Box[int32]", 0, off+i)
+				return wire.DepthError("Box[int32]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<0) == 0 {
@@ -214,23 +219,23 @@ func (m *Generic) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 				err = _generic_mergeBoxInt32(&m.Box, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Generic.Boxes", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Generic.Boxes", off+at)
 			}
 			if m.Boxes == nil {
 				m.Boxes = new(Box[[]string])
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Generic.Boxes", 2, off+i)
+				return wire.ReadError(n, "Generic.Boxes", 2, off+i)
 			}
 			i += n
 			if depth < 2 {
-				return seen, wire.DepthError("Box[[]string]", 0, off+i)
+				return wire.DepthError("Box[[]string]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<1) == 0 {
@@ -240,20 +245,20 @@ func (m *Generic) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 				err = _generic_mergeBoxSliceString(m.Boxes, data[i:i+int(l)], slab, off+i, depth-2)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Generic.Pair", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Generic.Pair", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Generic.Pair", 3, off+i)
+				return wire.ReadError(n, "Generic.Pair", 3, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Pair[string, int32]", 0, off+i)
+				return wire.DepthError("external.Pair[string, int32]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<2) == 0 {
@@ -263,34 +268,34 @@ func (m *Generic) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 				err = _generic_mergeExternalPairStringInt32(&m.Pair, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Generic.Pairs", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Generic.Pairs", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Generic.Pairs", 4, off+i)
+				return wire.ReadError(n, "Generic.Pairs", 4, off+i)
 			}
 			i += n
 			if err := _generic_readMapInt32ExternalPairExternalRankBoxString(&m.Pairs, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Generic.Pairs", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Generic.Nested", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Generic.Nested", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Generic.Nested", 5, off+i)
+				return wire.ReadError(n, "Generic.Nested", 5, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Box[Box[bool]]", 0, off+i)
+				return wire.DepthError("Box[Box[bool]]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<4) == 0 {
@@ -300,18 +305,18 @@ func (m *Generic) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 				err = _generic_mergeBoxBoxBool(&m.Nested, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "Generic", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -536,174 +541,67 @@ func _generic_resetBoxBoxBool(m *Box[Box[bool]]) {
 // encoded in data and reuses its memory, as DecodeKanon does. data starts at
 // offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _generic_readBoxInt32(m *Box[int32], data []byte, slab string, off, depth int) error {
+func _generic_readBoxInt32(m *Box[int32], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Value = 0
-	m.Note = ""
-	return _generic_mergeBoxInt32(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _generic_fieldsBoxInt32(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Note = ""
+	}
+	return err
 }
 
 // _generic_mergeBoxInt32 merges the encoding in data, which starts at offset
 // off of slab, into the Box[int32] that m points at, as MergeKanon does. The
 // decode enters depth levels below m at most.
-func _generic_mergeBoxInt32(m *Box[int32], data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Box[int32]", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Varint {
-				return wire.FormatError(tag, wire.Varint, "Box[int32].Value", off+at)
-			}
-			u, n := wire.Uvarint(data[i:])
-			if n <= 0 {
-				return wire.ReadError(n, "Box[int32].Value", 1, off+i)
-			}
-			s := wire.Unzigzag(u)
-			if s != int64(int32(s)) {
-				return wire.RangeError(s, "int32", "Box[int32].Value", 1, off+i)
-			}
-			m.Value = int32(s)
-			i += n
-		case 2:
-			if tag != 2<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Box[int32].Note", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Box[int32].Note", 2, off+i)
-			}
-			i += n
-			m.Note = slab[off+i : off+i+int(l)]
-			i += int(l)
-		default:
-			n, err := wire.Skip(data[i:], tag, "Box[int32]", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _generic_mergeBoxInt32(m *Box[int32], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsBoxInt32(m, data, slab, off, depth, &seen)
 }
 
 // _generic_readBoxSliceString sets the Box[[]string] that m points at to the
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _generic_readBoxSliceString(m *Box[[]string], data []byte, slab string, off, depth int) error {
+func _generic_readBoxSliceString(m *Box[[]string], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Value = m.Value[:0]
-	m.Note = ""
-	return _generic_mergeBoxSliceString(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _generic_fieldsBoxSliceString(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Note = ""
+	}
+	return err
 }
 
 // _generic_mergeBoxSliceString merges the encoding in data, which starts at
 // offset off of slab, into the Box[[]string] that m points at, as MergeKanon
 // does. The decode enters depth levels below m at most.
-func _generic_mergeBoxSliceString(m *Box[[]string], data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Box[[]string]", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Box[[]string].Value", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Box[[]string].Value", 1, off+i)
-			}
-			i += n
-			if err := _generic_readSliceString(&m.Value, data[i:i+int(l)], slab, off+i, depth-1, "Box[[]string].Value", 1); err != nil {
-				return err
-			}
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Box[[]string].Note", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Box[[]string].Note", 2, off+i)
-			}
-			i += n
-			m.Note = slab[off+i : off+i+int(l)]
-			i += int(l)
-		default:
-			n, err := wire.Skip(data[i:], tag, "Box[[]string]", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _generic_mergeBoxSliceString(m *Box[[]string], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsBoxSliceString(m, data, slab, off, depth, &seen)
 }
 
 // _generic_readExternalPairStringInt32 sets the external.Pair[string, int32]
 // that m points at to the value encoded in data and reuses its memory, as
 // DecodeKanon does. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most.
-func _generic_readExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab string, off, depth int) error {
-	m.Key = ""
+func _generic_readExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Val = 0
-	return _generic_mergeExternalPairStringInt32(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _generic_fieldsExternalPairStringInt32(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Key = ""
+	}
+	return err
 }
 
 // _generic_mergeExternalPairStringInt32 merges the encoding in data, which
 // starts at offset off of slab, into the external.Pair[string, int32] that m
 // points at, as MergeKanon does. The decode enters depth levels below m at
 // most.
-func _generic_mergeExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "external.Pair[string, int32]", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "external.Pair[string, int32].Key", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "external.Pair[string, int32].Key", 1, off+i)
-			}
-			i += n
-			m.Key = slab[off+i : off+i+int(l)]
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Varint {
-				return wire.FormatError(tag, wire.Varint, "external.Pair[string, int32].Val", off+at)
-			}
-			u, n := wire.Uvarint(data[i:])
-			if n <= 0 {
-				return wire.ReadError(n, "external.Pair[string, int32].Val", 2, off+i)
-			}
-			s := wire.Unzigzag(u)
-			if s != int64(int32(s)) {
-				return wire.RangeError(s, "int32", "external.Pair[string, int32].Val", 2, off+i)
-			}
-			m.Val = int32(s)
-			i += n
-		default:
-			n, err := wire.Skip(data[i:], tag, "external.Pair[string, int32]", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _generic_mergeExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsExternalPairStringInt32(m, data, slab, off, depth, &seen)
 }
 
 // _generic_readMapInt32ExternalPairExternalRankBoxString adds the entries that
@@ -712,7 +610,7 @@ func _generic_mergeExternalPairStringInt32(m *external.Pair[string, int32], data
 // reuse the memory of up to 16 of its values. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _generic_readMapInt32ExternalPairExternalRankBoxString(dst *map[int32]external.Pair[external.Rank, Box[string]], data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _generic_readMapInt32ExternalPairExternalRankBoxString(dst *map[int32]external.Pair[external.Rank, Box[string]], data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -762,11 +660,14 @@ func _generic_readMapInt32ExternalPairExternalRankBoxString(dst *map[int32]exter
 // encoded in data and reuses its memory, as DecodeKanon does. data starts at
 // offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _generic_readBoxBoxBool(m *Box[Box[bool]], data []byte, slab string, off, depth int) error {
-	m.Note = ""
-	seen, err := _generic_fieldsBoxBoxBool(m, data, slab, off, depth, [1]uint64{})
+func _generic_readBoxBoxBool(m *Box[Box[bool]], data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := _generic_fieldsBoxBoxBool(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_generic_resetBoxBool(&m.Value)
+	}
+	if seen[0]&(1<<1) == 0 {
+		m.Note = ""
 	}
 	return err
 }
@@ -774,9 +675,9 @@ func _generic_readBoxBoxBool(m *Box[Box[bool]], data []byte, slab string, off, d
 // _generic_mergeBoxBoxBool merges the encoding in data, which starts at offset
 // off of slab, into the Box[Box[bool]] that m points at, as MergeKanon does.
 // The decode enters depth levels below m at most.
-func _generic_mergeBoxBoxBool(m *Box[Box[bool]], data []byte, slab string, off, depth int) error {
-	_, err := _generic_fieldsBoxBoxBool(m, data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func _generic_mergeBoxBoxBool(m *Box[Box[bool]], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsBoxBoxBool(m, data, slab, off, depth, &seen)
 }
 
 // _generic_cloneBoxInt32 copies the Box[int32] that src points at into the one
@@ -914,30 +815,156 @@ func _generic_resetBoxBool(m *Box[bool]) {
 	m.Note = ""
 }
 
-// _generic_readSliceString appends the elements that data encodes, a []string
-// without its length, to *dst. data starts at offset off of slab, and the
-// decode enters depth levels below the value at most. loc and num locate the
-// field in errors.
-func _generic_readSliceString(dst *[]string, data []byte, slab string, off, depth int, loc string, num int) error {
-	if depth < 0 {
-		return wire.DepthError(loc, num, off)
-	}
-	x := *dst
-	if x == nil && len(data) > 0 {
-		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
-	}
+// _generic_fieldsBoxInt32 decodes the fields in data into m for the decode and
+// the merge of Box[int32]. The first occurrence of a tracked field whose bit in
+// seen is clear decodes into the memory of the field, and every other
+// occurrence merges. _generic_fieldsBoxInt32 sets the bits of the tracked
+// fields that data contains in seen.
+func _generic_fieldsBoxInt32(m *Box[int32], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
-		x = append(x, "")
-		last := len(x) - 1
-		l, n := wire.Uvarint(data[i:])
-		if n <= 0 || uint64(len(data)-i-n) < l {
-			return wire.ReadError(n, loc, num, off+i)
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Box[int32]", 0, off+i)
 		}
 		i += n
-		x[last] = slab[off+i : off+i+int(l)]
-		i += int(l)
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Varint {
+				return wire.FormatError(tag, wire.Varint, "Box[int32].Value", off+at)
+			}
+			u, n := wire.Uvarint(data[i:])
+			if n <= 0 {
+				return wire.ReadError(n, "Box[int32].Value", 1, off+i)
+			}
+			s := wire.Unzigzag(u)
+			if s != int64(int32(s)) {
+				return wire.RangeError(s, "int32", "Box[int32].Value", 1, off+i)
+			}
+			m.Value = int32(s)
+			i += n
+		case 2:
+			if tag != 2<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Box[int32].Note", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Box[int32].Note", 2, off+i)
+			}
+			i += n
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		default:
+			n, err := wire.Skip(data[i:], tag, "Box[int32]", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
 	}
-	*dst = x
+	return nil
+}
+
+// _generic_fieldsBoxSliceString decodes the fields in data into m for the
+// decode and the merge of Box[[]string]. The first occurrence of a tracked
+// field whose bit in seen is clear decodes into the memory of the field, and
+// every other occurrence merges. _generic_fieldsBoxSliceString sets the bits of
+// the tracked fields that data contains in seen.
+func _generic_fieldsBoxSliceString(m *Box[[]string], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Box[[]string]", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Box[[]string].Value", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Box[[]string].Value", 1, off+i)
+			}
+			i += n
+			if err := _generic_readSliceString(&m.Value, data[i:i+int(l)], slab, off+i, depth-1, "Box[[]string].Value", 1); err != nil {
+				return err
+			}
+			i += int(l)
+		case 2:
+			if tag != 2<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Box[[]string].Note", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Box[[]string].Note", 2, off+i)
+			}
+			i += n
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		default:
+			n, err := wire.Skip(data[i:], tag, "Box[[]string]", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
+	return nil
+}
+
+// _generic_fieldsExternalPairStringInt32 decodes the fields in data into m for
+// the decode and the merge of external.Pair[string, int32]. The first
+// occurrence of a tracked field whose bit in seen is clear decodes into the
+// memory of the field, and every other occurrence merges.
+// _generic_fieldsExternalPairStringInt32 sets the bits of the tracked fields
+// that data contains in seen.
+func _generic_fieldsExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "external.Pair[string, int32]", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "external.Pair[string, int32].Key", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "external.Pair[string, int32].Key", 1, off+i)
+			}
+			i += n
+			m.Key = slab.String(m.Key, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		case 2:
+			if tag != 2<<3|wire.Varint {
+				return wire.FormatError(tag, wire.Varint, "external.Pair[string, int32].Val", off+at)
+			}
+			u, n := wire.Uvarint(data[i:])
+			if n <= 0 {
+				return wire.ReadError(n, "external.Pair[string, int32].Val", 2, off+i)
+			}
+			s := wire.Unzigzag(u)
+			if s != int64(int32(s)) {
+				return wire.RangeError(s, "int32", "external.Pair[string, int32].Val", 2, off+i)
+			}
+			m.Val = int32(s)
+			i += n
+		default:
+			n, err := wire.Skip(data[i:], tag, "external.Pair[string, int32]", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
 	return nil
 }
 
@@ -946,9 +973,10 @@ func _generic_readSliceString(dst *[]string, data []byte, slab string, off, dept
 // encoded in data and reuses its memory, as DecodeKanon does. data starts at
 // offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _generic_readExternalPairExternalRankBoxString(m *external.Pair[external.Rank, Box[string]], data []byte, slab string, off, depth int) error {
+func _generic_readExternalPairExternalRankBoxString(m *external.Pair[external.Rank, Box[string]], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Key = 0
-	seen, err := _generic_fieldsExternalPairExternalRankBoxString(m, data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := _generic_fieldsExternalPairExternalRankBoxString(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_generic_resetBoxString(&m.Val)
 	}
@@ -958,28 +986,28 @@ func _generic_readExternalPairExternalRankBoxString(m *external.Pair[external.Ra
 // _generic_fieldsBoxBoxBool decodes the fields in data into m for the decode
 // and the merge of Box[Box[bool]]. The first occurrence of a tracked field
 // whose bit in seen is clear decodes into the memory of the field, and every
-// other occurrence merges. _generic_fieldsBoxBoxBool returns seen with the bits
-// of the tracked fields that data contains.
-func _generic_fieldsBoxBoxBool(m *Box[Box[bool]], data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// other occurrence merges. _generic_fieldsBoxBoxBool sets the bits of the
+// tracked fields that data contains in seen.
+func _generic_fieldsBoxBoxBool(m *Box[Box[bool]], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Box[Box[bool]]", 0, off+i)
+			return wire.ReadError(n, "Box[Box[bool]]", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Box[Box[bool]].Value", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Box[Box[bool]].Value", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Box[Box[bool]].Value", 1, off+i)
+				return wire.ReadError(n, "Box[Box[bool]].Value", 1, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Box[bool]", 0, off+i)
+				return wire.DepthError("Box[bool]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<0) == 0 {
@@ -989,29 +1017,30 @@ func _generic_fieldsBoxBoxBool(m *Box[Box[bool]], data []byte, slab string, off,
 				err = _generic_mergeBoxBool(&m.Value, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Box[Box[bool]].Note", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Box[Box[bool]].Note", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Box[Box[bool]].Note", 2, off+i)
+				return wire.ReadError(n, "Box[Box[bool]].Note", 2, off+i)
 			}
 			i += n
-			m.Note = slab[off+i : off+i+int(l)]
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 1
 		default:
 			n, err := wire.Skip(data[i:], tag, "Box[Box[bool]]", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _generic_cloneBoxSliceString copies the Box[[]string] that src points at into
@@ -1066,46 +1095,77 @@ func _generic_putBoxString(buf []byte, m *Box[string]) int {
 	return len(buf) - i
 }
 
+// _generic_readSliceString appends the elements that data encodes, a []string
+// without its length, to *dst. data starts at offset off of slab, and the
+// decode enters depth levels below the value at most. loc and num locate the
+// field in errors.
+func _generic_readSliceString(dst *[]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
+	if depth < 0 {
+		return wire.DepthError(loc, num, off)
+	}
+	x := *dst
+	if x == nil && len(data) > 0 {
+		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
+	}
+	for i := 0; i < len(data); {
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
+		last := len(x) - 1
+		l, n := wire.Uvarint(data[i:])
+		if n <= 0 || uint64(len(data)-i-n) < l {
+			return wire.ReadError(n, loc, num, off+i)
+		}
+		i += n
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
+		i += int(l)
+	}
+	*dst = x
+	return nil
+}
+
 // _generic_fieldsExternalPairExternalRankBoxString decodes the fields in data
 // into m for the decode and the merge of external.Pair[external.Rank,
 // Box[string]]. The first occurrence of a tracked field whose bit in seen is
 // clear decodes into the memory of the field, and every other occurrence
-// merges. _generic_fieldsExternalPairExternalRankBoxString returns seen with
-// the bits of the tracked fields that data contains.
-func _generic_fieldsExternalPairExternalRankBoxString(m *external.Pair[external.Rank, Box[string]], data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// merges. _generic_fieldsExternalPairExternalRankBoxString sets the bits of the
+// tracked fields that data contains in seen.
+func _generic_fieldsExternalPairExternalRankBoxString(m *external.Pair[external.Rank, Box[string]], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "external.Pair[external.Rank, Box[string]]", 0, off+i)
+			return wire.ReadError(n, "external.Pair[external.Rank, Box[string]]", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "external.Pair[external.Rank, Box[string]].Key", off+at)
+				return wire.FormatError(tag, wire.Varint, "external.Pair[external.Rank, Box[string]].Key", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "external.Pair[external.Rank, Box[string]].Key", 1, off+i)
+				return wire.ReadError(n, "external.Pair[external.Rank, Box[string]].Key", 1, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "external.Pair[external.Rank, Box[string]].Key", 1, off+i)
+				return wire.RangeError(s, "int32", "external.Pair[external.Rank, Box[string]].Key", 1, off+i)
 			}
 			m.Key = external.Rank(s)
 			i += n
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Pair[external.Rank, Box[string]].Val", off+at)
+				return wire.FormatError(tag, wire.Bytes, "external.Pair[external.Rank, Box[string]].Val", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Pair[external.Rank, Box[string]].Val", 2, off+i)
+				return wire.ReadError(n, "external.Pair[external.Rank, Box[string]].Val", 2, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Box[string]", 0, off+i)
+				return wire.DepthError("Box[string]", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<0) == 0 {
@@ -1115,18 +1175,18 @@ func _generic_fieldsExternalPairExternalRankBoxString(m *external.Pair[external.
 				err = _generic_mergeBoxString(&m.Val, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "external.Pair[external.Rank, Box[string]]", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _generic_resetBoxString clears the Box[string] that m points at and keeps the
@@ -1139,16 +1199,74 @@ func _generic_resetBoxString(m *Box[string]) {
 // _generic_readBoxBool sets the Box[bool] that m points at to the value encoded
 // in data and reuses its memory, as DecodeKanon does. data starts at offset off
 // of slab, and the decode enters depth levels below the value at most.
-func _generic_readBoxBool(m *Box[bool], data []byte, slab string, off, depth int) error {
+func _generic_readBoxBool(m *Box[bool], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Value = false
-	m.Note = ""
-	return _generic_mergeBoxBool(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _generic_fieldsBoxBool(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Note = ""
+	}
+	return err
 }
 
 // _generic_mergeBoxBool merges the encoding in data, which starts at offset off
 // of slab, into the Box[bool] that m points at, as MergeKanon does. The decode
 // enters depth levels below m at most.
-func _generic_mergeBoxBool(m *Box[bool], data []byte, slab string, off, depth int) error {
+func _generic_mergeBoxBool(m *Box[bool], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsBoxBool(m, data, slab, off, depth, &seen)
+}
+
+// _generic_cloneSliceString returns a copy of x, a []string, and nil for a nil
+// x.
+func _generic_cloneSliceString(x []string) []string {
+	if x == nil {
+		return nil
+	}
+	c := make([]string, len(x))
+	for k := range x {
+		c[k] = strings.Clone(x[k])
+	}
+	return c
+}
+
+// _generic_cloneBoxString copies the Box[string] that src points at into the
+// one that dst points at, as CloneKanon does.
+func _generic_cloneBoxString(dst, src *Box[string]) {
+	dst.Value = strings.Clone(src.Value)
+	dst.Note = strings.Clone(src.Note)
+}
+
+// _generic_readBoxString sets the Box[string] that m points at to the value
+// encoded in data and reuses its memory, as DecodeKanon does. data starts at
+// offset off of slab, and the decode enters depth levels below the value at
+// most.
+func _generic_readBoxString(m *Box[string], data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := _generic_fieldsBoxString(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Value = ""
+	}
+	if seen[0]&(1<<1) == 0 {
+		m.Note = ""
+	}
+	return err
+}
+
+// _generic_mergeBoxString merges the encoding in data, which starts at offset
+// off of slab, into the Box[string] that m points at, as MergeKanon does. The
+// decode enters depth levels below m at most.
+func _generic_mergeBoxString(m *Box[string], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _generic_fieldsBoxString(m, data, slab, off, depth, &seen)
+}
+
+// _generic_fieldsBoxBool decodes the fields in data into m for the decode and
+// the merge of Box[bool]. The first occurrence of a tracked field whose bit in
+// seen is clear decodes into the memory of the field, and every other
+// occurrence merges. _generic_fieldsBoxBool sets the bits of the tracked fields
+// that data contains in seen.
+func _generic_fieldsBoxBool(m *Box[bool], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1176,8 +1294,9 @@ func _generic_mergeBoxBool(m *Box[bool], data []byte, slab string, off, depth in
 				return wire.ReadError(n, "Box[bool].Note", 2, off+i)
 			}
 			i += n
-			m.Note = slab[off+i : off+i+int(l)]
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		default:
 			n, err := wire.Skip(data[i:], tag, "Box[bool]", 0, off+at)
 			if err != nil {
@@ -1189,40 +1308,12 @@ func _generic_mergeBoxBool(m *Box[bool], data []byte, slab string, off, depth in
 	return nil
 }
 
-// _generic_cloneSliceString returns a copy of x, a []string, and nil for a nil
-// x.
-func _generic_cloneSliceString(x []string) []string {
-	if x == nil {
-		return nil
-	}
-	c := make([]string, len(x))
-	for k := range x {
-		c[k] = strings.Clone(x[k])
-	}
-	return c
-}
-
-// _generic_cloneBoxString copies the Box[string] that src points at into the
-// one that dst points at, as CloneKanon does.
-func _generic_cloneBoxString(dst, src *Box[string]) {
-	dst.Value = strings.Clone(src.Value)
-	dst.Note = strings.Clone(src.Note)
-}
-
-// _generic_readBoxString sets the Box[string] that m points at to the value
-// encoded in data and reuses its memory, as DecodeKanon does. data starts at
-// offset off of slab, and the decode enters depth levels below the value at
-// most.
-func _generic_readBoxString(m *Box[string], data []byte, slab string, off, depth int) error {
-	m.Value = ""
-	m.Note = ""
-	return _generic_mergeBoxString(m, data, slab, off, depth)
-}
-
-// _generic_mergeBoxString merges the encoding in data, which starts at offset
-// off of slab, into the Box[string] that m points at, as MergeKanon does. The
-// decode enters depth levels below m at most.
-func _generic_mergeBoxString(m *Box[string], data []byte, slab string, off, depth int) error {
+// _generic_fieldsBoxString decodes the fields in data into m for the decode and
+// the merge of Box[string]. The first occurrence of a tracked field whose bit
+// in seen is clear decodes into the memory of the field, and every other
+// occurrence merges. _generic_fieldsBoxString sets the bits of the tracked
+// fields that data contains in seen.
+func _generic_fieldsBoxString(m *Box[string], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1240,8 +1331,9 @@ func _generic_mergeBoxString(m *Box[string], data []byte, slab string, off, dept
 				return wire.ReadError(n, "Box[string].Value", 1, off+i)
 			}
 			i += n
-			m.Value = slab[off+i : off+i+int(l)]
+			m.Value = slab.String(m.Value, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Box[string].Note", off+at)
@@ -1251,8 +1343,9 @@ func _generic_mergeBoxString(m *Box[string], data []byte, slab string, off, dept
 				return wire.ReadError(n, "Box[string].Note", 2, off+i)
 			}
 			i += n
-			m.Note = slab[off+i : off+i+int(l)]
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 1
 		default:
 			n, err := wire.Skip(data[i:], tag, "Box[string]", 0, off+at)
 			if err != nil {

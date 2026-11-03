@@ -64,7 +64,8 @@ type target struct {
 	// inline reports an inline struct.
 	inline bool
 	// tree reports that the struct, or a struct it nests at any depth, has a
-	// string, so that a decode without a slab copies its input.
+	// string, so that its decode takes the wire.Slab of its options, which can
+	// copy its input.
 	tree bool
 	// fails reports that the encoding can fail, as [classifier.mayFail]
 	// reports: the struct contains a type that encodes itself outside a field

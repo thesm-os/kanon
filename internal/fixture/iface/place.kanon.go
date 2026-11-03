@@ -23,10 +23,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -187,21 +187,24 @@ func (m *Places) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Places) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Places) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -211,17 +214,19 @@ func (m *Places) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Places) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Places
 // call it.
-func (m *Places) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Places) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Slice = m.Slice[:0]
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Field = nil
 	}
@@ -247,136 +252,136 @@ func (m *Places) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Places
 // call it.
-func (m *Places) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Places) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Places) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Places) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Places", 0, off+i)
+			return wire.ReadError(n, "Places", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Field", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Field", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Field", 1, off+i)
+				return wire.ReadError(n, "Places.Field", 1, off+i)
 			}
 			i += n
 			used, err := _place_readShape(&m.Field, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) != 0, "Places.Field", 1)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Places.Field", 1, off+i+used)
+				return wire.TrailingError(int(l)-used, "Places.Field", 1, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Slice", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Slice", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Slice", 2, off+i)
+				return wire.ReadError(n, "Places.Slice", 2, off+i)
 			}
 			i += n
 			if err := _place_readSliceShape(&m.Slice, data[i:i+int(l)], slab, off+i, depth-1, "Places.Slice", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Array", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Array", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Array", 3, off+i)
+				return wire.ReadError(n, "Places.Array", 3, off+i)
 			}
 			i += n
 			if err := _place_readArray2Shape(&m.Array, data[i:i+int(l)], slab, off+i, depth-1, "Places.Array", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Map", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Map", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Map", 4, off+i)
+				return wire.ReadError(n, "Places.Map", 4, off+i)
 			}
 			i += n
 			if err := _place_readMapStringShape(&m.Map, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Places.Map", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Ptr", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Ptr", off+at)
 			}
 			if m.Ptr == nil {
 				m.Ptr = new(Shape)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Ptr", 5, off+i)
+				return wire.ReadError(n, "Places.Ptr", 5, off+i)
 			}
 			i += n
 			used, err := _place_readShape2(m.Ptr, data[i:i+int(l)], slab, off+i, depth-2, "Places.Ptr", 5)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Places.Ptr", 5, off+i+used)
+				return wire.TrailingError(int(l)-used, "Places.Ptr", 5, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Twice", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Twice", off+at)
 			}
 			if m.Twice == nil {
 				m.Twice = new(*Shape)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Twice", 6, off+i)
+				return wire.ReadError(n, "Places.Twice", 6, off+i)
 			}
 			i += n
 			used, err := _place_readPtrShape(m.Twice, data[i:i+int(l)], slab, off+i, depth-2, "Places.Twice", 6)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Places.Twice", 6, off+i+used)
+				return wire.TrailingError(int(l)-used, "Places.Twice", 6, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Nested", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Nested", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Nested", 7, off+i)
+				return wire.ReadError(n, "Places.Nested", 7, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Places.Nested", 0, off+i)
+				return wire.DepthError("Places.Nested", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<5) == 0 {
@@ -386,18 +391,18 @@ func (m *Places) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 				err = _place_mergePlacesNested(&m.Nested, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "Places", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -725,7 +730,7 @@ func _place_resetPlacesNested(m *struct {
 // repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _place_readShape(dst *Shape, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _place_readShape(dst *Shape, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -800,7 +805,7 @@ func _place_readShape(dst *Shape, data []byte, slab string, off, depth int, merg
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _place_readSliceShape(dst *[]Shape, data []byte, slab string, off, depth int, loc string, num int) error {
+func _place_readSliceShape(dst *[]Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -826,7 +831,7 @@ func _place_readSliceShape(dst *[]Shape, data []byte, slab string, off, depth in
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _place_readArray2Shape(dst *[2]Shape, data []byte, slab string, off, depth int, loc string, num int) error {
+func _place_readArray2Shape(dst *[2]Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		used, err := _place_readShape4(&dst[k], data[i:], slab, off+i, depth, loc, num)
@@ -846,7 +851,7 @@ func _place_readArray2Shape(dst *[2]Shape, data []byte, slab string, off, depth 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _place_readMapStringShape(dst *map[string]Shape, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _place_readMapStringShape(dst *map[string]Shape, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -877,7 +882,7 @@ func _place_readMapStringShape(dst *map[string]Shape, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		mv = nil
@@ -903,7 +908,7 @@ func _place_readMapStringShape(dst *map[string]Shape, data []byte, slab string, 
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _place_readShape2(dst *Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readShape2(dst *Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -933,7 +938,7 @@ func _place_readShape2(dst *Shape, data []byte, slab string, off, depth int, loc
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _place_readPtrShape(dst **Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readPtrShape(dst **Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -965,8 +970,9 @@ func _place_readPtrShape(dst **Shape, data []byte, slab string, off, depth int, 
 // most.
 func _place_readPlacesNested(m *struct {
 	Shape Shape "kanon:\",types=Circle\""
-}, data []byte, slab string, off, depth int) error {
-	seen, err := _place_fieldsPlacesNested(m, data, slab, off, depth, [1]uint64{})
+}, data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := _place_fieldsPlacesNested(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Shape = nil
 	}
@@ -978,9 +984,9 @@ func _place_readPlacesNested(m *struct {
 // decode enters depth levels below m at most.
 func _place_mergePlacesNested(m *struct {
 	Shape Shape "kanon:\",types=Circle\""
-}, data []byte, slab string, off, depth int) error {
-	_, err := _place_fieldsPlacesNested(m, data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+}, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _place_fieldsPlacesNested(m, data, slab, off, depth, &seen)
 }
 
 // _place_resetSliceShape empties the []Shape that x points at and resets every
@@ -1295,7 +1301,7 @@ func _place_putPatch(buf []byte, m *Patch) int {
 // into a new one. With merge set, the struct merges into the struct that *dst
 // points at. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _place_readPtrSquare(dst **Square, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _place_readPtrSquare(dst **Square, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1339,7 +1345,7 @@ func _place_readPtrSquare(dst **Square, data []byte, slab string, off, depth int
 // _place_mergePatch merges the encoding in data, which starts at offset off of
 // slab, into the Patch that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _place_mergePatch(m *Patch, data []byte, slab string, off, depth int) error {
+func _place_mergePatch(m *Patch, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1375,7 +1381,7 @@ func _place_mergePatch(m *Patch, data []byte, slab string, off, depth int) error
 // _place_readPatch sets the Patch that m points at to the value encoded in data
 // and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _place_readPatch(m *Patch, data []byte, slab string, off, depth int) error {
+func _place_readPatch(m *Patch, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Cells = m.Cells[:0]
 	return _place_mergePatch(m, data, slab, off, depth)
 }
@@ -1386,7 +1392,7 @@ func _place_readPatch(m *Patch, data []byte, slab string, off, depth int) error 
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _place_readShape3(dst *Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readShape3(dst *Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1432,7 +1438,7 @@ func _place_readShape3(dst *Shape, data []byte, slab string, off, depth int, loc
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _place_readShape4(dst *Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readShape4(dst *Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1478,7 +1484,7 @@ func _place_readShape4(dst *Shape, data []byte, slab string, off, depth int, loc
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _place_readShape5(dst *Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readShape5(dst *Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1524,7 +1530,7 @@ func _place_readShape5(dst *Shape, data []byte, slab string, off, depth int, loc
 // fails for a type number that the list does not name. data starts at offset
 // off of slab, and the decode enters depth levels below the value at most. loc
 // and num locate the field in errors.
-func _place_readShape6(dst *Shape, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readShape6(dst *Shape, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1559,46 +1565,46 @@ func _place_readShape6(dst *Shape, data []byte, slab string, off, depth int, loc
 // _place_fieldsPlacesNested decodes the fields in data into m for the decode
 // and the merge of Places.Nested. The first occurrence of a tracked field whose
 // bit in seen is clear decodes into the memory of the field, and every other
-// occurrence merges. _place_fieldsPlacesNested returns seen with the bits of
-// the tracked fields that data contains.
+// occurrence merges. _place_fieldsPlacesNested sets the bits of the tracked
+// fields that data contains in seen.
 func _place_fieldsPlacesNested(m *struct {
 	Shape Shape "kanon:\",types=Circle\""
-}, data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+}, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Places.Nested", 0, off+i)
+			return wire.ReadError(n, "Places.Nested", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Places.Nested.Shape", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Places.Nested.Shape", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Places.Nested.Shape", 1, off+i)
+				return wire.ReadError(n, "Places.Nested.Shape", 1, off+i)
 			}
 			i += n
 			used, err := _place_readShape7(&m.Shape, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) != 0, "Places.Nested.Shape", 1)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Places.Nested.Shape", 1, off+i+used)
+				return wire.TrailingError(int(l)-used, "Places.Nested.Shape", 1, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		default:
 			n, err := wire.Skip(data[i:], tag, "Places.Nested", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _place_clonePtrSquare returns a pointer to a copy of the value that x, a
@@ -1738,7 +1744,7 @@ func _place_putSliceInt32(buf []byte, x []int32) int {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _place_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _place_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1769,7 +1775,7 @@ func _place_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth in
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _place_readPtrPatch(dst **Patch, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _place_readPtrPatch(dst **Patch, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1810,7 +1816,7 @@ func _place_readPtrPatch(dst **Patch, data []byte, slab string, off, depth int, 
 // a repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _place_readShape7(dst *Shape, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _place_readShape7(dst *Shape, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}

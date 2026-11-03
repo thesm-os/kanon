@@ -110,7 +110,7 @@ func streamNames(m *target, fields []*field, prefix string) []string {
 // a canonical m with a union the method that decodes a run, as
 // [emitter.streamRun] writes it.
 func (e *emitter) streamType(m *target, fields []*field) {
-	e.bits = tracked(m)
+	e.bits = e.tracked(m)
 	field, stream := m.name+fieldSuffix, m.name+streamSuffix
 	schema := e.prefix + schemaWord + camel(m.name)
 	e.doc(field + " names a streamed field of " + m.name + ", which " + stream + ".Next returns. Its value is " +
@@ -296,9 +296,10 @@ func (e *emitter) streamOpen(m *target, stream, schema string) {
 	e.line("")
 	e.doc("Reset makes d read the encoding of a " + m.name + ", size bytes, from r into m, and reuses the buffers " +
 		"of d. It clears the fields of m that the encoding leaves out, and the fields that the decode does not " +
-		"track, the streamed fields among them, as DecodeKanon clears them. It reads at most size bytes from r. A " +
-		"size below 0, or above math.MaxInt, makes the first call of Next fail with kanon.ErrStreamSize. The " +
-		"strings that d decoded before are substrings of the buffers that it reuses.")
+		"track, as DecodeKanon clears them. The fields that the decode tracks keep their values until Next " +
+		"returns io.EOF, and Next then clears those that the encoding does not contain. d reads at most size " +
+		"bytes from r. A size below 0, or above math.MaxInt, makes the first call of Next fail with " +
+		"kanon.ErrStreamSize. The strings that d decoded before are substrings of the buffers that it reuses.")
 	e.line("func (d *%s) Reset(r %s, size int64, m *%s) {", stream, reader, typ)
 	e.line("d.s.Reset(r, size)")
 	e.line("d.m = m")
@@ -350,7 +351,9 @@ func (e *emitter) streamNext(m *target, fields []*field, stream string) {
 	e.line("if err != nil {")
 	e.line("return 0, err")
 	e.line("}")
-	args := "r.Data, r.Slab(), 0, r.Depth"
+	e.line("var slab %sSlab", e.wire())
+	e.line("off := slab.Reset(r.Data, %sOptions{Slab: r.Slab()})", e.rt())
+	args := "r.Data, &slab, off, r.Depth"
 	run, own := "d."+runName, e.canonical && unionBits(m)
 	if e.seenWords() == 0 {
 		if !own {
@@ -364,12 +367,10 @@ func (e *emitter) streamNext(m *target, fields []*field, stream string) {
 		if !own {
 			run = "m." + fieldsMethod
 		}
-		e.line("m := d.m")
-		e.line("seen, err := %s(%s, d.seen)", run, args)
-		e.line("if err != nil {")
+		e.line("m, seen := d.m, &d.seen")
+		e.line("if err := %s(%s, seen); err != nil {", run, args)
 		e.line("return 0, d.s.Fail(err)")
 		e.line("}")
-		e.line("d.seen = seen")
 		e.line("n, err := d.s.Open()")
 		e.line("if err == %s.EOF {", e.std(ioPath))
 		e.decodeEpilogue(m)
@@ -446,14 +447,16 @@ func (e *emitter) streamReaders(fields []*field, stream string) {
 // decodeElement writes the decode method of the streamed slice f on stream,
 // the stream decoder of the struct of f, which decodes one element with the
 // code that the decode of the slice runs for it: the unexported decode method
-// of a -type struct of the package, and DecodeKanon of any other struct with
-// a kanon codec. The wire.Stream checks the length of the element and the
-// nesting limit before it.
+// of a -type struct of the package, with a wire.Slab over the bytes of the
+// element, and DecodeKanon of any other struct with a kanon codec. The
+// wire.Stream checks the length of the element and the nesting limit before
+// it.
 func (e *emitter) decodeElement(f *field, stream string) {
 	elem, w := f.val.elem, e.wire()
 	call := method("e", decodeKanonName) + "(r.Data, " + w + "Nested(r.Slab(), 0, r.Depth))"
-	if e.generates(elem.typ) {
-		call = method("e", decodeMethod) + "(r.Data, r.Slab(), 0, r.Depth)"
+	generated := e.generates(elem.typ)
+	if generated {
+		call = method("e", decodeMethod) + "(r.Data, &slab, off, r.Depth)"
 	}
 	name := decodePrefix + f.name
 	bound := ""
@@ -470,6 +473,10 @@ func (e *emitter) decodeElement(f *field, stream string) {
 	e.line("if err != nil {")
 	e.line("return err")
 	e.line("}")
+	if generated {
+		e.line("var slab %sSlab", w)
+		e.line("off := slab.Reset(r.Data, %sOptions{Slab: r.Slab()})", e.rt())
+	}
 	e.line("if err := %s; err != nil {", call)
 	e.line("return d.s.Fail(err)")
 	e.line("}")
@@ -486,16 +493,16 @@ func (e *emitter) decodeElement(f *field, stream string) {
 // of its union in an earlier run, as it fails in the decode of m.
 func (e *emitter) streamRun(m *target, stream string) {
 	e.ret = retError
-	results, params := errorName, ""
+	params := ""
 	if e.seenWords() > 0 {
-		e.ret = retSeen
-		results, params = "("+e.bitmap()+", "+errorName+")", ", seen "+e.bitmap()
+		params = ", seen *" + e.bitmap()
 	}
 	e.doc(runName + " decodes the fields in data, a run of the encoding that starts at offset off of slab, " +
 		"into the receiver of d, as the canonical decode of " + m.name + " decodes them, and records the " +
 		"members of the unions of " + m.name + " for the runs after it. The decode enters depth levels below " +
 		"the receiver at most.")
-	e.line("func (d *%s) %s(data []byte, slab string, off, depth int%s) %s {", stream, runName, params, results)
+	e.line("func (d *%s) %s(data []byte, slab *%sSlab, off, depth int%s) %s {", stream, runName, e.wire(), params,
+		errorName)
 	e.line("m, %s := d.m, d.%s", membersName, membersName)
 	e.line("var %s uint64", priorName)
 	e.line("i := 0")

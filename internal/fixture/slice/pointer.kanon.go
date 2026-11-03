@@ -16,10 +16,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -151,21 +151,24 @@ func (m *Pointers) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Pointers) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Pointers) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -175,15 +178,16 @@ func (m *Pointers) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Pointers) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Pointers call it.
-func (m *Pointers) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Pointers) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Int32 = m.Int32[:0]
 	m.String = m.String[:0]
 	m.Inner = m.Inner[:0]
@@ -198,7 +202,7 @@ func (m *Pointers) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Pointers
 // call it.
-func (m *Pointers) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Pointers) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -511,7 +515,7 @@ func _pointer_putSlicePtrInt32(buf []byte, x []*int32) int {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readSlicePtrInt32(dst *[]*int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrInt32(dst *[]*int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -537,7 +541,7 @@ func _pointer_readSlicePtrInt32(dst *[]*int32, data []byte, slab string, off, de
 // []*string without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _pointer_readSlicePtrString(dst *[]*string, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrString(dst *[]*string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -563,7 +567,7 @@ func _pointer_readSlicePtrString(dst *[]*string, data []byte, slab string, off, 
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readSlicePtrInner(dst *[]*Inner, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrInner(dst *[]*Inner, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -589,7 +593,7 @@ func _pointer_readSlicePtrInner(dst *[]*Inner, data []byte, slab string, off, de
 // []*external.Label without its length, to *dst. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _pointer_readSlicePtrExternalLabel(dst *[]*external.Label, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrExternalLabel(dst *[]*external.Label, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -615,7 +619,7 @@ func _pointer_readSlicePtrExternalLabel(dst *[]*external.Label, data []byte, sla
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readSlicePtrLoose(dst *[]*Loose, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrLoose(dst *[]*Loose, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -641,7 +645,7 @@ func _pointer_readSlicePtrLoose(dst *[]*Loose, data []byte, slab string, off, de
 // []*[]int32 without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _pointer_readSlicePtrSliceInt32(dst *[]*[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrSliceInt32(dst *[]*[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -667,7 +671,7 @@ func _pointer_readSlicePtrSliceInt32(dst *[]*[]int32, data []byte, slab string, 
 // []**int32 without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _pointer_readSlicePtrPtrInt32(dst *[]**int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSlicePtrPtrInt32(dst *[]**int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1025,7 +1029,7 @@ func _pointer_putPtrInt32(buf []byte, x *int32) int {
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _pointer_readPtrInt32(dst **int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrInt32(dst **int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1061,7 +1065,7 @@ func _pointer_readPtrInt32(dst **int32, data []byte, slab string, off, depth int
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _pointer_readPtrString(dst **string, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrString(dst **string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1084,7 +1088,7 @@ func _pointer_readPtrString(dst **string, data []byte, slab string, off, depth i
 		return 0, wire.ReadError(n, loc, num, off+i)
 	}
 	i += n
-	*x = slab[off+i : off+i+int(l)]
+	*x = slab.String(*x, data[i:i+int(l)], off+i)
 	i += int(l)
 	return i, nil
 }
@@ -1094,7 +1098,7 @@ func _pointer_readPtrString(dst **string, data []byte, slab string, off, depth i
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _pointer_readPtrInner(dst **Inner, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrInner(dst **Inner, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1133,7 +1137,7 @@ func _pointer_readPtrInner(dst **Inner, data []byte, slab string, off, depth int
 // that *dst points at or into a new one. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _pointer_readPtrExternalLabel(dst **external.Label, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrExternalLabel(dst **external.Label, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1159,7 +1163,7 @@ func _pointer_readPtrExternalLabel(dst **external.Label, data []byte, slab strin
 	if depth < 1 {
 		return 0, wire.DepthError("external.Label", 0, off+i)
 	}
-	if err := x.DecodeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1)); err != nil {
+	if err := slab.Locate(x.DecodeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i); err != nil {
 		return 0, err
 	}
 	i += int(l)
@@ -1171,7 +1175,7 @@ func _pointer_readPtrExternalLabel(dst **external.Label, data []byte, slab strin
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _pointer_readPtrLoose(dst **Loose, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrLoose(dst **Loose, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1210,7 +1214,7 @@ func _pointer_readPtrLoose(dst **Loose, data []byte, slab string, off, depth int
 // points at or into a new one. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readPtrSliceInt32(dst **[]int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrSliceInt32(dst **[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1247,7 +1251,7 @@ func _pointer_readPtrSliceInt32(dst **[]int32, data []byte, slab string, off, de
 // at or into a new one. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _pointer_readPtrPtrInt32(dst ***int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrPtrInt32(dst ***int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1398,17 +1402,21 @@ func _pointer_putLoose(buf []byte, m *Loose) int {
 // _pointer_readLoose sets the Loose that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _pointer_readLoose(m *Loose, data []byte, slab string, off, depth int) error {
-	m.Note = ""
+func _pointer_readLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Size = 0
-	return _pointer_mergeLoose(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _pointer_fieldsLoose(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Note = ""
+	}
+	return err
 }
 
 // _pointer_readSliceInt32 appends the elements that data encodes, a []int32
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1441,10 +1449,12 @@ func _pointer_cloneLoose(dst, src *Loose) {
 	dst.Size = src.Size
 }
 
-// _pointer_mergeLoose merges the encoding in data, which starts at offset off
-// of slab, into the Loose that m points at, as MergeKanon does. The decode
-// enters depth levels below m at most.
-func _pointer_mergeLoose(m *Loose, data []byte, slab string, off, depth int) error {
+// _pointer_fieldsLoose decodes the fields in data into m for the decode and the
+// merge of Loose. The first occurrence of a tracked field whose bit in seen is
+// clear decodes into the memory of the field, and every other occurrence
+// merges. _pointer_fieldsLoose sets the bits of the tracked fields that data
+// contains in seen.
+func _pointer_fieldsLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1462,8 +1472,9 @@ func _pointer_mergeLoose(m *Loose, data []byte, slab string, off, depth int) err
 				return wire.ReadError(n, "Loose.Note", 1, off+i)
 			}
 			i += n
-			m.Note = slab[off+i : off+i+int(l)]
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "Loose.Size", off+at)

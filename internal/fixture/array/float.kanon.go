@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -114,14 +114,17 @@ func (m *Floats) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Floats) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -131,15 +134,16 @@ func (m *Floats) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Floats) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Floats
 // call it.
-func (m *Floats) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Floats) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Float32 = [2]float32{}
 	m.Float64 = [2]float64{}
 	m.Ratio = [2]Ratio{}
@@ -151,7 +155,7 @@ func (m *Floats) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Floats
 // call it.
-func (m *Floats) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Floats) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -349,14 +353,17 @@ func (m *Complexes) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Complexes) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -366,15 +373,16 @@ func (m *Complexes) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Complexes) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Complexes call it.
-func (m *Complexes) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Complexes) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Complex64 = [2]complex64{}
 	m.Complex128 = [2]complex128{}
 	m.Phase = [2]Phase{}
@@ -386,7 +394,7 @@ func (m *Complexes) decodeKanon(data []byte, slab string, off, depth int) error 
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain
 // Complexes call it.
-func (m *Complexes) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Complexes) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -585,7 +593,7 @@ func _float_putArray2Float32(buf []byte, x *[2]float32) int {
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Float32(dst *[2]float32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Float32(dst *[2]float32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint32(data[i:])
@@ -605,7 +613,7 @@ func _float_readArray2Float32(dst *[2]float32, data []byte, slab string, off, de
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Float64(dst *[2]float64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Float64(dst *[2]float64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])
@@ -625,7 +633,7 @@ func _float_readArray2Float64(dst *[2]float64, data []byte, slab string, off, de
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Ratio(dst *[2]Ratio, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Ratio(dst *[2]Ratio, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint32(data[i:])
@@ -645,7 +653,7 @@ func _float_readArray2Ratio(dst *[2]Ratio, data []byte, slab string, off, depth 
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Score(dst *[2]Score, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Score(dst *[2]Score, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])
@@ -755,7 +763,7 @@ func _float_putArray2Complex64(buf []byte, x *[2]complex64) int {
 // [2]complex64 without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Complex64(dst *[2]complex64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Complex64(dst *[2]complex64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])
@@ -775,7 +783,7 @@ func _float_readArray2Complex64(dst *[2]complex64, data []byte, slab string, off
 // [2]complex128 without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Complex128(dst *[2]complex128, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Complex128(dst *[2]complex128, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -801,7 +809,7 @@ func _float_readArray2Complex128(dst *[2]complex128, data []byte, slab string, o
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Phase(dst *[2]Phase, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Phase(dst *[2]Phase, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])
@@ -821,7 +829,7 @@ func _float_readArray2Phase(dst *[2]Phase, data []byte, slab string, off, depth 
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Wave(dst *[2]Wave, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Wave(dst *[2]Wave, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])

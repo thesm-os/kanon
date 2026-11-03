@@ -4,10 +4,10 @@
 // Package wire provides the primitives that the code of the kanon generator
 // calls: varints, fixed-width values, lengths, times, the skipping of
 // unknown fields, the order of map keys, the capacity of the first
-// allocation of a slice, the reader of a stream decoder, and the errors of
-// an encode and a decode. It is exported because generated
-// code in other modules imports it. Applications use package
-// go.thesmos.sh/kanon instead.
+// allocation of a slice, the slab of the strings of a decode, the reader of a
+// stream decoder, and the errors of an encode and a decode. It is exported
+// because generated code in other modules imports it. Applications use
+// package go.thesmos.sh/kanon instead.
 //
 // # Writing backward
 //
@@ -28,10 +28,10 @@
 //
 // [Uvarint], [PutUvarint], [PutTag], [PutBool], [Uint32], [Uint64],
 // [PutUint32], [PutUint64], [PutRaw], [SizeUvarint], [SizeBytes], [Zigzag],
-// [Unzigzag] and [Nested] fit the compiler's inlining budget, so a call in
-// a generated method compiles to the body of the function, and a one-byte
-// varint costs one comparison. The other functions run once per value at
-// most, or only on malformed input.
+// [Unzigzag], [Nested], [Slab.Reset], [Slab.String] and [Slab.Nested] fit the
+// compiler's inlining budget, so a call in a generated method compiles to
+// the body of the function, and a one-byte varint costs one comparison. The
+// other functions run once per value at most, or only on malformed input.
 //
 // # Errors
 //

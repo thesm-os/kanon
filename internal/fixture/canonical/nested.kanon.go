@@ -21,10 +21,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -195,24 +195,27 @@ func (m *Deep) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Deep) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It accepts
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It accepts
 // only the canonical encoding of a value, the input that EncodeKanon writes for
 // it, and returns a *kanon.DecodeError that wraps kanon.ErrNotCanonical for any
 // other input that the wire format lets a decoder accept. It returns a
 // *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Deep) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -222,20 +225,22 @@ func (m *Deep) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Deep) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Deep
 // call it.
-func (m *Deep) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Deep) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Cells = m.Cells[:0]
 	m.Grid = m.Grid[:0]
 	m.Proofs = m.Proofs[:0]
 	m.Tags = m.Tags[:0]
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_nested_resetCell(&m.Cell)
 	}
@@ -264,16 +269,16 @@ func (m *Deep) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Deep
 // call it.
-func (m *Deep) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Deep) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Deep) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	var prior uint64
 	i := 0
 	if i < len(data) && data[i] == 1<<3|wire.Bytes {
@@ -282,14 +287,14 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Cell", 1, off+i)
+			return wire.ReadError(n, "Deep.Cell", 1, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Cell", 1, off+i)
+			return wire.LongFormError(n, "Deep.Cell", 1, off+i)
 		}
 		i += n
 		if depth < 1 {
-			return seen, wire.DepthError("Cell", 0, off+i)
+			return wire.DepthError("Cell", 0, off+i)
 		}
 		var err error
 		if seen[0]&(1<<0) == 0 {
@@ -299,11 +304,11 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			err = _nested_mergeCell(&m.Cell, data[i:i+int(l)], slab, off+i, depth-1)
 		}
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Cell", 1, off+at)
+			return wire.AbsentError("Deep.Cell", 1, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 2<<3|wire.Bytes {
@@ -314,14 +319,14 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		}
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.CellPtr", 2, off+i)
+			return wire.ReadError(n, "Deep.CellPtr", 2, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.CellPtr", 2, off+i)
+			return wire.LongFormError(n, "Deep.CellPtr", 2, off+i)
 		}
 		i += n
 		if depth < 2 {
-			return seen, wire.DepthError("Cell", 0, off+i)
+			return wire.DepthError("Cell", 0, off+i)
 		}
 		var err error
 		if seen[0]&(1<<1) == 0 {
@@ -331,7 +336,7 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			err = _nested_mergeCell(m.CellPtr, data[i:i+int(l)], slab, off+i, depth-2)
 		}
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 	}
@@ -341,18 +346,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 3
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Cells", 3, off+i)
+			return wire.ReadError(n, "Deep.Cells", 3, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Cells", 3, off+i)
+			return wire.LongFormError(n, "Deep.Cells", 3, off+i)
 		}
 		i += n
 		if err := _nested_readSliceCell(&m.Cells, data[i:i+int(l)], slab, off+i, depth-1, "Deep.Cells", 3); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Cells", 3, off+at)
+			return wire.AbsentError("Deep.Cells", 3, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 4<<3|wire.Bytes {
@@ -361,18 +366,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 4
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.ByName", 4, off+i)
+			return wire.ReadError(n, "Deep.ByName", 4, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.ByName", 4, off+i)
+			return wire.LongFormError(n, "Deep.ByName", 4, off+i)
 		}
 		i += n
 		if err := _nested_readMapStringCell(&m.ByName, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Deep.ByName", 4); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.ByName", 4, off+at)
+			return wire.AbsentError("Deep.ByName", 4, off+at)
 		}
 		seen[0] |= 1 << 2
 	}
@@ -382,18 +387,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 5
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Grid", 5, off+i)
+			return wire.ReadError(n, "Deep.Grid", 5, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Grid", 5, off+i)
+			return wire.LongFormError(n, "Deep.Grid", 5, off+i)
 		}
 		i += n
 		if err := _nested_readSliceSliceInt32(&m.Grid, data[i:i+int(l)], slab, off+i, depth-1, "Deep.Grid", 5); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Grid", 5, off+at)
+			return wire.AbsentError("Deep.Grid", 5, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 6<<3|wire.Bytes {
@@ -402,18 +407,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 6
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Groups", 6, off+i)
+			return wire.ReadError(n, "Deep.Groups", 6, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Groups", 6, off+i)
+			return wire.LongFormError(n, "Deep.Groups", 6, off+i)
 		}
 		i += n
 		if err := _nested_readMapStringSliceInt32(&m.Groups, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Deep.Groups", 6); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Groups", 6, off+at)
+			return wire.AbsentError("Deep.Groups", 6, off+at)
 		}
 		seen[0] |= 1 << 3
 	}
@@ -423,18 +428,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 7
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Pairs", 7, off+i)
+			return wire.ReadError(n, "Deep.Pairs", 7, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Pairs", 7, off+i)
+			return wire.LongFormError(n, "Deep.Pairs", 7, off+i)
 		}
 		i += n
 		if err := _nested_readArray2SliceInt32(&m.Pairs, data[i:i+int(l)], slab, off+i, depth-1, "Deep.Pairs", 7); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if !_nested_presentArray2SliceInt32(&m.Pairs) {
-			return seen, wire.AbsentError("Deep.Pairs", 7, off+at)
+			return wire.AbsentError("Deep.Pairs", 7, off+at)
 		}
 		seen[0] |= 1 << 4
 	}
@@ -444,28 +449,28 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 8
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Proof", 8, off+i)
+			return wire.ReadError(n, "Deep.Proof", 8, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Proof", 8, off+i)
+			return wire.LongFormError(n, "Deep.Proof", 8, off+i)
 		}
 		i += n
 		if depth < 1 {
-			return seen, wire.DepthError("external.Proof", 0, off+i)
+			return wire.DepthError("external.Proof", 0, off+i)
 		}
 		var err error
 		if seen[0]&(1<<5) == 0 {
 			seen[0] |= 1 << 5
-			err = m.Proof.DecodeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1))
+			err = slab.Locate(m.Proof.DecodeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i)
 		} else {
-			err = m.Proof.MergeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1))
+			err = slab.Locate(m.Proof.MergeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i)
 		}
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Proof", 8, off+at)
+			return wire.AbsentError("Deep.Proof", 8, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 9<<3|wire.Bytes {
@@ -474,18 +479,18 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 9
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Proofs", 9, off+i)
+			return wire.ReadError(n, "Deep.Proofs", 9, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Proofs", 9, off+i)
+			return wire.LongFormError(n, "Deep.Proofs", 9, off+i)
 		}
 		i += n
 		if err := _nested_readSlicePtrExternalProof(&m.Proofs, data[i:i+int(l)], slab, off+i, depth-1, "Deep.Proofs", 9); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Proofs", 9, off+at)
+			return wire.AbsentError("Deep.Proofs", 9, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 10<<3|wire.Bytes {
@@ -495,21 +500,21 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		from := off + i
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Tags", 10, off+i)
+			return wire.ReadError(n, "Deep.Tags", 10, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Tags", 10, off+i)
+			return wire.LongFormError(n, "Deep.Tags", 10, off+i)
 		}
 		i += n
 		if err := _nested_readValidateTags(&m.Tags, data[i:i+int(l)], slab, off+i, depth-1, "Deep.Tags", 10); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Tags", 10, off+at)
+			return wire.AbsentError("Deep.Tags", 10, off+at)
 		}
 		if err := m.Tags.ValidateKanon(); err != nil {
-			return seen, wire.UnmarshalError(err, "Deep.Tags", 10, from)
+			return wire.UnmarshalError(err, "Deep.Tags", 10, from)
 		}
 	}
 	if i < len(data) && data[i] == 11<<3|wire.Bytes {
@@ -518,14 +523,14 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 		prior = 11
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Deep.Anonym", 11, off+i)
+			return wire.ReadError(n, "Deep.Anonym", 11, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Deep.Anonym", 11, off+i)
+			return wire.LongFormError(n, "Deep.Anonym", 11, off+i)
 		}
 		i += n
 		if depth < 1 {
-			return seen, wire.DepthError("Deep.Anonym", 0, off+i)
+			return wire.DepthError("Deep.Anonym", 0, off+i)
 		}
 		var err error
 		if seen[0]&(1<<6) == 0 {
@@ -535,17 +540,17 @@ func (m *Deep) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			err = _nested_mergeDeepAnonym(&m.Anonym, data[i:i+int(l)], slab, off+i, depth-1)
 		}
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Deep.Anonym", 11, off+at)
+			return wire.AbsentError("Deep.Anonym", 11, off+at)
 		}
 	}
 	if i != len(data) {
-		return seen, _nested_tagDeep(data, i, prior, off)
+		return _nested_tagDeep(data, i, prior, off)
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -677,17 +682,20 @@ func (m *Box) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It accepts
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It accepts
 // only the canonical encoding of a value, the input that EncodeKanon writes for
 // it, and returns a *kanon.DecodeError that wraps kanon.ErrNotCanonical for any
 // other input that the wire format lets a decoder accept. It returns a
 // *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Box) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -697,17 +705,19 @@ func (m *Box) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Box) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Box
 // call it.
-func (m *Box) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Box) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Count = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_nested_resetFlags(&m.Flags)
 	}
@@ -718,16 +728,16 @@ func (m *Box) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Box call
 // it.
-func (m *Box) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Box) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Box) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Box) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	var prior uint64
 	i := 0
 	if i < len(data) && data[i] == 1<<3|wire.Varint {
@@ -736,18 +746,18 @@ func (m *Box) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint
 		prior = 1
 		u, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Box.Count", 1, off+i)
+			return wire.ReadError(n, "Box.Count", 1, off+i)
 		}
 		if u != uint64(uint32(u)) {
-			return seen, wire.RangeError(u, "uint32", "Box.Count", 1, off+i)
+			return wire.RangeError(u, "uint32", "Box.Count", 1, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Box.Count", 1, off+i)
+			return wire.LongFormError(n, "Box.Count", 1, off+i)
 		}
 		m.Count = uint32(u)
 		i += n
 		if m.Count == 0 {
-			return seen, wire.AbsentError("Box.Count", 1, off+at)
+			return wire.AbsentError("Box.Count", 1, off+at)
 		}
 	}
 	if i < len(data) && data[i] == 2<<3|wire.Bytes {
@@ -756,14 +766,14 @@ func (m *Box) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint
 		prior = 2
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Box.Flags", 2, off+i)
+			return wire.ReadError(n, "Box.Flags", 2, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Box.Flags", 2, off+i)
+			return wire.LongFormError(n, "Box.Flags", 2, off+i)
 		}
 		i += n
 		if depth < 1 {
-			return seen, wire.DepthError("Flags", 0, off+i)
+			return wire.DepthError("Flags", 0, off+i)
 		}
 		var err error
 		if seen[0]&(1<<0) == 0 {
@@ -773,17 +783,17 @@ func (m *Box) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint
 			err = _nested_mergeFlags(&m.Flags, data[i:i+int(l)], slab, off+i, depth-1)
 		}
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Box.Flags", 2, off+at)
+			return wire.AbsentError("Box.Flags", 2, off+at)
 		}
 	}
 	if i != len(data) {
-		return seen, _nested_tagBox(data, i, prior, off)
+		return _nested_tagBox(data, i, prior, off)
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -1131,90 +1141,30 @@ func _nested_resetDeepAnonym(m *struct {
 // _nested_readCell sets the Cell that m points at to the value encoded in data
 // and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _nested_readCell(m *Cell, data []byte, slab string, off, depth int) error {
+func _nested_readCell(m *Cell, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Row = 0
 	m.Col = 0
-	m.Value = ""
-	return _nested_mergeCell(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _nested_fieldsCell(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Value = ""
+	}
+	return err
 }
 
 // _nested_mergeCell merges the encoding in data, which starts at offset off of
 // slab, into the Cell that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _nested_mergeCell(m *Cell, data []byte, slab string, off, depth int) error {
-	var prior uint64
-	i := 0
-	if i < len(data) && data[i] == 1<<3|wire.Varint {
-		at := i
-		i++
-		prior = 1
-		u, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Cell.Row", 1, off+i)
-		}
-		s := wire.Unzigzag(u)
-		if s != int64(int8(s)) {
-			return wire.RangeError(s, "int8", "Cell.Row", 1, off+i)
-		}
-		if n > 1 && data[i+n-1] == 0 {
-			return wire.LongFormError(n, "Cell.Row", 1, off+i)
-		}
-		m.Row = int8(s)
-		i += n
-		if m.Row == 0 {
-			return wire.AbsentError("Cell.Row", 1, off+at)
-		}
-	}
-	if i < len(data) && data[i] == 2<<3|wire.Varint {
-		at := i
-		i++
-		prior = 2
-		u, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Cell.Col", 2, off+i)
-		}
-		s := wire.Unzigzag(u)
-		if s != int64(int8(s)) {
-			return wire.RangeError(s, "int8", "Cell.Col", 2, off+i)
-		}
-		if n > 1 && data[i+n-1] == 0 {
-			return wire.LongFormError(n, "Cell.Col", 2, off+i)
-		}
-		m.Col = int8(s)
-		i += n
-		if m.Col == 0 {
-			return wire.AbsentError("Cell.Col", 2, off+at)
-		}
-	}
-	if i < len(data) && data[i] == 3<<3|wire.Bytes {
-		at := i
-		i++
-		prior = 3
-		l, n := wire.Uvarint(data[i:])
-		if n <= 0 || uint64(len(data)-i-n) < l {
-			return wire.ReadError(n, "Cell.Value", 3, off+i)
-		}
-		if n > 1 && data[i+n-1] == 0 {
-			return wire.LongFormError(n, "Cell.Value", 3, off+i)
-		}
-		i += n
-		m.Value = slab[off+i : off+i+int(l)]
-		i += int(l)
-		if l == 0 {
-			return wire.AbsentError("Cell.Value", 3, off+at)
-		}
-	}
-	if i != len(data) {
-		return _nested_tagCell(data, i, prior, off)
-	}
-	return nil
+func _nested_mergeCell(m *Cell, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _nested_fieldsCell(m, data, slab, off, depth, &seen)
 }
 
 // _nested_readSliceCell appends the elements that data encodes, a []Cell
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readSliceCell(dst *[]Cell, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceCell(dst *[]Cell, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1223,7 +1173,11 @@ func _nested_readSliceCell(dst *[]Cell, data []byte, slab string, off, depth int
 		x = make([]Cell, 0, wire.SliceCap[Cell](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, Cell{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, Cell{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -1250,7 +1204,7 @@ func _nested_readSliceCell(dst *[]Cell, data []byte, slab string, off, depth int
 // first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _nested_readMapStringCell(dst *map[string]Cell, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _nested_readMapStringCell(dst *map[string]Cell, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1276,7 +1230,7 @@ func _nested_readMapStringCell(dst *map[string]Cell, data []byte, slab string, o
 				return wire.LongFormError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		if at > 0 && cmp.Compare(pk, mk) >= 0 {
@@ -1309,7 +1263,7 @@ func _nested_readMapStringCell(dst *map[string]Cell, data []byte, slab string, o
 // [][]int32 without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1347,7 +1301,7 @@ func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab string, off, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _nested_readMapStringSliceInt32(dst *map[string][]int32, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _nested_readMapStringSliceInt32(dst *map[string][]int32, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1383,7 +1337,7 @@ func _nested_readMapStringSliceInt32(dst *map[string][]int32, data []byte, slab 
 				return wire.LongFormError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		if at > 0 && cmp.Compare(pk, mk) >= 0 {
@@ -1419,7 +1373,7 @@ func _nested_readMapStringSliceInt32(dst *map[string][]int32, data []byte, slab 
 // [2][]int32 without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _nested_readArray2SliceInt32(dst *[2][]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readArray2SliceInt32(dst *[2][]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1446,7 +1400,7 @@ func _nested_readArray2SliceInt32(dst *[2][]int32, data []byte, slab string, off
 // []*external.Proof without its length, to *dst. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSlicePtrExternalProof(dst *[]*external.Proof, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSlicePtrExternalProof(dst *[]*external.Proof, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1472,7 +1426,7 @@ func _nested_readSlicePtrExternalProof(dst *[]*external.Proof, data []byte, slab
 // validate.Tags without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readValidateTags(dst *validate.Tags, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readValidateTags(dst *validate.Tags, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1481,7 +1435,11 @@ func _nested_readValidateTags(dst *validate.Tags, data []byte, slab string, off,
 		x = make(validate.Tags, 0, wire.SliceCap[string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -1491,7 +1449,7 @@ func _nested_readValidateTags(dst *validate.Tags, data []byte, slab string, off,
 			return wire.LongFormError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = slab[off+i : off+i+int(l)]
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
 		i += int(l)
 	}
 	*dst = x
@@ -1505,7 +1463,7 @@ func _nested_readValidateTags(dst *validate.Tags, data []byte, slab string, off,
 func _nested_readDeepAnonym(m *struct {
 	A int32
 	B int32
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	m.A = 0
 	m.B = 0
 	return _nested_mergeDeepAnonym(m, data, slab, off, depth)
@@ -1517,7 +1475,7 @@ func _nested_readDeepAnonym(m *struct {
 func _nested_mergeDeepAnonym(m *struct {
 	A int32
 	B int32
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	var prior uint64
 	i := 0
 	if i < len(data) && data[i] == 1<<3|wire.Varint {
@@ -1781,7 +1739,7 @@ func _nested_resetFlags(m *Flags) {
 // _nested_readFlags sets the Flags that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _nested_readFlags(m *Flags, data []byte, slab string, off, depth int) error {
+func _nested_readFlags(m *Flags, data []byte, slab *wire.Slab, off, depth int) error {
 	m.A = false
 	m.B = false
 	return _nested_mergeFlags(m, data, slab, off, depth)
@@ -1790,7 +1748,7 @@ func _nested_readFlags(m *Flags, data []byte, slab string, off, depth int) error
 // _nested_mergeFlags merges the encoding in data, which starts at offset off of
 // slab, into the Flags that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _nested_mergeFlags(m *Flags, data []byte, slab string, off, depth int) error {
+func _nested_mergeFlags(m *Flags, data []byte, slab *wire.Slab, off, depth int) error {
 	var prior uint64
 	i := 0
 	if i < len(data) && data[i] == 1<<3|wire.Varint {
@@ -1912,39 +1870,86 @@ func _nested_putSliceInt32(buf []byte, x []int32) int {
 	return len(buf) - i
 }
 
-// _nested_tagCell returns the error of the canonical decode of Cell for the tag
-// at data[i], which begins no field after the fields that the decode read
-// before it. data starts at offset off of the slab.
-func _nested_tagCell(data []byte, i int, prior uint64, off int) error {
-	tag, n := wire.Uvarint(data[i:])
-	if n <= 0 {
-		return wire.ReadError(n, "Cell", 0, off+i)
+// _nested_fieldsCell decodes the fields in data into m for the decode and the
+// merge of Cell. The first occurrence of a tracked field whose bit in seen is
+// clear decodes into the memory of the field, and every other occurrence
+// merges. _nested_fieldsCell sets the bits of the tracked fields that data
+// contains in seen.
+func _nested_fieldsCell(m *Cell, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	var prior uint64
+	i := 0
+	if i < len(data) && data[i] == 1<<3|wire.Varint {
+		at := i
+		i++
+		prior = 1
+		u, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Cell.Row", 1, off+i)
+		}
+		s := wire.Unzigzag(u)
+		if s != int64(int8(s)) {
+			return wire.RangeError(s, "int8", "Cell.Row", 1, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return wire.LongFormError(n, "Cell.Row", 1, off+i)
+		}
+		m.Row = int8(s)
+		i += n
+		if m.Row == 0 {
+			return wire.AbsentError("Cell.Row", 1, off+at)
+		}
 	}
-	if n > 1 && data[i+n-1] == 0 {
-		return wire.LongFormError(n, "Cell", 0, off+i)
+	if i < len(data) && data[i] == 2<<3|wire.Varint {
+		at := i
+		i++
+		prior = 2
+		u, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Cell.Col", 2, off+i)
+		}
+		s := wire.Unzigzag(u)
+		if s != int64(int8(s)) {
+			return wire.RangeError(s, "int8", "Cell.Col", 2, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return wire.LongFormError(n, "Cell.Col", 2, off+i)
+		}
+		m.Col = int8(s)
+		i += n
+		if m.Col == 0 {
+			return wire.AbsentError("Cell.Col", 2, off+at)
+		}
 	}
-	if tag>>3 == 0 {
-		return wire.TagError(tag, "Cell", 0, off+i)
+	if i < len(data) && data[i] == 3<<3|wire.Bytes {
+		at := i
+		i++
+		prior = 3
+		l, n := wire.Uvarint(data[i:])
+		if n <= 0 || uint64(len(data)-i-n) < l {
+			return wire.ReadError(n, "Cell.Value", 3, off+i)
+		}
+		if n > 1 && data[i+n-1] == 0 {
+			return wire.LongFormError(n, "Cell.Value", 3, off+i)
+		}
+		i += n
+		m.Value = slab.String(m.Value, data[i:i+int(l)], off+i)
+		i += int(l)
+		if l == 0 {
+			return wire.AbsentError("Cell.Value", 3, off+at)
+		}
+		seen[0] |= 1 << 0
 	}
-	if tag>>3 <= prior {
-		return wire.OrderError(tag>>3, prior, "Cell", 0, off+i)
+	if i != len(data) {
+		return _nested_tagCell(data, i, prior, off)
 	}
-	switch tag >> 3 {
-	case 1:
-		return wire.FormatError(tag, wire.Varint, "Cell.Row", off+i)
-	case 2:
-		return wire.FormatError(tag, wire.Varint, "Cell.Col", off+i)
-	case 3:
-		return wire.FormatError(tag, wire.Bytes, "Cell.Value", off+i)
-	}
-	return wire.UnknownFieldError(tag>>3, "Cell", 0, off+i)
+	return nil
 }
 
 // _nested_readSliceInt32 appends the elements that data encodes, a []int32
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1979,7 +1984,7 @@ func _nested_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth i
 // *dst points at or into a new one. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readPtrExternalProof(dst **external.Proof, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _nested_readPtrExternalProof(dst **external.Proof, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2008,7 +2013,7 @@ func _nested_readPtrExternalProof(dst **external.Proof, data []byte, slab string
 	if depth < 1 {
 		return 0, wire.DepthError("external.Proof", 0, off+i)
 	}
-	if err := x.DecodeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1)); err != nil {
+	if err := slab.Locate(x.DecodeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i); err != nil {
 		return 0, err
 	}
 	i += int(l)
@@ -2074,4 +2079,32 @@ func _nested_tagFlags(data []byte, i int, prior uint64, off int) error {
 		return wire.FormatError(tag, wire.Varint, "Flags.B", off+i)
 	}
 	return wire.UnknownFieldError(tag>>3, "Flags", 0, off+i)
+}
+
+// _nested_tagCell returns the error of the canonical decode of Cell for the tag
+// at data[i], which begins no field after the fields that the decode read
+// before it. data starts at offset off of the slab.
+func _nested_tagCell(data []byte, i int, prior uint64, off int) error {
+	tag, n := wire.Uvarint(data[i:])
+	if n <= 0 {
+		return wire.ReadError(n, "Cell", 0, off+i)
+	}
+	if n > 1 && data[i+n-1] == 0 {
+		return wire.LongFormError(n, "Cell", 0, off+i)
+	}
+	if tag>>3 == 0 {
+		return wire.TagError(tag, "Cell", 0, off+i)
+	}
+	if tag>>3 <= prior {
+		return wire.OrderError(tag>>3, prior, "Cell", 0, off+i)
+	}
+	switch tag >> 3 {
+	case 1:
+		return wire.FormatError(tag, wire.Varint, "Cell.Row", off+i)
+	case 2:
+		return wire.FormatError(tag, wire.Varint, "Cell.Col", off+i)
+	case 3:
+		return wire.FormatError(tag, wire.Bytes, "Cell.Value", off+i)
+	}
+	return wire.UnknownFieldError(tag>>3, "Cell", 0, off+i)
 }

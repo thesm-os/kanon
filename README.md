@@ -28,7 +28,7 @@ kanon writes the encode, decode, copy and reset methods of each type, and a test
 - Each field encodes under a number that the generated file records, so a struct can gain and lose fields between an encode and a decode.
 - Equal values encode to identical bytes, because map keys are sorted and absent fields are left out.
 - An encode into a buffer with room for the encoding does not allocate.
-- A decode into a value that decoded before does not allocate when you pass the input as the slab.
+- A decode into a value that decoded the same strings before does not allocate. Without a slab, the decode copies the input once for the strings that change.
 - A decode error contains the struct type, the field, the field number and the offset of the malformed input.
 - A view reads one field of an encoding without a decode of the others.
 - The `-canonical` flag makes a decode accept only the bytes that the encode writes for the value.
@@ -135,8 +135,8 @@ For each struct type `T` of the directive, `*T` implements [`kanon.Message`](htt
 | `EncodeKanon(buf []byte) (int, error)` | Writes the encoding into the last `SizeKanon()` bytes of `buf`, and returns their count. |
 | `AppendBinary(b []byte) ([]byte, error)` | Appends the encoding to `b`. |
 | `MarshalBinary() ([]byte, error)` | Returns the encoding in a new slice. |
-| `DecodeKanon(data []byte, opts kanon.Options) error` | Sets the receiver to the value in `data`, and reuses the memory of its slices, maps and pointers. |
-| `UnmarshalBinary(data []byte) error` | Decodes as `DecodeKanon` does with the zero `kanon.Options`, with one copy of `data`. |
+| `DecodeKanon(data []byte, opts kanon.Options) error` | Sets the receiver to the value in `data`, and reuses the memory of its slices, maps, pointers and strings. |
+| `UnmarshalBinary(data []byte) error` | Decodes as `DecodeKanon` does with the zero `kanon.Options`, which copies `data` once for the strings that change. |
 | `MergeKanon(data []byte, opts kanon.Options) error` | Decodes `data` into the receiver without a reset. A slice appends, and a map adds entries. |
 | `Reset()` | Clears every field, and keeps the storage of slices and maps for the next decode. |
 | `CloneKanon() *T` | Returns a deep copy that shares no memory with the receiver or with the input that it decoded from. |
@@ -488,9 +488,12 @@ The strings of an element alias it until the next call of `Next`, `Element` or a
 
 The slab of a decode is the string `opts.Slab`, which contains `data` at the offset `opts.Offset`.
 Every string that the decode returns is a substring of the slab.
-With an empty `Slab`, `DecodeKanon` copies `data` into a slab of its own, as `UnmarshalBinary` does.
-For a type with strings, that copy is one allocation per decode.
-If you control the input buffer, pass the slab yourself.
+
+With an empty `Slab`, `DecodeKanon` keeps each string of the receiver that `data` repeats at its place, as `UnmarshalBinary` does.
+It copies `data` once, for the first string that changes, and takes every later string that changes from that copy.
+A decode into a value that decoded the same strings before then does not allocate for them.
+A map key that is not empty takes a substring of the copy, since the decode clears the map before it reads its keys.
+If you control the input buffer and the strings change, pass the slab yourself.
 
 To alias the input buffer, pass the slab that `unsafe.String` returns, which shares the memory of `data`:
 
@@ -523,6 +526,7 @@ Package `batch` decodes this way.
 > - A change to an aliased buffer changes every string decoded from it, without an error. A reuse of the buffer for the next read changes the values of the previous read.
 > - A string map key changes with the buffer. The map hashed the key with its old bytes, so a lookup by the old bytes or by the new ones can miss it.
 > - The garbage collector frees a slab only after every string decoded from it is unreachable. One short string that a value retains keeps the whole batch in memory. Retain the copy that `strings.Clone` returns instead.
+> - A decode with an empty `Slab` keeps each string of the value that equals the decoded string. A string that an earlier decode took from an aliased buffer then still aliases that buffer. Call `Reset` on the value before such a decode.
 
 Decoded byte slices do not share memory with `data`, because `DecodeKanon` copies each one into the memory of the receiver.
 

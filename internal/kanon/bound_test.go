@@ -93,14 +93,14 @@ func TestBound(t *testing.T) {
 				name: "writes the bound after the depth among the parameters of a read function that a field " +
 					"with a bound calls",
 				file: codeName,
-				want: "func _a_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth, bound int, " +
+				want: "func _a_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth, bound int, " +
 					"loc string, num int) error {",
 			},
 			{
 				name: "writes no bound among the parameters of a read function that no field with a bound calls",
 				file: codeName,
-				want: "func _a_readSliceString(dst *[]string, data []byte, slab string, off, depth int, loc string, " +
-					"num int) error {",
+				want: "func _a_readSliceString(dst *[]string, data []byte, slab *wire.Slab, off, depth int, " +
+					"loc string, num int) error {",
 			},
 			{
 				name: "caps the first allocation of a slice with a bound at the bound",
@@ -193,7 +193,7 @@ func TestBound(t *testing.T) {
 				name: "fails the decode of a string longer than its bound before it takes the substring",
 				give: code,
 				want: "\t\t\ti += n\n\t\t\tif l > 2 {\n\t\t\t\treturn wire.MaxError(\"C.S\", 1, off+i+2, 2)\n\t\t\t}\n" +
-					"\t\t\tm.S = slab[off+i : off+i+int(l)]\n",
+					"\t\t\tm.S = slab.String(m.S, data[i:i+int(l)], off+i)\n",
 			},
 			{
 				name: "fails the decode of a byte slice longer than its bound before it copies the bytes",

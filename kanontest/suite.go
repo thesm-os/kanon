@@ -76,6 +76,12 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 			Serial: true,
 			Run:    s.decodeAllocs,
 		},
+		{
+			Name:   "DecodeKanon/allocates nothing with the zero Options into a receiver that decoded the encoding before",
+			Serial: true,
+			Run:    s.keepAllocs,
+		},
+		{Name: "DecodeKanon/copies the input once for the strings that change", Serial: true, Run: s.copyOnce},
 		{Name: "SizeKanon/returns the length of the reference encoding", Run: s.onAll(s.size)},
 		{Name: "MarshalBinary/returns the reference encoding", Run: s.onAll(s.marshal)},
 		{Name: "MarshalBinary/returns the error of a value that fails to encode", Run: s.onAll(s.marshalError)},
@@ -122,6 +128,7 @@ func Checks[T any, P Codec[T]](spec Spec[T]) []Check {
 				s.reuse(tb, s.all(), s.bulk)
 			},
 		},
+		Check{Name: "DecodeKanon/takes every string from the slab of its options", Run: s.onAll(s.slabStrings)},
 		Check{
 			Name: "MergeKanon/merges an encoding into a decoded value as the reference decode",
 			Run: func(tb assert.TB) {

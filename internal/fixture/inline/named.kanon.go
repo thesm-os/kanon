@@ -20,10 +20,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -128,21 +128,24 @@ func (m *Named) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Named) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Named) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -152,18 +155,20 @@ func (m *Named) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Named) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Named
 // call it.
-func (m *Named) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Named) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Looses = m.Looses[:0]
 	m.Remotes = m.Remotes[:0]
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_named_resetLoose(&m.Loose)
 	}
@@ -183,35 +188,35 @@ func (m *Named) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Named
 // call it.
-func (m *Named) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Named) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Named) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Named) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Named", 0, off+i)
+			return wire.ReadError(n, "Named", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.Loose", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.Loose", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.Loose", 1, off+i)
+				return wire.ReadError(n, "Named.Loose", 1, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Loose", 0, off+i)
+				return wire.DepthError("Loose", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<0) == 0 {
@@ -221,47 +226,47 @@ func (m *Named) fieldsKanon(data []byte, slab string, off, depth int, seen [1]ui
 				err = _named_mergeLoose(&m.Loose, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.Looses", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.Looses", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.Looses", 2, off+i)
+				return wire.ReadError(n, "Named.Looses", 2, off+i)
 			}
 			i += n
 			if err := _named_readSliceLoose(&m.Looses, data[i:i+int(l)], slab, off+i, depth-1, "Named.Looses", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.ByName", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.ByName", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.ByName", 3, off+i)
+				return wire.ReadError(n, "Named.ByName", 3, off+i)
 			}
 			i += n
 			if err := _named_readMapStringLoose(&m.ByName, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "Named.ByName", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.Remote", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.Remote", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.Remote", 4, off+i)
+				return wire.ReadError(n, "Named.Remote", 4, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Remote", 0, off+i)
+				return wire.DepthError("external.Remote", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<2) == 0 {
@@ -271,33 +276,33 @@ func (m *Named) fieldsKanon(data []byte, slab string, off, depth int, seen [1]ui
 				err = _named_mergeExternalRemote(&m.Remote, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.Remotes", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.Remotes", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.Remotes", 5, off+i)
+				return wire.ReadError(n, "Named.Remotes", 5, off+i)
 			}
 			i += n
 			if err := _named_readSlicePtrExternalRemote(&m.Remotes, data[i:i+int(l)], slab, off+i, depth-1, "Named.Remotes", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Named.Sealed", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Named.Sealed", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Named.Sealed", 6, off+i)
+				return wire.ReadError(n, "Named.Sealed", 6, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Sealed", 0, off+i)
+				return wire.DepthError("external.Sealed", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<3) == 0 {
@@ -307,18 +312,18 @@ func (m *Named) fieldsKanon(data []byte, slab string, off, depth int, seen [1]ui
 				err = _named_mergeExternalSealed(&m.Sealed, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "Named", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -590,77 +595,30 @@ func _named_resetExternalSealed(m *external.Sealed) {
 // _named_readLoose sets the Loose that m points at to the value encoded in data
 // and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _named_readLoose(m *Loose, data []byte, slab string, off, depth int) error {
-	m.Label = ""
+func _named_readLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Total = 0
 	m.At = time.Time{}
-	return _named_mergeLoose(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _named_fieldsLoose(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Label = ""
+	}
+	return err
 }
 
 // _named_mergeLoose merges the encoding in data, which starts at offset off of
 // slab, into the Loose that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _named_mergeLoose(m *Loose, data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Loose", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Loose.Label", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Loose.Label", 1, off+i)
-			}
-			i += n
-			m.Label = slab[off+i : off+i+int(l)]
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Fixed64 {
-				return wire.FormatError(tag, wire.Fixed64, "Loose.Total", off+at)
-			}
-			u, n := wire.Uint64(data[i:])
-			if n <= 0 {
-				return wire.ReadError(n, "Loose.Total", 2, off+i)
-			}
-			m.Total = int64(u)
-			i += n
-		case 3:
-			if tag != 3<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Loose.At", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Loose.At", 3, off+i)
-			}
-			i += n
-			t, err := wire.Time(data[i:i+int(l)], "Loose.At", 3, off+i)
-			if err != nil {
-				return err
-			}
-			m.At = t
-			i += int(l)
-		default:
-			n, err := wire.Skip(data[i:], tag, "Loose", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _named_mergeLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _named_fieldsLoose(m, data, slab, off, depth, &seen)
 }
 
 // _named_readSliceLoose appends the elements that data encodes, a []Loose
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _named_readSliceLoose(dst *[]Loose, data []byte, slab string, off, depth int, loc string, num int) error {
+func _named_readSliceLoose(dst *[]Loose, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -669,7 +627,11 @@ func _named_readSliceLoose(dst *[]Loose, data []byte, slab string, off, depth in
 		x = make([]Loose, 0, wire.SliceCap[Loose](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, Loose{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, Loose{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -693,7 +655,7 @@ func _named_readSliceLoose(dst *[]Loose, data []byte, slab string, off, depth in
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _named_readMapStringLoose(dst *map[string]Loose, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _named_readMapStringLoose(dst *map[string]Loose, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -714,7 +676,7 @@ func _named_readMapStringLoose(dst *map[string]Loose, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -740,11 +702,14 @@ func _named_readMapStringLoose(dst *map[string]Loose, data []byte, slab string, 
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _named_readExternalRemote(m *external.Remote, data []byte, slab string, off, depth int) error {
-	m.Name = ""
+func _named_readExternalRemote(m *external.Remote, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Count = 0
-	seen, err := _named_fieldsExternalRemote(m, data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := _named_fieldsExternalRemote(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
+		m.Name = ""
+	}
+	if seen[0]&(1<<1) == 0 {
 		_named_resetExternalRemoteMeta(&m.Meta)
 	}
 	return err
@@ -753,16 +718,16 @@ func _named_readExternalRemote(m *external.Remote, data []byte, slab string, off
 // _named_mergeExternalRemote merges the encoding in data, which starts at
 // offset off of slab, into the external.Remote that m points at, as MergeKanon
 // does. The decode enters depth levels below m at most.
-func _named_mergeExternalRemote(m *external.Remote, data []byte, slab string, off, depth int) error {
-	_, err := _named_fieldsExternalRemote(m, data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func _named_mergeExternalRemote(m *external.Remote, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _named_fieldsExternalRemote(m, data, slab, off, depth, &seen)
 }
 
 // _named_readSlicePtrExternalRemote appends the elements that data encodes, a
 // []*external.Remote without its length, to *dst. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _named_readSlicePtrExternalRemote(dst *[]*external.Remote, data []byte, slab string, off, depth int, loc string, num int) error {
+func _named_readSlicePtrExternalRemote(dst *[]*external.Remote, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -788,12 +753,13 @@ func _named_readSlicePtrExternalRemote(dst *[]*external.Remote, data []byte, sla
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _named_readExternalSealed(m *external.Sealed, data []byte, slab string, off, depth int) error {
+func _named_readExternalSealed(m *external.Sealed, data []byte, slab *wire.Slab, off, depth int) error {
 	*m = external.Sealed{Items: m.Items, Next: m.Next, Rest: m.Rest}
 	m.Items = m.Items[:0]
 	m.Count = 0
 	m.Rest = m.Rest[:0]
-	seen, err := _named_fieldsExternalSealed(m, data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := _named_fieldsExternalSealed(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Next = nil
 	}
@@ -803,9 +769,9 @@ func _named_readExternalSealed(m *external.Sealed, data []byte, slab string, off
 // _named_mergeExternalSealed merges the encoding in data, which starts at
 // offset off of slab, into the external.Sealed that m points at, as MergeKanon
 // does. The decode enters depth levels below m at most.
-func _named_mergeExternalSealed(m *external.Sealed, data []byte, slab string, off, depth int) error {
-	_, err := _named_fieldsExternalSealed(m, data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func _named_mergeExternalSealed(m *external.Sealed, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _named_fieldsExternalSealed(m, data, slab, off, depth, &seen)
 }
 
 // _named_resetSlicePtrExternalRemote empties the []*external.Remote that x
@@ -976,77 +942,140 @@ func _named_resetExternalRemoteMeta(m *struct {
 	m.Rank = 0
 }
 
-// _named_fieldsExternalRemote decodes the fields in data into m for the decode
-// and the merge of external.Remote. The first occurrence of a tracked field
-// whose bit in seen is clear decodes into the memory of the field, and every
-// other occurrence merges. _named_fieldsExternalRemote returns seen with the
-// bits of the tracked fields that data contains.
-func _named_fieldsExternalRemote(m *external.Remote, data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// _named_fieldsLoose decodes the fields in data into m for the decode and the
+// merge of Loose. The first occurrence of a tracked field whose bit in seen is
+// clear decodes into the memory of the field, and every other occurrence
+// merges. _named_fieldsLoose sets the bits of the tracked fields that data
+// contains in seen.
+func _named_fieldsLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "external.Remote", 0, off+i)
+			return wire.ReadError(n, "Loose", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Remote.Name", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Loose.Label", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Remote.Name", 1, off+i)
+				return wire.ReadError(n, "Loose.Label", 1, off+i)
 			}
 			i += n
-			m.Name = slab[off+i : off+i+int(l)]
+			m.Label = slab.String(m.Label, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
+		case 2:
+			if tag != 2<<3|wire.Fixed64 {
+				return wire.FormatError(tag, wire.Fixed64, "Loose.Total", off+at)
+			}
+			u, n := wire.Uint64(data[i:])
+			if n <= 0 {
+				return wire.ReadError(n, "Loose.Total", 2, off+i)
+			}
+			m.Total = int64(u)
+			i += n
+		case 3:
+			if tag != 3<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Loose.At", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Loose.At", 3, off+i)
+			}
+			i += n
+			t, err := wire.Time(data[i:i+int(l)], "Loose.At", 3, off+i)
+			if err != nil {
+				return err
+			}
+			m.At = t
+			i += int(l)
+		default:
+			n, err := wire.Skip(data[i:], tag, "Loose", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
+	return nil
+}
+
+// _named_fieldsExternalRemote decodes the fields in data into m for the decode
+// and the merge of external.Remote. The first occurrence of a tracked field
+// whose bit in seen is clear decodes into the memory of the field, and every
+// other occurrence merges. _named_fieldsExternalRemote sets the bits of the
+// tracked fields that data contains in seen.
+func _named_fieldsExternalRemote(m *external.Remote, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "external.Remote", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "external.Remote.Name", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "external.Remote.Name", 1, off+i)
+			}
+			i += n
+			m.Name = slab.String(m.Name, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "external.Remote.Count", off+at)
+				return wire.FormatError(tag, wire.Varint, "external.Remote.Count", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "external.Remote.Count", 2, off+i)
+				return wire.ReadError(n, "external.Remote.Count", 2, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "external.Remote.Count", 2, off+i)
+				return wire.RangeError(s, "int32", "external.Remote.Count", 2, off+i)
 			}
 			m.Count = int32(s)
 			i += n
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Remote.Meta", off+at)
+				return wire.FormatError(tag, wire.Bytes, "external.Remote.Meta", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Remote.Meta", 3, off+i)
+				return wire.ReadError(n, "external.Remote.Meta", 3, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Remote.Meta", 0, off+i)
+				return wire.DepthError("external.Remote.Meta", 0, off+i)
 			}
 			var err error
-			if seen[0]&(1<<0) == 0 {
-				seen[0] |= 1 << 0
+			if seen[0]&(1<<1) == 0 {
+				seen[0] |= 1 << 1
 				err = _named_readExternalRemoteMeta(&m.Meta, data[i:i+int(l)], slab, off+i, depth-1)
 			} else {
 				err = _named_mergeExternalRemoteMeta(&m.Meta, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "external.Remote", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _named_readPtrExternalRemote decodes the *external.Remote at the start of
@@ -1055,7 +1084,7 @@ func _named_fieldsExternalRemote(m *external.Remote, data []byte, slab string, o
 // that *dst points at or into a new one. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _named_readPtrExternalRemote(dst **external.Remote, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _named_readPtrExternalRemote(dst **external.Remote, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1091,75 +1120,75 @@ func _named_readPtrExternalRemote(dst **external.Remote, data []byte, slab strin
 // _named_fieldsExternalSealed decodes the fields in data into m for the decode
 // and the merge of external.Sealed. The first occurrence of a tracked field
 // whose bit in seen is clear decodes into the memory of the field, and every
-// other occurrence merges. _named_fieldsExternalSealed returns seen with the
-// bits of the tracked fields that data contains.
-func _named_fieldsExternalSealed(m *external.Sealed, data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// other occurrence merges. _named_fieldsExternalSealed sets the bits of the
+// tracked fields that data contains in seen.
+func _named_fieldsExternalSealed(m *external.Sealed, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "external.Sealed", 0, off+i)
+			return wire.ReadError(n, "external.Sealed", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Sealed.Items", off+at)
+				return wire.FormatError(tag, wire.Bytes, "external.Sealed.Items", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Sealed.Items", 1, off+i)
+				return wire.ReadError(n, "external.Sealed.Items", 1, off+i)
 			}
 			i += n
 			if err := _named_readSliceString(&m.Items, data[i:i+int(l)], slab, off+i, depth-1, "external.Sealed.Items", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "external.Sealed.Next", off+at)
+				return wire.FormatError(tag, wire.Varint, "external.Sealed.Next", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("external.Sealed.Next", 2, off+i)
+				return wire.DepthError("external.Sealed.Next", 2, off+i)
 			}
 			if m.Next == nil {
 				m.Next = new(int32)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "external.Sealed.Next", 2, off+i)
+				return wire.ReadError(n, "external.Sealed.Next", 2, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "external.Sealed.Next", 2, off+i)
+				return wire.RangeError(s, "int32", "external.Sealed.Next", 2, off+i)
 			}
 			*m.Next = int32(s)
 			i += n
 			seen[0] |= 1 << 0
 		case 3:
 			if tag != 3<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "external.Sealed.Count", off+at)
+				return wire.FormatError(tag, wire.Varint, "external.Sealed.Count", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "external.Sealed.Count", 3, off+i)
+				return wire.ReadError(n, "external.Sealed.Count", 3, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "external.Sealed.Count", 3, off+i)
+				return wire.RangeError(s, "int32", "external.Sealed.Count", 3, off+i)
 			}
 			m.Count = int32(s)
 			i += n
 		default:
 			n, err := wire.Skip(data[i:], tag, "external.Sealed", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			m.Rest = append(m.Rest, data[at:i+n]...)
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _named_cloneExternalRemoteMeta copies the external.Remote.Meta that src
@@ -1211,10 +1240,14 @@ func _named_clonePtrInt32(x *int32) *int32 {
 func _named_readExternalRemoteMeta(m *struct {
 	Tag  string
 	Rank external.Rank
-}, data []byte, slab string, off, depth int) error {
-	m.Tag = ""
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Rank = 0
-	return _named_mergeExternalRemoteMeta(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _named_fieldsExternalRemoteMeta(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Tag = ""
+	}
+	return err
 }
 
 // _named_mergeExternalRemoteMeta merges the encoding in data, which starts at
@@ -1223,7 +1256,51 @@ func _named_readExternalRemoteMeta(m *struct {
 func _named_mergeExternalRemoteMeta(m *struct {
 	Tag  string
 	Rank external.Rank
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _named_fieldsExternalRemoteMeta(m, data, slab, off, depth, &seen)
+}
+
+// _named_readSliceString appends the elements that data encodes, a []string
+// without its length, to *dst. data starts at offset off of slab, and the
+// decode enters depth levels below the value at most. loc and num locate the
+// field in errors.
+func _named_readSliceString(dst *[]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
+	if depth < 0 {
+		return wire.DepthError(loc, num, off)
+	}
+	x := *dst
+	if x == nil && len(data) > 0 {
+		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
+	}
+	for i := 0; i < len(data); {
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
+		last := len(x) - 1
+		l, n := wire.Uvarint(data[i:])
+		if n <= 0 || uint64(len(data)-i-n) < l {
+			return wire.ReadError(n, loc, num, off+i)
+		}
+		i += n
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
+		i += int(l)
+	}
+	*dst = x
+	return nil
+}
+
+// _named_fieldsExternalRemoteMeta decodes the fields in data into m for the
+// decode and the merge of external.Remote.Meta. The first occurrence of a
+// tracked field whose bit in seen is clear decodes into the memory of the
+// field, and every other occurrence merges. _named_fieldsExternalRemoteMeta
+// sets the bits of the tracked fields that data contains in seen.
+func _named_fieldsExternalRemoteMeta(m *struct {
+	Tag  string
+	Rank external.Rank
+}, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1241,8 +1318,9 @@ func _named_mergeExternalRemoteMeta(m *struct {
 				return wire.ReadError(n, "external.Remote.Meta.Tag", 1, off+i)
 			}
 			i += n
-			m.Tag = slab[off+i : off+i+int(l)]
+			m.Tag = slab.String(m.Tag, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "external.Remote.Meta.Rank", off+at)
@@ -1265,32 +1343,5 @@ func _named_mergeExternalRemoteMeta(m *struct {
 			i += n
 		}
 	}
-	return nil
-}
-
-// _named_readSliceString appends the elements that data encodes, a []string
-// without its length, to *dst. data starts at offset off of slab, and the
-// decode enters depth levels below the value at most. loc and num locate the
-// field in errors.
-func _named_readSliceString(dst *[]string, data []byte, slab string, off, depth int, loc string, num int) error {
-	if depth < 0 {
-		return wire.DepthError(loc, num, off)
-	}
-	x := *dst
-	if x == nil && len(data) > 0 {
-		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
-	}
-	for i := 0; i < len(data); {
-		x = append(x, "")
-		last := len(x) - 1
-		l, n := wire.Uvarint(data[i:])
-		if n <= 0 || uint64(len(data)-i-n) < l {
-			return wire.ReadError(n, loc, num, off+i)
-		}
-		i += n
-		x[last] = slab[off+i : off+i+int(l)]
-		i += int(l)
-	}
-	*dst = x
 	return nil
 }

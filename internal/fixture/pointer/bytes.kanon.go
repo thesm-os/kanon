@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -131,14 +131,17 @@ func (m *ByteArrays) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *ByteArrays) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -148,16 +151,18 @@ func (m *ByteArrays) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *ByteArrays) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // ByteArrays call it.
-func (m *ByteArrays) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *ByteArrays) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Byte0 = nil
 	}
@@ -183,140 +188,140 @@ func (m *ByteArrays) decodeKanon(data []byte, slab string, off, depth int) error
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain
 // ByteArrays call it.
-func (m *ByteArrays) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *ByteArrays) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *ByteArrays) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *ByteArrays) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "ByteArrays", 0, off+i)
+			return wire.ReadError(n, "ByteArrays", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte0", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte0", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Byte0", 1, off+i)
+				return wire.DepthError("ByteArrays.Byte0", 1, off+i)
 			}
 			if m.Byte0 == nil {
 				m.Byte0 = new([0]byte)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 0 {
-				return seen, wire.LengthError(l, 0, "ByteArrays.Byte0", 1, off+i)
+				return wire.LengthError(l, 0, "ByteArrays.Byte0", 1, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte0", 1, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte0", 1, off+i)
 			}
 			i += n
 			i += copy((*m.Byte0)[:], data[i:])
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte1", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte1", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Byte1", 2, off+i)
+				return wire.DepthError("ByteArrays.Byte1", 2, off+i)
 			}
 			if m.Byte1 == nil {
 				m.Byte1 = new([1]byte)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 1 {
-				return seen, wire.LengthError(l, 1, "ByteArrays.Byte1", 2, off+i)
+				return wire.LengthError(l, 1, "ByteArrays.Byte1", 2, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte1", 2, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte1", 2, off+i)
 			}
 			i += n
 			i += copy((*m.Byte1)[:], data[i:])
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte32", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte32", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Byte32", 3, off+i)
+				return wire.DepthError("ByteArrays.Byte32", 3, off+i)
 			}
 			if m.Byte32 == nil {
 				m.Byte32 = new([32]byte)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 32 {
-				return seen, wire.LengthError(l, 32, "ByteArrays.Byte32", 3, off+i)
+				return wire.LengthError(l, 32, "ByteArrays.Byte32", 3, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte32", 3, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte32", 3, off+i)
 			}
 			i += n
 			i += copy((*m.Byte32)[:], data[i:])
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte127", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte127", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Byte127", 4, off+i)
+				return wire.DepthError("ByteArrays.Byte127", 4, off+i)
 			}
 			if m.Byte127 == nil {
 				m.Byte127 = new([127]byte)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 127 {
-				return seen, wire.LengthError(l, 127, "ByteArrays.Byte127", 4, off+i)
+				return wire.LengthError(l, 127, "ByteArrays.Byte127", 4, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte127", 4, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte127", 4, off+i)
 			}
 			i += n
 			i += copy((*m.Byte127)[:], data[i:])
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte128", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Byte128", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Byte128", 5, off+i)
+				return wire.DepthError("ByteArrays.Byte128", 5, off+i)
 			}
 			if m.Byte128 == nil {
 				m.Byte128 = new([128]byte)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 128 {
-				return seen, wire.LengthError(l, 128, "ByteArrays.Byte128", 5, off+i)
+				return wire.LengthError(l, 128, "ByteArrays.Byte128", 5, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Byte128", 5, off+i)
+				return wire.ReadError(n, "ByteArrays.Byte128", 5, off+i)
 			}
 			i += n
 			i += copy((*m.Byte128)[:], data[i:])
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "ByteArrays.Digest", off+at)
+				return wire.FormatError(tag, wire.Bytes, "ByteArrays.Digest", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("ByteArrays.Digest", 6, off+i)
+				return wire.DepthError("ByteArrays.Digest", 6, off+i)
 			}
 			if m.Digest == nil {
 				m.Digest = new(Digest)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 32 {
-				return seen, wire.LengthError(l, 32, "ByteArrays.Digest", 6, off+i)
+				return wire.LengthError(l, 32, "ByteArrays.Digest", 6, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "ByteArrays.Digest", 6, off+i)
+				return wire.ReadError(n, "ByteArrays.Digest", 6, off+i)
 			}
 			i += n
 			i += copy((*m.Digest)[:], data[i:])
@@ -324,12 +329,12 @@ func (m *ByteArrays) fieldsKanon(data []byte, slab string, off, depth int, seen 
 		default:
 			n, err := wire.Skip(data[i:], tag, "ByteArrays", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out

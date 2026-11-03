@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -141,21 +141,24 @@ func (m *Pointers) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Pointers) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Pointers) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -165,17 +168,19 @@ func (m *Pointers) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Pointers) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Pointers call it.
-func (m *Pointers) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Pointers) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Kind = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Int32 = nil
 	}
@@ -198,74 +203,74 @@ func (m *Pointers) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Pointers
 // call it.
-func (m *Pointers) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Pointers) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Pointers) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Pointers) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Pointers", 0, off+i)
+			return wire.ReadError(n, "Pointers", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Pointers.Int32", off+at)
+				return wire.FormatError(tag, wire.Varint, "Pointers.Int32", off+at)
 			}
 			if m.Kind != PointerKindInt32 {
 				_pointer_deselectPointersKind(m)
 				m.Kind = PointerKindInt32
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Pointers.Int32", 1, off+i)
+				return wire.DepthError("Pointers.Int32", 1, off+i)
 			}
 			if m.Int32 == nil {
 				m.Int32 = new(int32)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Pointers.Int32", 1, off+i)
+				return wire.ReadError(n, "Pointers.Int32", 1, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "Pointers.Int32", 1, off+i)
+				return wire.RangeError(s, "int32", "Pointers.Int32", 1, off+i)
 			}
 			*m.Int32 = int32(s)
 			i += n
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Pointers.String", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Pointers.String", off+at)
 			}
 			if m.Kind != PointerKindString {
 				_pointer_deselectPointersKind(m)
 				m.Kind = PointerKindString
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Pointers.String", 2, off+i)
+				return wire.DepthError("Pointers.String", 2, off+i)
 			}
 			if m.String == nil {
 				m.String = new(string)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Pointers.String", 2, off+i)
+				return wire.ReadError(n, "Pointers.String", 2, off+i)
 			}
 			i += n
-			*m.String = slab[off+i : off+i+int(l)]
+			*m.String = slab.String(*m.String, data[i:i+int(l)], off+i)
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Pointers.Twice", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Pointers.Twice", off+at)
 			}
 			if m.Kind != PointerKindTwice {
 				_pointer_deselectPointersKind(m)
@@ -276,21 +281,21 @@ func (m *Pointers) fieldsKanon(data []byte, slab string, off, depth int, seen [1
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Pointers.Twice", 3, off+i)
+				return wire.ReadError(n, "Pointers.Twice", 3, off+i)
 			}
 			i += n
 			used, err := _pointer_readPtrInt32(m.Twice, data[i:i+int(l)], slab, off+i, depth-2, "Pointers.Twice", 3)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Pointers.Twice", 3, off+i+used)
+				return wire.TrailingError(int(l)-used, "Pointers.Twice", 3, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Pointers.Slice", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Pointers.Slice", off+at)
 			}
 			if m.Kind != PointerKindSlice {
 				_pointer_deselectPointersKind(m)
@@ -301,35 +306,35 @@ func (m *Pointers) fieldsKanon(data []byte, slab string, off, depth int, seen [1
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Pointers.Slice", 4, off+i)
+				return wire.ReadError(n, "Pointers.Slice", 4, off+i)
 			}
 			i += n
 			*m.Slice = (*m.Slice)[:0]
 			if err := _pointer_readSliceInt32(m.Slice, data[i:i+int(l)], slab, off+i, depth-2, "Pointers.Slice", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Pointers.Empty", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Pointers.Empty", off+at)
 			}
 			if m.Kind != PointerKindEmpty {
 				_pointer_deselectPointersKind(m)
 				m.Kind = PointerKindEmpty
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Pointers.Empty", 5, off+i)
+				return wire.DepthError("Pointers.Empty", 5, off+i)
 			}
 			if m.Empty == nil {
 				m.Empty = new([0]int32)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n > 0 && l != 0 {
-				return seen, wire.LengthError(l, 0, "Pointers.Empty", 5, off+i)
+				return wire.LengthError(l, 0, "Pointers.Empty", 5, off+i)
 			}
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Pointers.Empty", 5, off+i)
+				return wire.ReadError(n, "Pointers.Empty", 5, off+i)
 			}
 			i += n
 			*m.Empty = [0]int32{}
@@ -337,12 +342,12 @@ func (m *Pointers) fieldsKanon(data []byte, slab string, off, depth int, seen [1
 		default:
 			n, err := wire.Skip(data[i:], tag, "Pointers", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -451,7 +456,7 @@ func _pointer_deselectPointersKind(m *Pointers) {
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _pointer_readPtrInt32(dst **int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _pointer_readPtrInt32(dst **int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -486,7 +491,7 @@ func _pointer_readPtrInt32(dst **int32, data []byte, slab string, off, depth int
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _pointer_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _pointer_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}

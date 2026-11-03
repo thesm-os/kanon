@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -161,21 +161,24 @@ func (m *Unsigned) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Unsigned) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -185,16 +188,18 @@ func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Unsigned) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Unsigned call it.
-func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Unsigned) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Uint)
 	}
@@ -238,201 +243,201 @@ func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Unsigned
 // call it.
-func (m *Unsigned) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Unsigned) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Unsigned) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Unsigned) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Unsigned", 0, off+i)
+			return wire.ReadError(n, "Unsigned", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uint", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uint", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uint", 1, off+i)
+				return wire.ReadError(n, "Unsigned.Uint", 1, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUintString(&m.Uint, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "Unsigned.Uint", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uint8", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uint8", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uint8", 2, off+i)
+				return wire.ReadError(n, "Unsigned.Uint8", 2, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUint8String(&m.Uint8, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "Unsigned.Uint8", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uint16", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uint16", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uint16", 3, off+i)
+				return wire.ReadError(n, "Unsigned.Uint16", 3, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUint16String(&m.Uint16, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Unsigned.Uint16", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uint32", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uint32", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uint32", 4, off+i)
+				return wire.ReadError(n, "Unsigned.Uint32", 4, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUint32String(&m.Uint32, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Unsigned.Uint32", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uint64", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uint64", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uint64", 5, off+i)
+				return wire.ReadError(n, "Unsigned.Uint64", 5, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUint64String(&m.Uint64, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) == 0, "Unsigned.Uint64", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Uintptr", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Uintptr", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Uintptr", 6, off+i)
+				return wire.ReadError(n, "Unsigned.Uintptr", 6, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapUintptrString(&m.Uintptr, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<5) == 0, "Unsigned.Uintptr", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 5
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Status", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Status", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Status", 7, off+i)
+				return wire.ReadError(n, "Unsigned.Status", 7, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapStatusString(&m.Status, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<6) == 0, "Unsigned.Status", 7); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 6
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Port", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Port", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Port", 8, off+i)
+				return wire.ReadError(n, "Unsigned.Port", 8, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapPortString(&m.Port, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<7) == 0, "Unsigned.Port", 8); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 7
 		case 9:
 			if tag != 9<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Count", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Count", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Count", 9, off+i)
+				return wire.ReadError(n, "Unsigned.Count", 9, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapCountString(&m.Count, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<8) == 0, "Unsigned.Count", 9); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 8
 		case 10:
 			if tag != 10<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Size", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Size", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Size", 10, off+i)
+				return wire.ReadError(n, "Unsigned.Size", 10, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapSizeString(&m.Size, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<9) == 0, "Unsigned.Size", 10); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 9
 		case 11:
 			if tag != 11<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Index", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Index", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Index", 11, off+i)
+				return wire.ReadError(n, "Unsigned.Index", 11, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapIndexString(&m.Index, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<10) == 0, "Unsigned.Index", 11); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 10
 		case 12:
 			if tag != 12<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unsigned.Handle", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unsigned.Handle", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unsigned.Handle", 12, off+i)
+				return wire.ReadError(n, "Unsigned.Handle", 12, off+i)
 			}
 			i += n
 			if err := _unsigned_readMapHandleString(&m.Handle, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<11) == 0, "Unsigned.Handle", 12); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 11
 		default:
 			n, err := wire.Skip(data[i:], tag, "Unsigned", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -1059,7 +1064,7 @@ func _unsigned_putMapUintString(buf []byte, x map[uint]string) int {
 // first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUintString(dst *map[uint]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUintString(dst *map[uint]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1088,7 +1093,7 @@ func _unsigned_readMapUintString(dst *map[uint]string, data []byte, slab string,
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1101,7 +1106,7 @@ func _unsigned_readMapUintString(dst *map[uint]string, data []byte, slab string,
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUint8String(dst *map[uint8]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUint8String(dst *map[uint8]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1133,7 +1138,7 @@ func _unsigned_readMapUint8String(dst *map[uint8]string, data []byte, slab strin
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1146,7 +1151,7 @@ func _unsigned_readMapUint8String(dst *map[uint8]string, data []byte, slab strin
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUint16String(dst *map[uint16]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUint16String(dst *map[uint16]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1178,7 +1183,7 @@ func _unsigned_readMapUint16String(dst *map[uint16]string, data []byte, slab str
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1191,7 +1196,7 @@ func _unsigned_readMapUint16String(dst *map[uint16]string, data []byte, slab str
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUint32String(dst *map[uint32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUint32String(dst *map[uint32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1223,7 +1228,7 @@ func _unsigned_readMapUint32String(dst *map[uint32]string, data []byte, slab str
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1236,7 +1241,7 @@ func _unsigned_readMapUint32String(dst *map[uint32]string, data []byte, slab str
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUint64String(dst *map[uint64]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUint64String(dst *map[uint64]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1265,7 +1270,7 @@ func _unsigned_readMapUint64String(dst *map[uint64]string, data []byte, slab str
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1278,7 +1283,7 @@ func _unsigned_readMapUint64String(dst *map[uint64]string, data []byte, slab str
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapUintptrString(dst *map[uintptr]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapUintptrString(dst *map[uintptr]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1307,7 +1312,7 @@ func _unsigned_readMapUintptrString(dst *map[uintptr]string, data []byte, slab s
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1320,7 +1325,7 @@ func _unsigned_readMapUintptrString(dst *map[uintptr]string, data []byte, slab s
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapStatusString(dst *map[Status]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapStatusString(dst *map[Status]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1352,7 +1357,7 @@ func _unsigned_readMapStatusString(dst *map[Status]string, data []byte, slab str
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1365,7 +1370,7 @@ func _unsigned_readMapStatusString(dst *map[Status]string, data []byte, slab str
 // first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapPortString(dst *map[Port]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapPortString(dst *map[Port]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1397,7 +1402,7 @@ func _unsigned_readMapPortString(dst *map[Port]string, data []byte, slab string,
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1410,7 +1415,7 @@ func _unsigned_readMapPortString(dst *map[Port]string, data []byte, slab string,
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapCountString(dst *map[Count]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapCountString(dst *map[Count]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1442,7 +1447,7 @@ func _unsigned_readMapCountString(dst *map[Count]string, data []byte, slab strin
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1455,7 +1460,7 @@ func _unsigned_readMapCountString(dst *map[Count]string, data []byte, slab strin
 // first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapSizeString(dst *map[Size]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapSizeString(dst *map[Size]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1484,7 +1489,7 @@ func _unsigned_readMapSizeString(dst *map[Size]string, data []byte, slab string,
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1497,7 +1502,7 @@ func _unsigned_readMapSizeString(dst *map[Size]string, data []byte, slab string,
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapIndexString(dst *map[Index]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapIndexString(dst *map[Index]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1526,7 +1531,7 @@ func _unsigned_readMapIndexString(dst *map[Index]string, data []byte, slab strin
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1539,7 +1544,7 @@ func _unsigned_readMapIndexString(dst *map[Index]string, data []byte, slab strin
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _unsigned_readMapHandleString(dst *map[Handle]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _unsigned_readMapHandleString(dst *map[Handle]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1568,7 +1573,7 @@ func _unsigned_readMapHandleString(dst *map[Handle]string, data []byte, slab str
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv

@@ -30,10 +30,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -257,21 +257,24 @@ func (m *Variants) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Variants) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Variants) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -281,19 +284,21 @@ func (m *Variants) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Variants) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Variants call it.
-func (m *Variants) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Variants) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Deadline = time.Time{}
 	m.Token = 0
 	m.Rank = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Numbers = nil
 	}
@@ -328,238 +333,238 @@ func (m *Variants) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Variants
 // call it.
-func (m *Variants) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Variants) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Variants) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Variants) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Variants", 0, off+i)
+			return wire.ReadError(n, "Variants", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Numbers", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Numbers", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Numbers", 1, off+i)
+				return wire.ReadError(n, "Variants.Numbers", 1, off+i)
 			}
 			i += n
 			used, err := _variant_readAny(&m.Numbers, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Numbers", 1)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Numbers", 1, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Numbers", 1, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Fixed", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Fixed", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Fixed", 2, off+i)
+				return wire.ReadError(n, "Variants.Fixed", 2, off+i)
 			}
 			i += n
 			used, err := _variant_readAny2(&m.Fixed, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Fixed", 2)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Fixed", 2, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Fixed", 2, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Text", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Text", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Text", 3, off+i)
+				return wire.ReadError(n, "Variants.Text", 3, off+i)
 			}
 			i += n
 			used, err := _variant_readAny3(&m.Text, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Text", 3)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Text", 3, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Text", 3, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Times", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Times", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Times", 4, off+i)
+				return wire.ReadError(n, "Variants.Times", 4, off+i)
 			}
 			i += n
 			used, err := _variant_readAny4(&m.Times, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Times", 4)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Times", 4, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Times", 4, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Remote", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Remote", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Remote", 5, off+i)
+				return wire.ReadError(n, "Variants.Remote", 5, off+i)
 			}
 			i += n
 			used, err := _variant_readAny5(&m.Remote, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) != 0, "Variants.Remote", 5)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Remote", 5, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Remote", 5, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Structs", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Structs", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Structs", 6, off+i)
+				return wire.ReadError(n, "Variants.Structs", 6, off+i)
 			}
 			i += n
 			used, err := _variant_readAny6(&m.Structs, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<5) != 0, "Variants.Structs", 6)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Structs", 6, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Structs", 6, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 5
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Codecs", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Codecs", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Codecs", 7, off+i)
+				return wire.ReadError(n, "Variants.Codecs", 7, off+i)
 			}
 			i += n
 			used, err := _variant_readAny7(&m.Codecs, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Codecs", 7)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Codecs", 7, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Codecs", 7, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 6
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Nested", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Nested", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Nested", 8, off+i)
+				return wire.ReadError(n, "Variants.Nested", 8, off+i)
 			}
 			i += n
 			used, err := _variant_readAny8(&m.Nested, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<7) != 0, "Variants.Nested", 8)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Nested", 8, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Nested", 8, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 7
 		case 12:
 			if tag != 12<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Pointers", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Pointers", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Pointers", 12, off+i)
+				return wire.ReadError(n, "Variants.Pointers", 12, off+i)
 			}
 			i += n
 			used, err := _variant_readAny9(&m.Pointers, data[i:i+int(l)], slab, off+i, depth-1, "Variants.Pointers", 12)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			if used != int(l) {
-				return seen, wire.TrailingError(int(l)-used, "Variants.Pointers", 12, off+i+used)
+				return wire.TrailingError(int(l)-used, "Variants.Pointers", 12, off+i+used)
 			}
 			i += int(l)
 			seen[0] |= 1 << 8
 		case 9:
 			if tag != 9<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Deadline", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Deadline", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Deadline", 9, off+i)
+				return wire.ReadError(n, "Variants.Deadline", 9, off+i)
 			}
 			i += n
 			t, err := wire.Time(data[i:i+int(l)], "Variants.Deadline", 9, off+i)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			m.Deadline = t
 			i += int(l)
 		case 10:
 			if tag != 10<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Variants.Token", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Variants.Token", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Variants.Token", 10, off+i)
+				return wire.ReadError(n, "Variants.Token", 10, off+i)
 			}
 			i += n
 			m.Token = 0
 			if err := m.Token.UnmarshalBinary(data[i : i+int(l)]); err != nil {
-				return seen, wire.UnmarshalError(err, "Variants.Token", 10, off+i)
+				return wire.UnmarshalError(err, "Variants.Token", 10, off+i)
 			}
 			i += int(l)
 		case 11:
 			if tag != 11<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Variants.Rank", off+at)
+				return wire.FormatError(tag, wire.Varint, "Variants.Rank", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Variants.Rank", 11, off+i)
+				return wire.ReadError(n, "Variants.Rank", 11, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "Variants.Rank", 11, off+i)
+				return wire.RangeError(s, "int32", "Variants.Rank", 11, off+i)
 			}
 			m.Rank = external.Rank(s)
 			i += n
 		default:
 			n, err := wire.Skip(data[i:], tag, "Variants", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -1105,7 +1110,7 @@ func _variant_putAny(buf []byte, x any, loc string, num int) (int, error) {
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1245,7 +1250,7 @@ func _variant_readAny(dst *any, data []byte, slab string, off, depth int, loc st
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny2(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny2(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1286,7 +1291,7 @@ func _variant_readAny2(dst *any, data []byte, slab string, off, depth int, loc s
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny3(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny3(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1298,13 +1303,13 @@ func _variant_readAny3(dst *any, data []byte, slab string, off, depth int, loc s
 	case 0:
 		*dst = nil
 	case 1:
-		var x string
+		x, _ := (*dst).(string)
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return 0, wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x = slab[off+i : off+i+int(l)]
+		x = slab.String(x, data[i:i+int(l)], off+i)
 		i += int(l)
 		*dst = x
 	case 2:
@@ -1318,13 +1323,13 @@ func _variant_readAny3(dst *any, data []byte, slab string, off, depth int, loc s
 		i += int(l)
 		*dst = x
 	case 3:
-		var x Name
+		x, _ := (*dst).(Name)
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return 0, wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x = Name(slab[off+i : off+i+int(l)])
+		x = Name(slab.String(string(x), data[i:i+int(l)], off+i))
 		i += int(l)
 		*dst = x
 	case 4:
@@ -1363,7 +1368,7 @@ func _variant_readAny3(dst *any, data []byte, slab string, off, depth int, loc s
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny4(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny4(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1411,7 +1416,7 @@ func _variant_readAny4(dst *any, data []byte, slab string, off, depth int, loc s
 // repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _variant_readAny5(dst *any, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _variant_readAny5(dst *any, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1436,13 +1441,13 @@ func _variant_readAny5(dst *any, data []byte, slab string, off, depth int, merge
 		i += n
 		*dst = x
 	case 2:
-		var x external.Ident
+		x, _ := (*dst).(external.Ident)
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return 0, wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x = external.Ident(slab[off+i : off+i+int(l)])
+		x = external.Ident(slab.String(string(x), data[i:i+int(l)], off+i))
 		i += int(l)
 		*dst = x
 	case 3:
@@ -1458,9 +1463,9 @@ func _variant_readAny5(dst *any, data []byte, slab string, off, depth int, merge
 		{
 			var err error
 			if merge {
-				err = x.MergeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1))
+				err = slab.Locate(x.MergeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i)
 			} else {
-				err = x.DecodeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth-1))
+				err = slab.Locate(x.DecodeKanon(data[i:i+int(l)], slab.Nested(off+i, depth-1)), off+i)
 			}
 			if err != nil {
 				return 0, err
@@ -1482,7 +1487,7 @@ func _variant_readAny5(dst *any, data []byte, slab string, off, depth int, merge
 // repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _variant_readAny6(dst *any, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _variant_readAny6(dst *any, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1605,7 +1610,7 @@ func _variant_readAny6(dst *any, data []byte, slab string, off, depth int, merge
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny7(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny7(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1677,7 +1682,7 @@ func _variant_readAny7(dst *any, data []byte, slab string, off, depth int, loc s
 // repeated field merges. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _variant_readAny8(dst *any, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _variant_readAny8(dst *any, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1824,7 +1829,7 @@ func _variant_readAny8(dst *any, data []byte, slab string, off, depth int, merge
 // for a type number that the list does not name. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _variant_readAny9(dst *any, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readAny9(dst *any, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2469,7 +2474,7 @@ func _variant_putExternalPairStringInt8(buf []byte, m *external.Pair[string, int
 // into a new one. With merge set, the struct merges into the struct that *dst
 // points at. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _variant_readPtrSquare(dst **Square, data []byte, slab string, off, depth int, merge bool, loc string, num int) (int, error) {
+func _variant_readPtrSquare(dst **Square, data []byte, slab *wire.Slab, off, depth int, merge bool, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2513,7 +2518,7 @@ func _variant_readPtrSquare(dst **Square, data []byte, slab string, off, depth i
 // _variant_mergePatch merges the encoding in data, which starts at offset off
 // of slab, into the Patch that m points at, as MergeKanon does. The decode
 // enters depth levels below m at most.
-func _variant_mergePatch(m *Patch, data []byte, slab string, off, depth int) error {
+func _variant_mergePatch(m *Patch, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -2549,7 +2554,7 @@ func _variant_mergePatch(m *Patch, data []byte, slab string, off, depth int) err
 // _variant_readPatch sets the Patch that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _variant_readPatch(m *Patch, data []byte, slab string, off, depth int) error {
+func _variant_readPatch(m *Patch, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Cells = m.Cells[:0]
 	return _variant_mergePatch(m, data, slab, off, depth)
 }
@@ -2557,7 +2562,7 @@ func _variant_readPatch(m *Patch, data []byte, slab string, off, depth int) erro
 // _variant_mergeVariantsStructsStruct merges the encoding in data, which starts
 // at offset off of slab, into the Variants.Structs.(struct{}) that m points at,
 // as MergeKanon does. The decode enters depth levels below m at most.
-func _variant_mergeVariantsStructsStruct(m *struct{}, data []byte, slab string, off, depth int) error {
+func _variant_mergeVariantsStructsStruct(m *struct{}, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -2578,7 +2583,7 @@ func _variant_mergeVariantsStructsStruct(m *struct{}, data []byte, slab string, 
 // m points at to the value encoded in data and reuses its memory, as
 // DecodeKanon does. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most.
-func _variant_readVariantsStructsStruct(m *struct{}, data []byte, slab string, off, depth int) error {
+func _variant_readVariantsStructsStruct(m *struct{}, data []byte, slab *wire.Slab, off, depth int) error {
 	return _variant_mergeVariantsStructsStruct(m, data, slab, off, depth)
 }
 
@@ -2586,59 +2591,23 @@ func _variant_readVariantsStructsStruct(m *struct{}, data []byte, slab string, o
 // starts at offset off of slab, into the external.Pair[string, int8] that m
 // points at, as MergeKanon does. The decode enters depth levels below m at
 // most.
-func _variant_mergeExternalPairStringInt8(m *external.Pair[string, int8], data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "external.Pair[string, int8]", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "external.Pair[string, int8].Key", off+at)
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "external.Pair[string, int8].Key", 1, off+i)
-			}
-			i += n
-			m.Key = slab[off+i : off+i+int(l)]
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Varint {
-				return wire.FormatError(tag, wire.Varint, "external.Pair[string, int8].Val", off+at)
-			}
-			u, n := wire.Uvarint(data[i:])
-			if n <= 0 {
-				return wire.ReadError(n, "external.Pair[string, int8].Val", 2, off+i)
-			}
-			s := wire.Unzigzag(u)
-			if s != int64(int8(s)) {
-				return wire.RangeError(s, "int8", "external.Pair[string, int8].Val", 2, off+i)
-			}
-			m.Val = int8(s)
-			i += n
-		default:
-			n, err := wire.Skip(data[i:], tag, "external.Pair[string, int8]", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _variant_mergeExternalPairStringInt8(m *external.Pair[string, int8], data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _variant_fieldsExternalPairStringInt8(m, data, slab, off, depth, &seen)
 }
 
 // _variant_readExternalPairStringInt8 sets the external.Pair[string, int8] that
 // m points at to the value encoded in data and reuses its memory, as
 // DecodeKanon does. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most.
-func _variant_readExternalPairStringInt8(m *external.Pair[string, int8], data []byte, slab string, off, depth int) error {
-	m.Key = ""
+func _variant_readExternalPairStringInt8(m *external.Pair[string, int8], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Val = 0
-	return _variant_mergeExternalPairStringInt8(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _variant_fieldsExternalPairStringInt8(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Key = ""
+	}
+	return err
 }
 
 // _variant_readPtrCodecStamp decodes the *codec.Stamp at the start of data into
@@ -2647,7 +2616,7 @@ func _variant_readExternalPairStringInt8(m *external.Pair[string, int8], data []
 // points at or into a new one. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _variant_readPtrCodecStamp(dst **codec.Stamp, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readPtrCodecStamp(dst **codec.Stamp, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2682,7 +2651,7 @@ func _variant_readPtrCodecStamp(dst **codec.Stamp, data []byte, slab string, off
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _variant_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2713,7 +2682,7 @@ func _variant_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _variant_readMapStringInt32(dst *map[string]int32, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _variant_readMapStringInt32(dst *map[string]int32, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2734,7 +2703,7 @@ func _variant_readMapStringInt32(dst *map[string]int32, data []byte, slab string
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -2758,7 +2727,7 @@ func _variant_readMapStringInt32(dst *map[string]int32, data []byte, slab string
 // length, into *dst. It fails unless data encodes exactly 2 elements. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _variant_readGrid(dst *Grid, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readGrid(dst *Grid, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -2782,7 +2751,7 @@ func _variant_readGrid(dst *Grid, data []byte, slab string, off, depth int, loc 
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _variant_readPtrInt32(dst **int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readPtrInt32(dst **int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2819,7 +2788,7 @@ func _variant_readPtrInt32(dst **int32, data []byte, slab string, off, depth int
 // at or into a new one. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _variant_readPtrPtrInt32(dst ***int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readPtrPtrInt32(dst ***int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2849,7 +2818,7 @@ func _variant_readPtrPtrInt32(dst ***int32, data []byte, slab string, off, depth
 // []*Circle without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _variant_readSlicePtrCircle(dst *[]*Circle, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readSlicePtrCircle(dst *[]*Circle, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2875,7 +2844,7 @@ func _variant_readSlicePtrCircle(dst *[]*Circle, data []byte, slab string, off, 
 // []*Square without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _variant_readSlicePtrSquare(dst *[]*Square, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readSlicePtrSquare(dst *[]*Square, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2902,7 +2871,7 @@ func _variant_readSlicePtrSquare(dst *[]*Square, data []byte, slab string, off, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _variant_readMapStringPtrSquare(dst *map[string]*Square, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _variant_readMapStringPtrSquare(dst *map[string]*Square, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2933,7 +2902,7 @@ func _variant_readMapStringPtrSquare(dst *map[string]*Square, data []byte, slab 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		mv = nil
@@ -2957,7 +2926,7 @@ func _variant_readMapStringPtrSquare(dst *map[string]*Square, data []byte, slab 
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _variant_readSliceSquare(dst *[]Square, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readSliceSquare(dst *[]Square, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2966,7 +2935,11 @@ func _variant_readSliceSquare(dst *[]Square, data []byte, slab string, off, dept
 		x = make([]Square, 0, wire.SliceCap[Square](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, Square{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, Square{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -2990,7 +2963,7 @@ func _variant_readSliceSquare(dst *[]Square, data []byte, slab string, off, dept
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _variant_readMapStringSquare(dst *map[string]Square, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _variant_readMapStringSquare(dst *map[string]Square, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -3011,7 +2984,7 @@ func _variant_readMapStringSquare(dst *map[string]Square, data []byte, slab stri
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -3243,11 +3216,63 @@ func _variant_putCodecStamp(buf []byte, x *codec.Stamp, loc string, num int) (in
 	return copy(buf[len(buf)-len(enc):], enc), nil
 }
 
+// _variant_fieldsExternalPairStringInt8 decodes the fields in data into m for
+// the decode and the merge of external.Pair[string, int8]. The first occurrence
+// of a tracked field whose bit in seen is clear decodes into the memory of the
+// field, and every other occurrence merges.
+// _variant_fieldsExternalPairStringInt8 sets the bits of the tracked fields
+// that data contains in seen.
+func _variant_fieldsExternalPairStringInt8(m *external.Pair[string, int8], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "external.Pair[string, int8]", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "external.Pair[string, int8].Key", off+at)
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "external.Pair[string, int8].Key", 1, off+i)
+			}
+			i += n
+			m.Key = slab.String(m.Key, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		case 2:
+			if tag != 2<<3|wire.Varint {
+				return wire.FormatError(tag, wire.Varint, "external.Pair[string, int8].Val", off+at)
+			}
+			u, n := wire.Uvarint(data[i:])
+			if n <= 0 {
+				return wire.ReadError(n, "external.Pair[string, int8].Val", 2, off+i)
+			}
+			s := wire.Unzigzag(u)
+			if s != int64(int8(s)) {
+				return wire.RangeError(s, "int8", "external.Pair[string, int8].Val", 2, off+i)
+			}
+			m.Val = int8(s)
+			i += n
+		default:
+			n, err := wire.Skip(data[i:], tag, "external.Pair[string, int8]", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
+	return nil
+}
+
 // _variant_readArray2Int8 decodes the elements that data encodes, a [2]int8
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _variant_readArray2Int8(dst *[2]int8, data []byte, slab string, off, depth int, loc string, num int) error {
+func _variant_readArray2Int8(dst *[2]int8, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -3272,7 +3297,7 @@ func _variant_readArray2Int8(dst *[2]int8, data []byte, slab string, off, depth 
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _variant_readPtrCircle(dst **Circle, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _variant_readPtrCircle(dst **Circle, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}

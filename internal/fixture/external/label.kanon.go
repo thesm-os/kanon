@@ -14,10 +14,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -131,21 +131,24 @@ func (m *Label) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Label) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Label) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -155,27 +158,43 @@ func (m *Label) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Label) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Label
 // call it.
-func (m *Label) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Key = ""
-	m.Value = ""
+func (m *Label) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Rank = 0
 	m.Mark = 0
-	return m.mergeKanon(data, slab, off, depth)
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Key = ""
+	}
+	if seen[0]&(1<<1) == 0 {
+		m.Value = ""
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Label
 // call it.
-func (m *Label) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Label) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Label) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -193,8 +212,9 @@ func (m *Label) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Label.Key", 1, off+i)
 			}
 			i += n
-			m.Key = Ident(slab[off+i : off+i+int(l)])
+			m.Key = Ident(slab.String(string(m.Key), data[i:i+int(l)], off+i))
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Label.Value", off+at)
@@ -204,8 +224,9 @@ func (m *Label) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Label.Value", 2, off+i)
 			}
 			i += n
-			m.Value = slab[off+i : off+i+int(l)]
+			m.Value = slab.String(m.Value, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "Label.Rank", off+at)

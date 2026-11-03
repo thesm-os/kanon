@@ -19,10 +19,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -191,21 +191,24 @@ func (m *Floats) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Floats) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Floats) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -215,16 +218,18 @@ func (m *Floats) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Floats) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Floats
 // call it.
-func (m *Floats) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Floats) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Float32)
 	}
@@ -256,145 +261,145 @@ func (m *Floats) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Floats
 // call it.
-func (m *Floats) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Floats) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Floats) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Floats) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Floats", 0, off+i)
+			return wire.ReadError(n, "Floats", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Float32", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Float32", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Float32", 1, off+i)
+				return wire.ReadError(n, "Floats.Float32", 1, off+i)
 			}
 			i += n
 			if err := _float_readMapFloat32String(&m.Float32, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "Floats.Float32", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Float64", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Float64", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Float64", 2, off+i)
+				return wire.ReadError(n, "Floats.Float64", 2, off+i)
 			}
 			i += n
 			if err := _float_readMapFloat64String(&m.Float64, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "Floats.Float64", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Ratio", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Ratio", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Ratio", 3, off+i)
+				return wire.ReadError(n, "Floats.Ratio", 3, off+i)
 			}
 			i += n
 			if err := _float_readMapRatioString(&m.Ratio, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Floats.Ratio", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Score", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Score", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Score", 4, off+i)
+				return wire.ReadError(n, "Floats.Score", 4, off+i)
 			}
 			i += n
 			if err := _float_readMapScoreString(&m.Score, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Floats.Score", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Coord", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Coord", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Coord", 5, off+i)
+				return wire.ReadError(n, "Floats.Coord", 5, off+i)
 			}
 			i += n
 			if err := _float_readMapCoordString(&m.Coord, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<4) == 0, "Floats.Coord", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Coords", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Coords", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Coords", 6, off+i)
+				return wire.ReadError(n, "Floats.Coords", 6, off+i)
 			}
 			i += n
 			if err := _float_readMapArray2CoordString(&m.Coords, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<5) == 0, "Floats.Coords", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 5
 		case 7:
 			if tag != 7<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Gauge", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Gauge", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Gauge", 7, off+i)
+				return wire.ReadError(n, "Floats.Gauge", 7, off+i)
 			}
 			i += n
 			if err := _float_readMapGaugeString(&m.Gauge, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<6) == 0, "Floats.Gauge", 7); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 6
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Floats.Pointer", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Floats.Pointer", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Floats.Pointer", 8, off+i)
+				return wire.ReadError(n, "Floats.Pointer", 8, off+i)
 			}
 			i += n
 			if err := _float_readMapPtrFloat64String(&m.Pointer, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<7) == 0, "Floats.Pointer", 8); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 7
 		default:
 			n, err := wire.Skip(data[i:], tag, "Floats", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -559,21 +564,24 @@ func (m *Complexes) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Complexes) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Complexes) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -583,16 +591,18 @@ func (m *Complexes) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Complexes) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Complexes call it.
-func (m *Complexes) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Complexes) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Complex64)
 	}
@@ -612,89 +622,89 @@ func (m *Complexes) decodeKanon(data []byte, slab string, off, depth int) error 
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain
 // Complexes call it.
-func (m *Complexes) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Complexes) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Complexes) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Complexes) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Complexes", 0, off+i)
+			return wire.ReadError(n, "Complexes", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Complexes.Complex64", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Complexes.Complex64", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Complexes.Complex64", 1, off+i)
+				return wire.ReadError(n, "Complexes.Complex64", 1, off+i)
 			}
 			i += n
 			if err := _float_readMapComplex64String(&m.Complex64, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<0) == 0, "Complexes.Complex64", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Complexes.Complex128", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Complexes.Complex128", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Complexes.Complex128", 2, off+i)
+				return wire.ReadError(n, "Complexes.Complex128", 2, off+i)
 			}
 			i += n
 			if err := _float_readMapComplex128String(&m.Complex128, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<1) == 0, "Complexes.Complex128", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Complexes.Phase", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Complexes.Phase", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Complexes.Phase", 3, off+i)
+				return wire.ReadError(n, "Complexes.Phase", 3, off+i)
 			}
 			i += n
 			if err := _float_readMapPhaseString(&m.Phase, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<2) == 0, "Complexes.Phase", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Complexes.Wave", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Complexes.Wave", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Complexes.Wave", 4, off+i)
+				return wire.ReadError(n, "Complexes.Wave", 4, off+i)
 			}
 			i += n
 			if err := _float_readMapWaveString(&m.Wave, data[i:i+int(l)], slab, off+i, depth-1, seen[0]&(1<<3) == 0, "Complexes.Wave", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 3
 		default:
 			n, err := wire.Skip(data[i:], tag, "Complexes", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -812,14 +822,17 @@ func (m *Gauge) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Gauge) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -829,15 +842,16 @@ func (m *Gauge) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Gauge) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Gauge
 // call it.
-func (m *Gauge) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Gauge) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Phase = 0
 	m.Wave = 0
 	return m.mergeKanon(data, slab, off, depth)
@@ -847,7 +861,7 @@ func (m *Gauge) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Gauge
 // call it.
-func (m *Gauge) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Gauge) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1267,7 +1281,7 @@ func _float_putMapFloat32String(buf []byte, x map[float32]string, loc string, nu
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapFloat32String(dst *map[float32]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapFloat32String(dst *map[float32]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1300,7 +1314,7 @@ func _float_readMapFloat32String(dst *map[float32]string, data []byte, slab stri
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1313,7 +1327,7 @@ func _float_readMapFloat32String(dst *map[float32]string, data []byte, slab stri
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapFloat64String(dst *map[float64]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapFloat64String(dst *map[float64]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1346,7 +1360,7 @@ func _float_readMapFloat64String(dst *map[float64]string, data []byte, slab stri
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1359,7 +1373,7 @@ func _float_readMapFloat64String(dst *map[float64]string, data []byte, slab stri
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapRatioString(dst *map[Ratio]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapRatioString(dst *map[Ratio]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1392,7 +1406,7 @@ func _float_readMapRatioString(dst *map[Ratio]string, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1405,7 +1419,7 @@ func _float_readMapRatioString(dst *map[Ratio]string, data []byte, slab string, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapScoreString(dst *map[Score]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapScoreString(dst *map[Score]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1438,7 +1452,7 @@ func _float_readMapScoreString(dst *map[Score]string, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1451,7 +1465,7 @@ func _float_readMapScoreString(dst *map[Score]string, data []byte, slab string, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapCoordString(dst *map[Coord]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapCoordString(dst *map[Coord]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1490,7 +1504,7 @@ func _float_readMapCoordString(dst *map[Coord]string, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1503,7 +1517,7 @@ func _float_readMapCoordString(dst *map[Coord]string, data []byte, slab string, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapArray2CoordString(dst *map[[2]Coord]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapArray2CoordString(dst *map[[2]Coord]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1539,7 +1553,7 @@ func _float_readMapArray2CoordString(dst *map[[2]Coord]string, data []byte, slab
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1552,7 +1566,7 @@ func _float_readMapArray2CoordString(dst *map[[2]Coord]string, data []byte, slab
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapGaugeString(dst *map[Gauge]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapGaugeString(dst *map[Gauge]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1591,7 +1605,7 @@ func _float_readMapGaugeString(dst *map[Gauge]string, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1604,7 +1618,7 @@ func _float_readMapGaugeString(dst *map[Gauge]string, data []byte, slab string, 
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapPtrFloat64String(dst *map[*float64]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapPtrFloat64String(dst *map[*float64]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1644,7 +1658,7 @@ func _float_readMapPtrFloat64String(dst *map[*float64]string, data []byte, slab 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1931,7 +1945,7 @@ func _float_putMapComplex64String(buf []byte, x map[complex64]string, loc string
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapComplex64String(dst *map[complex64]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapComplex64String(dst *map[complex64]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1964,7 +1978,7 @@ func _float_readMapComplex64String(dst *map[complex64]string, data []byte, slab 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1977,7 +1991,7 @@ func _float_readMapComplex64String(dst *map[complex64]string, data []byte, slab 
 // clears *dst first, and the entries reuse the memory of up to 16 of its
 // values. data starts at offset off of slab, and the decode enters depth levels
 // below the value at most. loc and num locate the field in errors.
-func _float_readMapComplex128String(dst *map[complex128]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapComplex128String(dst *map[complex128]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2016,7 +2030,7 @@ func _float_readMapComplex128String(dst *map[complex128]string, data []byte, sla
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -2029,7 +2043,7 @@ func _float_readMapComplex128String(dst *map[complex128]string, data []byte, sla
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapPhaseString(dst *map[Phase]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapPhaseString(dst *map[Phase]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2062,7 +2076,7 @@ func _float_readMapPhaseString(dst *map[Phase]string, data []byte, slab string, 
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -2075,7 +2089,7 @@ func _float_readMapPhaseString(dst *map[Phase]string, data []byte, slab string, 
 // first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _float_readMapWaveString(dst *map[Wave]string, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _float_readMapWaveString(dst *map[Wave]string, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -2114,7 +2128,7 @@ func _float_readMapWaveString(dst *map[Wave]string, data []byte, slab string, of
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -2364,7 +2378,7 @@ func _float_keyputCoord(buf []byte, m *Coord) int {
 // _float_readCoord sets the Coord that m points at to the value encoded in data
 // and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _float_readCoord(m *Coord, data []byte, slab string, off, depth int) error {
+func _float_readCoord(m *Coord, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Lat = 0
 	m.Lon = 0
 	m.Span = [2]float64{}
@@ -2375,7 +2389,7 @@ func _float_readCoord(m *Coord, data []byte, slab string, off, depth int) error 
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Coord(dst *[2]Coord, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Coord(dst *[2]Coord, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -2409,7 +2423,7 @@ func _float_canonPtrFloat64(x *float64) bool {
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _float_readPtrFloat64(dst **float64, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _float_readPtrFloat64(dst **float64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -2493,7 +2507,7 @@ func _float_keyputArray2Float64(buf []byte, x *[2]float64) int {
 // _float_mergeCoord merges the encoding in data, which starts at offset off of
 // slab, into the Coord that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _float_mergeCoord(m *Coord, data []byte, slab string, off, depth int) error {
+func _float_mergeCoord(m *Coord, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -2550,7 +2564,7 @@ func _float_mergeCoord(m *Coord, data []byte, slab string, off, depth int) error
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _float_readArray2Float64(dst *[2]float64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _float_readArray2Float64(dst *[2]float64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uint64(data[i:])

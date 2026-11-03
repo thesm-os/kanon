@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"unsafe"
 
 	"go.dokimi.dev/assert"
 
@@ -36,6 +37,35 @@ func (s *suite[T, P]) reuse(tb assert.TB, xs, seeds []sample[T]) {
 		err := P(&v).DecodeKanon(x.enc, kanon.Options{})
 		s.same(tb, x.name+": DecodeKanon into a reset receiver", v, err, want, wantErr)
 	}
+}
+
+// slabStrings checks that DecodeKanon with the encoding of every sample of xs
+// that decodes in a slab between two slabGuard, into a receiver that decoded
+// the same encoding with the zero Options before, takes every decoded string
+// that is not empty from the slab. The receiver has an equal string at the
+// place of each decoded string, which a decode with a slab does not keep.
+func (s *suite[T, P]) slabStrings(tb assert.TB, xs []sample[T]) {
+	tb.Helper()
+	for _, x := range s.decodable(xs) {
+		var v T
+		_ = P(&v).DecodeKanon(x.enc, kanon.Options{})
+		slab := slabGuard + string(x.enc) + slabGuard
+		err := P(&v).DecodeKanon(x.enc, kanon.Options{Slab: slab, Offset: len(slabGuard)})
+		assert.NoError(tb, err, x.name+": DecodeKanon decodes the encoding in a slab")
+		outside := func(t *shape, y reflect.Value) bool {
+			return t.kind == kindString && y.Len() > 0 && !within(slab, y.String())
+		}
+		assert.False(tb, s.r.fieldsContain(s.l, reflect.ValueOf(&v).Elem(), outside),
+			x.name+": DecodeKanon takes every decoded string from the slab")
+	}
+}
+
+// within reports whether the bytes of text, which is not empty, are bytes of
+// slab in memory, as a substring of slab has them.
+func within(slab, text string) bool {
+	base := uintptr(unsafe.Pointer(unsafe.StringData(slab)))
+	at := uintptr(unsafe.Pointer(unsafe.StringData(text)))
+	return at >= base && at+uintptr(len(text)) <= base+uintptr(len(slab))
 }
 
 // merge checks that MergeKanon merges the reference encoding of every

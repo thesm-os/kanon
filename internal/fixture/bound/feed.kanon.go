@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -87,21 +87,24 @@ func (m *Entry) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Entry) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Entry) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -111,24 +114,38 @@ func (m *Entry) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Entry) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Entry
 // call it.
-func (m *Entry) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Name = ""
-	return m.mergeKanon(data, slab, off, depth)
+func (m *Entry) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Name = ""
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Entry
 // call it.
-func (m *Entry) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Entry) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Entry) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -146,8 +163,9 @@ func (m *Entry) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Entry.Name", 1, off+i)
 			}
 			i += n
-			m.Name = slab[off+i : off+i+int(l)]
+			m.Name = slab.String(m.Name, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		default:
 			n, err := wire.Skip(data[i:], tag, "Entry", 0, off+at)
 			if err != nil {
@@ -281,21 +299,24 @@ func (m *Feed) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Feed) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Feed) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -305,25 +326,39 @@ func (m *Feed) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Feed) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Feed
 // call it.
-func (m *Feed) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Title = ""
+func (m *Feed) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Entries = m.Entries[:0]
-	return m.mergeKanon(data, slab, off, depth)
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Title = ""
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Feed
 // call it.
-func (m *Feed) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Feed) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Feed) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -341,8 +376,9 @@ func (m *Feed) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Feed.Title", 1, off+i)
 			}
 			i += n
-			m.Title = slab[off+i : off+i+int(l)]
+			m.Title = slab.String(m.Title, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Feed.Entries", off+at)
@@ -475,6 +511,9 @@ type FeedStream struct {
 	// s reads the encoding, and m is the receiver of the decoded fields.
 	s wire.Stream
 	m *Feed
+	// seen records the tracked fields that the encoding contains, as the decode of
+	// Feed records them.
+	seen [1]uint64
 	// skipEntries is the element into which Next decodes the elements of Entries
 	// that the caller skips.
 	skipEntries Entry
@@ -492,15 +531,16 @@ func NewFeedStream(r io.Reader, size int64, m *Feed, opts kanon.StreamOptions) *
 
 // Reset makes d read the encoding of a Feed, size bytes, from r into m, and
 // reuses the buffers of d. It clears the fields of m that the encoding leaves
-// out, and the fields that the decode does not track, the streamed fields among
-// them, as DecodeKanon clears them. It reads at most size bytes from r. A size
-// below 0, or above math.MaxInt, makes the first call of Next fail with
-// kanon.ErrStreamSize. The strings that d decoded before are substrings of the
-// buffers that it reuses.
+// out, and the fields that the decode does not track, as DecodeKanon clears
+// them. The fields that the decode tracks keep their values until Next returns
+// io.EOF, and Next then clears those that the encoding does not contain. d
+// reads at most size bytes from r. A size below 0, or above math.MaxInt, makes
+// the first call of Next fail with kanon.ErrStreamSize. The strings that d
+// decoded before are substrings of the buffers that it reuses.
 func (d *FeedStream) Reset(r io.Reader, size int64, m *Feed) {
 	d.s.Reset(r, size)
 	d.m = m
-	m.Title = ""
+	d.seen = [1]uint64{}
 	m.Entries = m.Entries[:0]
 }
 
@@ -523,10 +563,18 @@ func (d *FeedStream) Next() (FeedField, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := d.m.mergeKanon(r.Data, r.Slab(), 0, r.Depth); err != nil {
+	var slab wire.Slab
+	off := slab.Reset(r.Data, kanon.Options{Slab: r.Slab()})
+	m, seen := d.m, &d.seen
+	if err := m.fieldsKanon(r.Data, &slab, off, r.Depth, seen); err != nil {
 		return 0, d.s.Fail(err)
 	}
 	n, err := d.s.Open()
+	if err == io.EOF {
+		if seen[0]&(1<<0) == 0 {
+			m.Title = ""
+		}
+	}
 	return FeedField(n), err
 }
 
@@ -560,7 +608,9 @@ func (d *FeedStream) DecodeEntries(e *Entry) error {
 	if err != nil {
 		return err
 	}
-	if err := e.decodeKanon(r.Data, r.Slab(), 0, r.Depth); err != nil {
+	var slab wire.Slab
+	off := slab.Reset(r.Data, kanon.Options{Slab: r.Slab()})
+	if err := e.decodeKanon(r.Data, &slab, off, r.Depth); err != nil {
 		return d.s.Fail(err)
 	}
 	return nil
@@ -594,7 +644,7 @@ func _feed_putSliceEntry(buf []byte, x []Entry) int {
 // decode enters depth levels below the value at most. It fails at an element
 // that would take the slice past bound elements. loc and num locate the field
 // in errors.
-func _feed_readSliceEntry(dst *[]Entry, data []byte, slab string, off, depth, bound int, loc string, num int) error {
+func _feed_readSliceEntry(dst *[]Entry, data []byte, slab *wire.Slab, off, depth, bound int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -606,7 +656,11 @@ func _feed_readSliceEntry(dst *[]Entry, data []byte, slab string, off, depth, bo
 		if len(x) >= bound {
 			return wire.MaxError(loc, num, off+i, bound)
 		}
-		x = append(x, Entry{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, Entry{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {

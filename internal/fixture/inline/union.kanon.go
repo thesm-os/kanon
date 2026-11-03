@@ -17,10 +17,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -103,21 +103,24 @@ func (m *Unions) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Unions) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Unions) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -127,17 +130,19 @@ func (m *Unions) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Unions) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Unions
 // call it.
-func (m *Unions) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Unions) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Variants = m.Variants[:0]
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		_union_resetChoice(&m.Choice)
 	}
@@ -151,35 +156,35 @@ func (m *Unions) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Unions
 // call it.
-func (m *Unions) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Unions) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Unions) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Unions) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Unions", 0, off+i)
+			return wire.ReadError(n, "Unions", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unions.Choice", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unions.Choice", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unions.Choice", 1, off+i)
+				return wire.ReadError(n, "Unions.Choice", 1, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("Choice", 0, off+i)
+				return wire.DepthError("Choice", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<0) == 0 {
@@ -189,20 +194,20 @@ func (m *Unions) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 				err = _union_mergeChoice(&m.Choice, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unions.Variant", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unions.Variant", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unions.Variant", 2, off+i)
+				return wire.ReadError(n, "Unions.Variant", 2, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Variant", 0, off+i)
+				return wire.DepthError("external.Variant", 0, off+i)
 			}
 			var err error
 			if seen[0]&(1<<1) == 0 {
@@ -212,31 +217,31 @@ func (m *Unions) fieldsKanon(data []byte, slab string, off, depth int, seen [1]u
 				err = _union_mergeExternalVariant(&m.Variant, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "Unions.Variants", off+at)
+				return wire.FormatError(tag, wire.Bytes, "Unions.Variants", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "Unions.Variants", 3, off+i)
+				return wire.ReadError(n, "Unions.Variants", 3, off+i)
 			}
 			i += n
 			if err := _union_readSliceExternalVariant(&m.Variants, data[i:i+int(l)], slab, off+i, depth-1, "Unions.Variants", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "Unions", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -379,137 +384,53 @@ func _union_resetExternalVariant(m *external.Variant) {
 // _union_readChoice sets the Choice that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _union_readChoice(m *Choice, data []byte, slab string, off, depth int) error {
-	m.Text = ""
+func _union_readChoice(m *Choice, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Items = m.Items[:0]
 	m.Kind = 0
-	return _union_mergeChoice(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _union_fieldsChoice(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Text = ""
+	}
+	return err
 }
 
 // _union_mergeChoice merges the encoding in data, which starts at offset off of
 // slab, into the Choice that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _union_mergeChoice(m *Choice, data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "Choice", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Choice.Text", off+at)
-			}
-			if m.Kind != ChoiceKindText {
-				_union_deselectChoiceKind(m)
-				m.Kind = ChoiceKindText
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Choice.Text", 1, off+i)
-			}
-			i += n
-			m.Text = slab[off+i : off+i+int(l)]
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "Choice.Items", off+at)
-			}
-			if m.Kind != ChoiceKindItems {
-				_union_deselectChoiceKind(m)
-				m.Kind = ChoiceKindItems
-			}
-			m.Items = m.Items[:0]
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "Choice.Items", 2, off+i)
-			}
-			i += n
-			if err := _union_readSliceInt32(&m.Items, data[i:i+int(l)], slab, off+i, depth-1, "Choice.Items", 2); err != nil {
-				return err
-			}
-			i += int(l)
-		default:
-			n, err := wire.Skip(data[i:], tag, "Choice", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _union_mergeChoice(m *Choice, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _union_fieldsChoice(m, data, slab, off, depth, &seen)
 }
 
 // _union_readExternalVariant sets the external.Variant that m points at to the
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _union_readExternalVariant(m *external.Variant, data []byte, slab string, off, depth int) error {
-	m.Text = ""
+func _union_readExternalVariant(m *external.Variant, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Number = 0
 	m.Kind = 0
-	return _union_mergeExternalVariant(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _union_fieldsExternalVariant(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Text = ""
+	}
+	return err
 }
 
 // _union_mergeExternalVariant merges the encoding in data, which starts at
 // offset off of slab, into the external.Variant that m points at, as MergeKanon
 // does. The decode enters depth levels below m at most.
-func _union_mergeExternalVariant(m *external.Variant, data []byte, slab string, off, depth int) error {
-	for i := 0; i < len(data); {
-		at := i
-		tag, n := wire.Uvarint(data[i:])
-		if n <= 0 {
-			return wire.ReadError(n, "external.Variant", 0, off+i)
-		}
-		i += n
-		switch tag >> 3 {
-		case 1:
-			if tag != 1<<3|wire.Bytes {
-				return wire.FormatError(tag, wire.Bytes, "external.Variant.Text", off+at)
-			}
-			if m.Kind != external.VariantKindText {
-				_union_deselectExternalVariantKind(m)
-				m.Kind = external.VariantKindText
-			}
-			l, n := wire.Uvarint(data[i:])
-			if n <= 0 || uint64(len(data)-i-n) < l {
-				return wire.ReadError(n, "external.Variant.Text", 1, off+i)
-			}
-			i += n
-			m.Text = slab[off+i : off+i+int(l)]
-			i += int(l)
-		case 2:
-			if tag != 2<<3|wire.Varint {
-				return wire.FormatError(tag, wire.Varint, "external.Variant.Number", off+at)
-			}
-			if m.Kind != external.VariantKindNumber {
-				_union_deselectExternalVariantKind(m)
-				m.Kind = external.VariantKindNumber
-			}
-			u, n := wire.Uvarint(data[i:])
-			if n <= 0 {
-				return wire.ReadError(n, "external.Variant.Number", 2, off+i)
-			}
-			m.Number = wire.Unzigzag(u)
-			i += n
-		default:
-			n, err := wire.Skip(data[i:], tag, "external.Variant", 0, off+at)
-			if err != nil {
-				return err
-			}
-			i += n
-		}
-	}
-	return nil
+func _union_mergeExternalVariant(m *external.Variant, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _union_fieldsExternalVariant(m, data, slab, off, depth, &seen)
 }
 
 // _union_readSliceExternalVariant appends the elements that data encodes, a
 // []external.Variant without its length, to *dst. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _union_readSliceExternalVariant(dst *[]external.Variant, data []byte, slab string, off, depth int, loc string, num int) error {
+func _union_readSliceExternalVariant(dst *[]external.Variant, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -518,7 +439,11 @@ func _union_readSliceExternalVariant(dst *[]external.Variant, data []byte, slab 
 		x = make([]external.Variant, 0, wire.SliceCap[external.Variant](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, external.Variant{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, external.Variant{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -587,6 +512,120 @@ func _union_putSliceInt32(buf []byte, x []int32) int {
 	return len(buf) - i
 }
 
+// _union_fieldsChoice decodes the fields in data into m for the decode and the
+// merge of Choice. The first occurrence of a tracked field whose bit in seen is
+// clear decodes into the memory of the field, and every other occurrence
+// merges. _union_fieldsChoice sets the bits of the tracked fields that data
+// contains in seen.
+func _union_fieldsChoice(m *Choice, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "Choice", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Choice.Text", off+at)
+			}
+			if m.Kind != ChoiceKindText {
+				_union_deselectChoiceKind(m)
+				m.Kind = ChoiceKindText
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Choice.Text", 1, off+i)
+			}
+			i += n
+			m.Text = slab.String(m.Text, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		case 2:
+			if tag != 2<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "Choice.Items", off+at)
+			}
+			if m.Kind != ChoiceKindItems {
+				_union_deselectChoiceKind(m)
+				m.Kind = ChoiceKindItems
+			}
+			m.Items = m.Items[:0]
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "Choice.Items", 2, off+i)
+			}
+			i += n
+			if err := _union_readSliceInt32(&m.Items, data[i:i+int(l)], slab, off+i, depth-1, "Choice.Items", 2); err != nil {
+				return err
+			}
+			i += int(l)
+		default:
+			n, err := wire.Skip(data[i:], tag, "Choice", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
+	return nil
+}
+
+// _union_fieldsExternalVariant decodes the fields in data into m for the decode
+// and the merge of external.Variant. The first occurrence of a tracked field
+// whose bit in seen is clear decodes into the memory of the field, and every
+// other occurrence merges. _union_fieldsExternalVariant sets the bits of the
+// tracked fields that data contains in seen.
+func _union_fieldsExternalVariant(m *external.Variant, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
+	for i := 0; i < len(data); {
+		at := i
+		tag, n := wire.Uvarint(data[i:])
+		if n <= 0 {
+			return wire.ReadError(n, "external.Variant", 0, off+i)
+		}
+		i += n
+		switch tag >> 3 {
+		case 1:
+			if tag != 1<<3|wire.Bytes {
+				return wire.FormatError(tag, wire.Bytes, "external.Variant.Text", off+at)
+			}
+			if m.Kind != external.VariantKindText {
+				_union_deselectExternalVariantKind(m)
+				m.Kind = external.VariantKindText
+			}
+			l, n := wire.Uvarint(data[i:])
+			if n <= 0 || uint64(len(data)-i-n) < l {
+				return wire.ReadError(n, "external.Variant.Text", 1, off+i)
+			}
+			i += n
+			m.Text = slab.String(m.Text, data[i:i+int(l)], off+i)
+			i += int(l)
+			seen[0] |= 1 << 0
+		case 2:
+			if tag != 2<<3|wire.Varint {
+				return wire.FormatError(tag, wire.Varint, "external.Variant.Number", off+at)
+			}
+			if m.Kind != external.VariantKindNumber {
+				_union_deselectExternalVariantKind(m)
+				m.Kind = external.VariantKindNumber
+			}
+			u, n := wire.Uvarint(data[i:])
+			if n <= 0 {
+				return wire.ReadError(n, "external.Variant.Number", 2, off+i)
+			}
+			m.Number = wire.Unzigzag(u)
+			i += n
+		default:
+			n, err := wire.Skip(data[i:], tag, "external.Variant", 0, off+at)
+			if err != nil {
+				return err
+			}
+			i += n
+		}
+	}
+	return nil
+}
+
 // _union_deselectChoiceKind zeroes the member of the union of Choice.Kind that
 // the discriminator selects.
 func _union_deselectChoiceKind(m *Choice) {
@@ -602,7 +641,7 @@ func _union_deselectChoiceKind(m *Choice) {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _union_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _union_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}

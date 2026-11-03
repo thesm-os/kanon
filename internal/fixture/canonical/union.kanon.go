@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -131,24 +131,27 @@ func (m *Choices) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Choices) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It accepts
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It accepts
 // only the canonical encoding of a value, the input that EncodeKanon writes for
 // it, and returns a *kanon.DecodeError that wraps kanon.ErrNotCanonical for any
 // other input that the wire format lets a decoder accept. It returns a
 // *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Choices) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -158,27 +161,31 @@ func (m *Choices) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Choices) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Choices
 // call it.
-func (m *Choices) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Choices) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Items = m.Items[:0]
 	m.At = time.Time{}
 	m.Loud = false
-	m.Note = ""
 	m.Shape = 0
 	m.Tone = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Ref = nil
 	}
 	if seen[0]&(1<<1) == 0 {
 		m.Inner.Reset()
+	}
+	if seen[0]&(1<<2) == 0 {
+		m.Note = ""
 	}
 	return err
 }
@@ -187,16 +194,16 @@ func (m *Choices) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Choices
 // call it.
-func (m *Choices) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Choices) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Choices) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	var prior uint64
 	var members [1]uint64
 	i := 0
@@ -209,21 +216,21 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 			m.Shape = ShapeKindRef
 		}
 		if depth < 1 {
-			return seen, wire.DepthError("Choices.Ref", 1, off+i)
+			return wire.DepthError("Choices.Ref", 1, off+i)
 		}
 		if m.Ref == nil {
 			m.Ref = new(int32)
 		}
 		u, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Choices.Ref", 1, off+i)
+			return wire.ReadError(n, "Choices.Ref", 1, off+i)
 		}
 		s := wire.Unzigzag(u)
 		if s != int64(int32(s)) {
-			return seen, wire.RangeError(s, "int32", "Choices.Ref", 1, off+i)
+			return wire.RangeError(s, "int32", "Choices.Ref", 1, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.Ref", 1, off+i)
+			return wire.LongFormError(n, "Choices.Ref", 1, off+i)
 		}
 		*m.Ref = int32(s)
 		i += n
@@ -234,7 +241,7 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		i++
 		prior = 2
 		if members[0]&(1<<0) != 0 {
-			return seen, wire.MemberError("Shape", "Choices.Inner", 2, off+at)
+			return wire.MemberError("Shape", "Choices.Inner", 2, off+at)
 		}
 		members[0] |= 1 << 0
 		if m.Shape != ShapeKindInner {
@@ -243,20 +250,20 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Choices.Inner", 2, off+i)
+			return wire.ReadError(n, "Choices.Inner", 2, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.Inner", 2, off+i)
+			return wire.LongFormError(n, "Choices.Inner", 2, off+i)
 		}
 		i += n
 		if depth < 1 {
-			return seen, wire.DepthError("Inner", 0, off+i)
+			return wire.DepthError("Inner", 0, off+i)
 		}
 		var err error
 		seen[0] |= 1 << 1
 		err = m.Inner.decodeKanon(data[i:i+int(l)], slab, off+i, depth-1)
 		if err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 	}
@@ -265,7 +272,7 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		i++
 		prior = 3
 		if members[0]&(1<<0) != 0 {
-			return seen, wire.MemberError("Shape", "Choices.Items", 3, off+at)
+			return wire.MemberError("Shape", "Choices.Items", 3, off+at)
 		}
 		if m.Shape != ShapeKindItems {
 			_union_deselectChoicesShape(m)
@@ -274,14 +281,14 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		m.Items = m.Items[:0]
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Choices.Items", 3, off+i)
+			return wire.ReadError(n, "Choices.Items", 3, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.Items", 3, off+i)
+			return wire.LongFormError(n, "Choices.Items", 3, off+i)
 		}
 		i += n
 		if err := _union_readSliceInt32(&m.Items, data[i:i+int(l)], slab, off+i, depth-1, "Choices.Items", 3); err != nil {
-			return seen, err
+			return err
 		}
 		i += int(l)
 	}
@@ -295,15 +302,15 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Choices.At", 4, off+i)
+			return wire.ReadError(n, "Choices.At", 4, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.At", 4, off+i)
+			return wire.LongFormError(n, "Choices.At", 4, off+i)
 		}
 		i += n
 		t, err := wire.CanonicalTime(data[i:i+int(l)], "Choices.At", 4, off+i)
 		if err != nil {
-			return seen, err
+			return err
 		}
 		m.At = t
 		i += int(l)
@@ -313,7 +320,7 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		i++
 		prior = 5
 		if members[0]&(1<<1) != 0 {
-			return seen, wire.MemberError("Tone", "Choices.Loud", 5, off+at)
+			return wire.MemberError("Tone", "Choices.Loud", 5, off+at)
 		}
 		if m.Tone != ToneKindLoud {
 			_union_deselectChoicesTone(m)
@@ -321,13 +328,13 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		}
 		u, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Choices.Loud", 5, off+i)
+			return wire.ReadError(n, "Choices.Loud", 5, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.Loud", 5, off+i)
+			return wire.LongFormError(n, "Choices.Loud", 5, off+i)
 		}
 		if u > 1 {
-			return seen, wire.BoolError(u, "Choices.Loud", 5, off+i)
+			return wire.BoolError(u, "Choices.Loud", 5, off+i)
 		}
 		m.Loud = u != 0
 		i += n
@@ -338,22 +345,23 @@ func (m *Choices) fieldsKanon(data []byte, slab string, off, depth int, seen [1]
 		prior = 6
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
-			return seen, wire.ReadError(n, "Choices.Note", 6, off+i)
+			return wire.ReadError(n, "Choices.Note", 6, off+i)
 		}
 		if n > 1 && data[i+n-1] == 0 {
-			return seen, wire.LongFormError(n, "Choices.Note", 6, off+i)
+			return wire.LongFormError(n, "Choices.Note", 6, off+i)
 		}
 		i += n
-		m.Note = slab[off+i : off+i+int(l)]
+		m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 		i += int(l)
 		if l == 0 {
-			return seen, wire.AbsentError("Choices.Note", 6, off+at)
+			return wire.AbsentError("Choices.Note", 6, off+at)
 		}
+		seen[0] |= 1 << 2
 	}
 	if i != len(data) {
-		return seen, _union_tagChoices(data, i, prior, off)
+		return _union_tagChoices(data, i, prior, off)
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -442,7 +450,7 @@ func _union_deselectChoicesShape(m *Choices) {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _union_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _union_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}

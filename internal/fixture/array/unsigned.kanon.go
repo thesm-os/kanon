@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -160,14 +160,17 @@ func (m *Unsigned) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -177,15 +180,16 @@ func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Unsigned) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Unsigned call it.
-func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Unsigned) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Uint = [2]uint{}
 	m.Uint16 = [2]uint16{}
 	m.Uint32 = [2]uint32{}
@@ -204,7 +208,7 @@ func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Unsigned
 // call it.
-func (m *Unsigned) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Unsigned) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -655,7 +659,7 @@ func _unsigned_putArray2Uint(buf []byte, x *[2]uint) int {
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Uint(dst *[2]uint, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Uint(dst *[2]uint, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -675,7 +679,7 @@ func _unsigned_readArray2Uint(dst *[2]uint, data []byte, slab string, off, depth
 // [2]uint16 without its length, into *dst. It fails unless data encodes exactly
 // 2 elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Uint16(dst *[2]uint16, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Uint16(dst *[2]uint16, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -698,7 +702,7 @@ func _unsigned_readArray2Uint16(dst *[2]uint16, data []byte, slab string, off, d
 // [2]uint32 without its length, into *dst. It fails unless data encodes exactly
 // 2 elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Uint32(dst *[2]uint32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Uint32(dst *[2]uint32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -721,7 +725,7 @@ func _unsigned_readArray2Uint32(dst *[2]uint32, data []byte, slab string, off, d
 // [2]uint64 without its length, into *dst. It fails unless data encodes exactly
 // 2 elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Uint64(dst *[2]uint64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Uint64(dst *[2]uint64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -741,7 +745,7 @@ func _unsigned_readArray2Uint64(dst *[2]uint64, data []byte, slab string, off, d
 // [2]uintptr without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Uintptr(dst *[2]uintptr, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Uintptr(dst *[2]uintptr, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -761,7 +765,7 @@ func _unsigned_readArray2Uintptr(dst *[2]uintptr, data []byte, slab string, off,
 // [2]Status without its length, into *dst. It fails unless data encodes exactly
 // 2 elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Status(dst *[2]Status, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Status(dst *[2]Status, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -784,7 +788,7 @@ func _unsigned_readArray2Status(dst *[2]Status, data []byte, slab string, off, d
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Port(dst *[2]Port, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Port(dst *[2]Port, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -807,7 +811,7 @@ func _unsigned_readArray2Port(dst *[2]Port, data []byte, slab string, off, depth
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Count(dst *[2]Count, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Count(dst *[2]Count, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -830,7 +834,7 @@ func _unsigned_readArray2Count(dst *[2]Count, data []byte, slab string, off, dep
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Size(dst *[2]Size, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Size(dst *[2]Size, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -850,7 +854,7 @@ func _unsigned_readArray2Size(dst *[2]Size, data []byte, slab string, off, depth
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Index(dst *[2]Index, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Index(dst *[2]Index, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])
@@ -870,7 +874,7 @@ func _unsigned_readArray2Index(dst *[2]Index, data []byte, slab string, off, dep
 // [2]Handle without its length, into *dst. It fails unless data encodes exactly
 // 2 elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _unsigned_readArray2Handle(dst *[2]Handle, data []byte, slab string, off, depth int, loc string, num int) error {
+func _unsigned_readArray2Handle(dst *[2]Handle, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		u, n := wire.Uvarint(data[i:])

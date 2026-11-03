@@ -16,10 +16,11 @@ import (
 
 // Names of the checks of the methods that keep the memory of a receiver.
 const (
-	reuseCheck = "DecodeKanon/decodes into a receiver that decoded before as into a zero one"
-	mergeCheck = "MergeKanon/merges an encoding into a decoded value as the reference decode"
-	resetCheck = "Reset/sets the receiver to the zero value"
-	cloneCheck = "CloneKanon/returns a copy that shares no memory with the receiver"
+	reuseCheck       = "DecodeKanon/decodes into a receiver that decoded before as into a zero one"
+	slabStringsCheck = "DecodeKanon/takes every string from the slab of its options"
+	mergeCheck       = "MergeKanon/merges an encoding into a decoded value as the reference decode"
+	resetCheck       = "Reset/sets the receiver to the zero value"
+	cloneCheck       = "CloneKanon/returns a copy that shares no memory with the receiver"
 )
 
 // mergeDecode is a view.Item whose DecodeKanon merges into the receiver
@@ -29,6 +30,21 @@ type mergeDecode struct{ view.Item }
 // DecodeKanon merges data into m.
 func (m *mergeDecode) DecodeKanon(data []byte, opts kanon.Options) error {
 	return m.MergeKanon(data, opts)
+}
+
+// keepsUnderSlab is a view.Item whose DecodeKanon keeps the Name of the
+// receiver when the decoded Name equals it, also with a slab.
+type keepsUnderSlab struct{ view.Item }
+
+// DecodeKanon decodes data into m, and then sets Name to the Name before the
+// decode when the two are equal.
+func (m *keepsUnderSlab) DecodeKanon(data []byte, opts kanon.Options) error {
+	old := m.Name
+	err := m.Item.DecodeKanon(data, opts)
+	if m.Name == old {
+		m.Name = old
+	}
+	return err
 }
 
 // decodeMerge is a view.Item whose MergeKanon resets the receiver before it
@@ -155,6 +171,11 @@ func TestReuse(t *testing.T) {
 			t.Parallel()
 			rejects(t, kanontest.Spec[mergeDecode]{Fields: itemSpec.Fields}, reuseCheck,
 				"DecodeKanon into a receiver that decoded")
+		})
+		t.Run("fails for a codec whose DecodeKanon with a slab keeps a string of the receiver", func(t *testing.T) {
+			t.Parallel()
+			rejects(t, kanontest.Spec[keepsUnderSlab]{Fields: itemSpec.Fields}, slabStringsCheck,
+				"DecodeKanon takes every decoded string from the slab")
 		})
 		t.Run("fails for a codec whose MergeKanon resets the receiver", func(t *testing.T) {
 			t.Parallel()

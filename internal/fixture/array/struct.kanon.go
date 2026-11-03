@@ -22,10 +22,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -101,21 +101,24 @@ func (m *Inner) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Inner) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Inner) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -125,25 +128,39 @@ func (m *Inner) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Inner) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Inner
 // call it.
-func (m *Inner) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Label = ""
+func (m *Inner) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Count = 0
-	return m.mergeKanon(data, slab, off, depth)
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Label = ""
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Inner
 // call it.
-func (m *Inner) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Inner) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Inner) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -161,8 +178,9 @@ func (m *Inner) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Inner.Label", 1, off+i)
 			}
 			i += n
-			m.Label = slab[off+i : off+i+int(l)]
+			m.Label = slab.String(m.Label, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "Inner.Count", off+at)
@@ -336,21 +354,24 @@ func (m *Structs) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Structs) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Structs) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -360,32 +381,54 @@ func (m *Structs) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Structs) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Structs
 // call it.
-func (m *Structs) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Inner = [2]Inner{}
-	m.Label = [2]external.Label{}
-	m.Loose = [2]Loose{}
-	m.Remote = [2]external.Remote{}
-	m.Pair = [2]external.Pair[string, int32]{}
+func (m *Structs) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Anonym = [2]struct {
 		A int32
 		B int32
 	}{}
-	return m.mergeKanon(data, slab, off, depth)
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Inner = [2]Inner{}
+	}
+	if seen[0]&(1<<1) == 0 {
+		m.Label = [2]external.Label{}
+	}
+	if seen[0]&(1<<2) == 0 {
+		m.Loose = [2]Loose{}
+	}
+	if seen[0]&(1<<3) == 0 {
+		m.Remote = [2]external.Remote{}
+	}
+	if seen[0]&(1<<4) == 0 {
+		m.Pair = [2]external.Pair[string, int32]{}
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Structs
 // call it.
-func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Structs) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Structs) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -407,6 +450,7 @@ func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
 				return err
 			}
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Structs.Label", off+at)
@@ -420,6 +464,7 @@ func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
 				return err
 			}
 			i += int(l)
+			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Structs.Loose", off+at)
@@ -433,6 +478,7 @@ func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
 				return err
 			}
 			i += int(l)
+			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Structs.Remote", off+at)
@@ -446,6 +492,7 @@ func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
 				return err
 			}
 			i += int(l)
+			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Structs.Pair", off+at)
@@ -459,6 +506,7 @@ func (m *Structs) mergeKanon(data []byte, slab string, off, depth int) error {
 				return err
 			}
 			i += int(l)
+			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Structs.Anonym", off+at)
@@ -763,7 +811,7 @@ func _struct_putArray2Inner(buf []byte, x *[2]Inner) int {
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _struct_readArray2Inner(dst *[2]Inner, data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2Inner(dst *[2]Inner, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -789,7 +837,7 @@ func _struct_readArray2Inner(dst *[2]Inner, data []byte, slab string, off, depth
 // [2]external.Label without its length, into *dst. It fails unless data encodes
 // exactly 2 elements. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _struct_readArray2ExternalLabel(dst *[2]external.Label, data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2ExternalLabel(dst *[2]external.Label, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -800,7 +848,7 @@ func _struct_readArray2ExternalLabel(dst *[2]external.Label, data []byte, slab s
 		if depth < 0 {
 			return wire.DepthError("external.Label", 0, off+i)
 		}
-		if err := dst[k].DecodeKanon(data[i:i+int(l)], wire.Nested(slab, off+i, depth)); err != nil {
+		if err := slab.Locate(dst[k].DecodeKanon(data[i:i+int(l)], slab.Nested(off+i, depth)), off+i); err != nil {
 			return err
 		}
 		i += int(l)
@@ -815,7 +863,7 @@ func _struct_readArray2ExternalLabel(dst *[2]external.Label, data []byte, slab s
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _struct_readArray2Loose(dst *[2]Loose, data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2Loose(dst *[2]Loose, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -842,7 +890,7 @@ func _struct_readArray2Loose(dst *[2]Loose, data []byte, slab string, off, depth
 // encodes exactly 2 elements. data starts at offset off of slab, and the decode
 // enters depth levels below the value at most. loc and num locate the field in
 // errors.
-func _struct_readArray2ExternalRemote(dst *[2]external.Remote, data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2ExternalRemote(dst *[2]external.Remote, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -869,7 +917,7 @@ func _struct_readArray2ExternalRemote(dst *[2]external.Remote, data []byte, slab
 // fails unless data encodes exactly 2 elements. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _struct_readArray2ExternalPairStringInt32(dst *[2]external.Pair[string, int32], data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2ExternalPairStringInt32(dst *[2]external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -898,7 +946,7 @@ func _struct_readArray2ExternalPairStringInt32(dst *[2]external.Pair[string, int
 func _struct_readArray2Any(dst *[2]struct {
 	A int32
 	B int32
-}, data []byte, slab string, off, depth int, loc string, num int) error {
+}, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -924,7 +972,7 @@ func _struct_readArray2Any(dst *[2]struct {
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _struct_readArray2Any2(dst *[2]struct{}, data []byte, slab string, off, depth int, loc string, num int) error {
+func _struct_readArray2Any2(dst *[2]struct{}, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1120,21 +1168,28 @@ func _struct_putLoose(buf []byte, m *Loose) int {
 // _struct_readLoose sets the Loose that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _struct_readLoose(m *Loose, data []byte, slab string, off, depth int) error {
-	m.Note = ""
+func _struct_readLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Size = 0
-	return _struct_mergeLoose(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _struct_fieldsLoose(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Note = ""
+	}
+	return err
 }
 
 // _struct_readExternalRemote sets the external.Remote that m points at to the
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _struct_readExternalRemote(m *external.Remote, data []byte, slab string, off, depth int) error {
-	m.Name = ""
+func _struct_readExternalRemote(m *external.Remote, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Count = 0
-	seen, err := _struct_fieldsExternalRemote(m, data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := _struct_fieldsExternalRemote(m, data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
+		m.Name = ""
+	}
+	if seen[0]&(1<<1) == 0 {
 		_struct_resetExternalRemoteMeta(&m.Meta)
 	}
 	return err
@@ -1144,10 +1199,14 @@ func _struct_readExternalRemote(m *external.Remote, data []byte, slab string, of
 // that m points at to the value encoded in data and reuses its memory, as
 // DecodeKanon does. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most.
-func _struct_readExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab string, off, depth int) error {
-	m.Key = ""
+func _struct_readExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int) error {
 	m.Val = 0
-	return _struct_mergeExternalPairStringInt32(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _struct_fieldsExternalPairStringInt32(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Key = ""
+	}
+	return err
 }
 
 // _struct_readStructsAnonym sets the Structs.Anonym[] that m points at to the
@@ -1157,7 +1216,7 @@ func _struct_readExternalPairStringInt32(m *external.Pair[string, int32], data [
 func _struct_readStructsAnonym(m *struct {
 	A int32
 	B int32
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	m.A = 0
 	m.B = 0
 	return _struct_mergeStructsAnonym(m, data, slab, off, depth)
@@ -1167,7 +1226,7 @@ func _struct_readStructsAnonym(m *struct {
 // value encoded in data and reuses its memory, as DecodeKanon does. data starts
 // at offset off of slab, and the decode enters depth levels below the value at
 // most.
-func _struct_readStructsNothing(m *struct{}, data []byte, slab string, off, depth int) error {
+func _struct_readStructsNothing(m *struct{}, data []byte, slab *wire.Slab, off, depth int) error {
 	return _struct_mergeStructsNothing(m, data, slab, off, depth)
 }
 
@@ -1229,10 +1288,12 @@ func _struct_putExternalRemoteMeta(buf []byte, m *struct {
 	return len(buf) - i
 }
 
-// _struct_mergeLoose merges the encoding in data, which starts at offset off of
-// slab, into the Loose that m points at, as MergeKanon does. The decode enters
-// depth levels below m at most.
-func _struct_mergeLoose(m *Loose, data []byte, slab string, off, depth int) error {
+// _struct_fieldsLoose decodes the fields in data into m for the decode and the
+// merge of Loose. The first occurrence of a tracked field whose bit in seen is
+// clear decodes into the memory of the field, and every other occurrence
+// merges. _struct_fieldsLoose sets the bits of the tracked fields that data
+// contains in seen.
+func _struct_fieldsLoose(m *Loose, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1250,8 +1311,9 @@ func _struct_mergeLoose(m *Loose, data []byte, slab string, off, depth int) erro
 				return wire.ReadError(n, "Loose.Note", 1, off+i)
 			}
 			i += n
-			m.Note = slab[off+i : off+i+int(l)]
+			m.Note = slab.String(m.Note, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "Loose.Size", off+at)
@@ -1279,74 +1341,75 @@ func _struct_mergeLoose(m *Loose, data []byte, slab string, off, depth int) erro
 // _struct_fieldsExternalRemote decodes the fields in data into m for the decode
 // and the merge of external.Remote. The first occurrence of a tracked field
 // whose bit in seen is clear decodes into the memory of the field, and every
-// other occurrence merges. _struct_fieldsExternalRemote returns seen with the
-// bits of the tracked fields that data contains.
-func _struct_fieldsExternalRemote(m *external.Remote, data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// other occurrence merges. _struct_fieldsExternalRemote sets the bits of the
+// tracked fields that data contains in seen.
+func _struct_fieldsExternalRemote(m *external.Remote, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "external.Remote", 0, off+i)
+			return wire.ReadError(n, "external.Remote", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Remote.Name", off+at)
+				return wire.FormatError(tag, wire.Bytes, "external.Remote.Name", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Remote.Name", 1, off+i)
+				return wire.ReadError(n, "external.Remote.Name", 1, off+i)
 			}
 			i += n
-			m.Name = slab[off+i : off+i+int(l)]
+			m.Name = slab.String(m.Name, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "external.Remote.Count", off+at)
+				return wire.FormatError(tag, wire.Varint, "external.Remote.Count", off+at)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "external.Remote.Count", 2, off+i)
+				return wire.ReadError(n, "external.Remote.Count", 2, off+i)
 			}
 			s := wire.Unzigzag(u)
 			if s != int64(int32(s)) {
-				return seen, wire.RangeError(s, "int32", "external.Remote.Count", 2, off+i)
+				return wire.RangeError(s, "int32", "external.Remote.Count", 2, off+i)
 			}
 			m.Count = int32(s)
 			i += n
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "external.Remote.Meta", off+at)
+				return wire.FormatError(tag, wire.Bytes, "external.Remote.Meta", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "external.Remote.Meta", 3, off+i)
+				return wire.ReadError(n, "external.Remote.Meta", 3, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("external.Remote.Meta", 0, off+i)
+				return wire.DepthError("external.Remote.Meta", 0, off+i)
 			}
 			var err error
-			if seen[0]&(1<<0) == 0 {
-				seen[0] |= 1 << 0
+			if seen[0]&(1<<1) == 0 {
+				seen[0] |= 1 << 1
 				err = _struct_readExternalRemoteMeta(&m.Meta, data[i:i+int(l)], slab, off+i, depth-1)
 			} else {
 				err = _struct_mergeExternalRemoteMeta(&m.Meta, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "external.Remote", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // _struct_resetExternalRemoteMeta clears the external.Remote.Meta that m points
@@ -1359,11 +1422,13 @@ func _struct_resetExternalRemoteMeta(m *struct {
 	m.Rank = 0
 }
 
-// _struct_mergeExternalPairStringInt32 merges the encoding in data, which
-// starts at offset off of slab, into the external.Pair[string, int32] that m
-// points at, as MergeKanon does. The decode enters depth levels below m at
-// most.
-func _struct_mergeExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab string, off, depth int) error {
+// _struct_fieldsExternalPairStringInt32 decodes the fields in data into m for
+// the decode and the merge of external.Pair[string, int32]. The first
+// occurrence of a tracked field whose bit in seen is clear decodes into the
+// memory of the field, and every other occurrence merges.
+// _struct_fieldsExternalPairStringInt32 sets the bits of the tracked fields
+// that data contains in seen.
+func _struct_fieldsExternalPairStringInt32(m *external.Pair[string, int32], data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1381,8 +1446,9 @@ func _struct_mergeExternalPairStringInt32(m *external.Pair[string, int32], data 
 				return wire.ReadError(n, "external.Pair[string, int32].Key", 1, off+i)
 			}
 			i += n
-			m.Key = slab[off+i : off+i+int(l)]
+			m.Key = slab.String(m.Key, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "external.Pair[string, int32].Val", off+at)
@@ -1414,7 +1480,7 @@ func _struct_mergeExternalPairStringInt32(m *external.Pair[string, int32], data 
 func _struct_mergeStructsAnonym(m *struct {
 	A int32
 	B int32
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1465,7 +1531,7 @@ func _struct_mergeStructsAnonym(m *struct {
 // _struct_mergeStructsNothing merges the encoding in data, which starts at
 // offset off of slab, into the Structs.Nothing[] that m points at, as
 // MergeKanon does. The decode enters depth levels below m at most.
-func _struct_mergeStructsNothing(m *struct{}, data []byte, slab string, off, depth int) error {
+func _struct_mergeStructsNothing(m *struct{}, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1499,10 +1565,14 @@ func _struct_cloneExternalRemoteMeta(dst, src *struct {
 func _struct_readExternalRemoteMeta(m *struct {
 	Tag  string
 	Rank external.Rank
-}, data []byte, slab string, off, depth int) error {
-	m.Tag = ""
+}, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Rank = 0
-	return _struct_mergeExternalRemoteMeta(m, data, slab, off, depth)
+	var seen [1]uint64
+	err := _struct_fieldsExternalRemoteMeta(m, data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Tag = ""
+	}
+	return err
 }
 
 // _struct_mergeExternalRemoteMeta merges the encoding in data, which starts at
@@ -1511,7 +1581,20 @@ func _struct_readExternalRemoteMeta(m *struct {
 func _struct_mergeExternalRemoteMeta(m *struct {
 	Tag  string
 	Rank external.Rank
-}, data []byte, slab string, off, depth int) error {
+}, data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return _struct_fieldsExternalRemoteMeta(m, data, slab, off, depth, &seen)
+}
+
+// _struct_fieldsExternalRemoteMeta decodes the fields in data into m for the
+// decode and the merge of external.Remote.Meta. The first occurrence of a
+// tracked field whose bit in seen is clear decodes into the memory of the
+// field, and every other occurrence merges. _struct_fieldsExternalRemoteMeta
+// sets the bits of the tracked fields that data contains in seen.
+func _struct_fieldsExternalRemoteMeta(m *struct {
+	Tag  string
+	Rank external.Rank
+}, data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1529,8 +1612,9 @@ func _struct_mergeExternalRemoteMeta(m *struct {
 				return wire.ReadError(n, "external.Remote.Meta.Tag", 1, off+i)
 			}
 			i += n
-			m.Tag = slab[off+i : off+i+int(l)]
+			m.Tag = slab.String(m.Tag, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
 				return wire.FormatError(tag, wire.Varint, "external.Remote.Meta.Rank", off+at)

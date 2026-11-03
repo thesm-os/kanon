@@ -324,15 +324,30 @@
 //
 // The allocation checks count the allocations of SizeKanon, of EncodeKanon
 // and AppendBinary into a buffer with room for the encoding, of DecodeKanon
-// with a slab into a receiver that decoded the encoding before, and of a
-// stream decoder that reads an encoding that it read before to its end
-// after Reset. Each allows none. They measure every sample except the wide
-// samples and the samples that contain a value that
+// with a slab and with the zero Options into a receiver that decoded the
+// encoding before, and of a stream decoder that reads an encoding that it
+// read before to its end after Reset. Each allows none. They measure every
+// sample except the wide samples and the samples that contain a value that
 // [go.thesmos.sh/kanon.Message] lists as allocating, and the golden file
 // pins the samples that they measure.
 // They count through testing.AllocsPerRun, which panics while a parallel
 // test runs, so [Run] runs them first and serially, and [Check.Serial]
 // marks them.
+//
+// One more check measures the copy of the input. It changes the first byte
+// of every string that the decode of T reads itself in a receiver that
+// decoded the encoding before, and DecodeKanon with the zero Options then
+// allocates one copy of the input at most. A struct with a kanon codec of
+// another package copies its own encoding, so the check leaves its strings
+// as they are. The check also clears the input after a decode with the zero
+// Options, and the decoded value must not change.
+//
+// # Strings and the slab
+//
+// A check decodes the encoding of every sample with the zero Options, and
+// then again into the same receiver with a slab. The second decode must take
+// every string that is not empty from the slab, also where the receiver has
+// an equal string.
 //
 // # Dependency position
 //

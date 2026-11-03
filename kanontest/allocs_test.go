@@ -4,7 +4,9 @@
 package kanontest_test
 
 import (
+	"strings"
 	"testing"
+	"unsafe"
 
 	"go.dokimi.dev/assert"
 
@@ -20,6 +22,9 @@ const (
 	encodeAllocsCheck = "EncodeKanon/allocates nothing into a buffer of the length of the encoding"
 	appendAllocsCheck = "AppendBinary/allocates nothing into a buffer with room for the encoding"
 	decodeAllocsCheck = "DecodeKanon/allocates nothing into a receiver that decoded the encoding before"
+	keepAllocsCheck   = "DecodeKanon/allocates nothing with the zero Options into a receiver that decoded the " +
+		"encoding before"
+	copiesCheck = "DecodeKanon/copies the input once for the strings that change"
 )
 
 // escaped keeps the memory that the codecs that allocate allocate, so that
@@ -51,6 +56,42 @@ func (m *allocating) AppendBinary(b []byte) ([]byte, error) {
 // DecodeKanon decodes data into m, and allocates.
 func (m *allocating) DecodeKanon(data []byte, opts kanon.Options) error {
 	escaped = make([]byte, 1)
+	return m.Item.DecodeKanon(data, opts)
+}
+
+// copyAlways is a view.Item whose DecodeKanon with an empty Slab copies the
+// input on every call.
+type copyAlways struct{ view.Item }
+
+// DecodeKanon decodes data into m, with a copy of data as the slab when opts
+// has an empty Slab.
+func (m *copyAlways) DecodeKanon(data []byte, opts kanon.Options) error {
+	if opts.Slab == "" {
+		opts.Slab = string(data)
+	}
+	return m.Item.DecodeKanon(data, opts)
+}
+
+// copyTwice is a view.Item whose DecodeKanon copies the decoded Name again.
+type copyTwice struct{ view.Item }
+
+// DecodeKanon decodes data into m, and replaces Name with a copy of it.
+func (m *copyTwice) DecodeKanon(data []byte, opts kanon.Options) error {
+	err := m.Item.DecodeKanon(data, opts)
+	m.Name = strings.Clone(m.Name)
+	return err
+}
+
+// aliasInput is a view.Item whose DecodeKanon with an empty Slab takes the
+// strings from the input itself.
+type aliasInput struct{ view.Item }
+
+// DecodeKanon decodes data into m, with a slab that aliases data when opts
+// has an empty Slab.
+func (m *aliasInput) DecodeKanon(data []byte, opts kanon.Options) error {
+	if opts.Slab == "" {
+		opts.Slab = unsafe.String(unsafe.SliceData(data), len(data))
+	}
 	return m.Item.DecodeKanon(data, opts)
 }
 
@@ -125,6 +166,21 @@ func TestAllocs(t *testing.T) {
 			countsAllocations(t)
 			rejects(t, kanontest.Spec[allocating]{Fields: itemSpec.Fields}, decodeAllocsCheck,
 				"DecodeKanon allocates nothing")
+		})
+		t.Run("fails for a codec whose DecodeKanon with the zero Options copies an input that repeats",
+			func(t *testing.T) {
+				countsAllocations(t)
+				rejects(t, kanontest.Spec[copyAlways]{Fields: itemSpec.Fields}, keepAllocsCheck,
+					"DecodeKanon with the zero Options allocates nothing")
+			})
+		t.Run("fails for a codec whose DecodeKanon copies a changed string twice", func(t *testing.T) {
+			countsAllocations(t)
+			rejects(t, kanontest.Spec[copyTwice]{Fields: itemSpec.Fields}, copiesCheck,
+				"DecodeKanon with the zero Options copies the input once for the strings that change")
+		})
+		t.Run("fails for a codec whose DecodeKanon with the zero Options aliases the input", func(t *testing.T) {
+			rejects(t, kanontest.Spec[aliasInput]{Fields: itemSpec.Fields}, copiesCheck,
+				"the strings that DecodeKanon decodes with the zero Options do not change with the input")
 		})
 	})
 }

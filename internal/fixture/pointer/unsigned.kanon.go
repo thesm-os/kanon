@@ -13,10 +13,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -167,14 +167,17 @@ func (m *Unsigned) UnmarshalBinary(data []byte) error {
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -184,16 +187,18 @@ func (m *Unsigned) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Unsigned) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := "", opts.Offset
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := opts.Offset
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain
 // Unsigned call it.
-func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+func (m *Unsigned) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		m.Uint = nil
 	}
@@ -237,242 +242,242 @@ func (m *Unsigned) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Unsigned
 // call it.
-func (m *Unsigned) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *Unsigned) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *Unsigned) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Unsigned) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "Unsigned", 0, off+i)
+			return wire.ReadError(n, "Unsigned", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uint", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uint", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uint", 1, off+i)
+				return wire.DepthError("Unsigned.Uint", 1, off+i)
 			}
 			if m.Uint == nil {
 				m.Uint = new(uint)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 || u != uint64(uint(u)) {
-				return seen, wire.VarintError(n, u, "uint", "Unsigned.Uint", 1, off+i)
+				return wire.VarintError(n, u, "uint", "Unsigned.Uint", 1, off+i)
 			}
 			*m.Uint = uint(u)
 			i += n
 			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uint8", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uint8", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uint8", 2, off+i)
+				return wire.DepthError("Unsigned.Uint8", 2, off+i)
 			}
 			if m.Uint8 == nil {
 				m.Uint8 = new(uint8)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Uint8", 2, off+i)
+				return wire.ReadError(n, "Unsigned.Uint8", 2, off+i)
 			}
 			if u != uint64(uint8(u)) {
-				return seen, wire.RangeError(u, "uint8", "Unsigned.Uint8", 2, off+i)
+				return wire.RangeError(u, "uint8", "Unsigned.Uint8", 2, off+i)
 			}
 			*m.Uint8 = uint8(u)
 			i += n
 			seen[0] |= 1 << 1
 		case 3:
 			if tag != 3<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uint16", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uint16", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uint16", 3, off+i)
+				return wire.DepthError("Unsigned.Uint16", 3, off+i)
 			}
 			if m.Uint16 == nil {
 				m.Uint16 = new(uint16)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Uint16", 3, off+i)
+				return wire.ReadError(n, "Unsigned.Uint16", 3, off+i)
 			}
 			if u != uint64(uint16(u)) {
-				return seen, wire.RangeError(u, "uint16", "Unsigned.Uint16", 3, off+i)
+				return wire.RangeError(u, "uint16", "Unsigned.Uint16", 3, off+i)
 			}
 			*m.Uint16 = uint16(u)
 			i += n
 			seen[0] |= 1 << 2
 		case 4:
 			if tag != 4<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uint32", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uint32", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uint32", 4, off+i)
+				return wire.DepthError("Unsigned.Uint32", 4, off+i)
 			}
 			if m.Uint32 == nil {
 				m.Uint32 = new(uint32)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Uint32", 4, off+i)
+				return wire.ReadError(n, "Unsigned.Uint32", 4, off+i)
 			}
 			if u != uint64(uint32(u)) {
-				return seen, wire.RangeError(u, "uint32", "Unsigned.Uint32", 4, off+i)
+				return wire.RangeError(u, "uint32", "Unsigned.Uint32", 4, off+i)
 			}
 			*m.Uint32 = uint32(u)
 			i += n
 			seen[0] |= 1 << 3
 		case 5:
 			if tag != 5<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uint64", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uint64", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uint64", 5, off+i)
+				return wire.DepthError("Unsigned.Uint64", 5, off+i)
 			}
 			if m.Uint64 == nil {
 				m.Uint64 = new(uint64)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Uint64", 5, off+i)
+				return wire.ReadError(n, "Unsigned.Uint64", 5, off+i)
 			}
 			*m.Uint64 = u
 			i += n
 			seen[0] |= 1 << 4
 		case 6:
 			if tag != 6<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Uintptr", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Uintptr", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Uintptr", 6, off+i)
+				return wire.DepthError("Unsigned.Uintptr", 6, off+i)
 			}
 			if m.Uintptr == nil {
 				m.Uintptr = new(uintptr)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 || u != uint64(uintptr(u)) {
-				return seen, wire.VarintError(n, u, "uintptr", "Unsigned.Uintptr", 6, off+i)
+				return wire.VarintError(n, u, "uintptr", "Unsigned.Uintptr", 6, off+i)
 			}
 			*m.Uintptr = uintptr(u)
 			i += n
 			seen[0] |= 1 << 5
 		case 7:
 			if tag != 7<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Status", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Status", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Status", 7, off+i)
+				return wire.DepthError("Unsigned.Status", 7, off+i)
 			}
 			if m.Status == nil {
 				m.Status = new(Status)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Status", 7, off+i)
+				return wire.ReadError(n, "Unsigned.Status", 7, off+i)
 			}
 			if u != uint64(uint8(u)) {
-				return seen, wire.RangeError(u, "uint8", "Unsigned.Status", 7, off+i)
+				return wire.RangeError(u, "uint8", "Unsigned.Status", 7, off+i)
 			}
 			*m.Status = Status(u)
 			i += n
 			seen[0] |= 1 << 6
 		case 8:
 			if tag != 8<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Port", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Port", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Port", 8, off+i)
+				return wire.DepthError("Unsigned.Port", 8, off+i)
 			}
 			if m.Port == nil {
 				m.Port = new(Port)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Port", 8, off+i)
+				return wire.ReadError(n, "Unsigned.Port", 8, off+i)
 			}
 			if u != uint64(uint16(u)) {
-				return seen, wire.RangeError(u, "uint16", "Unsigned.Port", 8, off+i)
+				return wire.RangeError(u, "uint16", "Unsigned.Port", 8, off+i)
 			}
 			*m.Port = Port(u)
 			i += n
 			seen[0] |= 1 << 7
 		case 9:
 			if tag != 9<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Count", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Count", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Count", 9, off+i)
+				return wire.DepthError("Unsigned.Count", 9, off+i)
 			}
 			if m.Count == nil {
 				m.Count = new(Count)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Count", 9, off+i)
+				return wire.ReadError(n, "Unsigned.Count", 9, off+i)
 			}
 			if u != uint64(uint32(u)) {
-				return seen, wire.RangeError(u, "uint32", "Unsigned.Count", 9, off+i)
+				return wire.RangeError(u, "uint32", "Unsigned.Count", 9, off+i)
 			}
 			*m.Count = Count(u)
 			i += n
 			seen[0] |= 1 << 8
 		case 10:
 			if tag != 10<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Size", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Size", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Size", 10, off+i)
+				return wire.DepthError("Unsigned.Size", 10, off+i)
 			}
 			if m.Size == nil {
 				m.Size = new(Size)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "Unsigned.Size", 10, off+i)
+				return wire.ReadError(n, "Unsigned.Size", 10, off+i)
 			}
 			*m.Size = Size(u)
 			i += n
 			seen[0] |= 1 << 9
 		case 11:
 			if tag != 11<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Index", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Index", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Index", 11, off+i)
+				return wire.DepthError("Unsigned.Index", 11, off+i)
 			}
 			if m.Index == nil {
 				m.Index = new(Index)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 || u != uint64(uint(u)) {
-				return seen, wire.VarintError(n, u, "uint", "Unsigned.Index", 11, off+i)
+				return wire.VarintError(n, u, "uint", "Unsigned.Index", 11, off+i)
 			}
 			*m.Index = Index(u)
 			i += n
 			seen[0] |= 1 << 10
 		case 12:
 			if tag != 12<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "Unsigned.Handle", off+at)
+				return wire.FormatError(tag, wire.Varint, "Unsigned.Handle", off+at)
 			}
 			if depth < 1 {
-				return seen, wire.DepthError("Unsigned.Handle", 12, off+i)
+				return wire.DepthError("Unsigned.Handle", 12, off+i)
 			}
 			if m.Handle == nil {
 				m.Handle = new(Handle)
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 || u != uint64(uintptr(u)) {
-				return seen, wire.VarintError(n, u, "uintptr", "Unsigned.Handle", 12, off+i)
+				return wire.VarintError(n, u, "uintptr", "Unsigned.Handle", 12, off+i)
 			}
 			*m.Handle = Handle(u)
 			i += n
@@ -480,12 +485,12 @@ func (m *Unsigned) fieldsKanon(data []byte, slab string, off, depth int, seen [1
 		default:
 			n, err := wire.Skip(data[i:], tag, "Unsigned", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out

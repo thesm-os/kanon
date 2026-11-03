@@ -41,3 +41,4 @@ DecodeKanon/decodes an encoding with a float component of a map key of -0.0 as t
 DecodeKanon/decodes an encoding with a value written as zero bytes as the reference decode: 25 probes, digest 9444e9b172687880
 the samples that the encode allocation checks measure: 0 samples, digest cbf29ce484222325
 the samples that the decode allocation check measures: 0 samples, digest cbf29ce484222325
+the samples that the decode allocation checks with the zero Options measure: 0 samples, digest cbf29ce484222325

@@ -15,10 +15,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -141,21 +141,24 @@ func (m *Nested) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Nested) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Nested) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -165,15 +168,16 @@ func (m *Nested) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Nested) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Nested
 // call it.
-func (m *Nested) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *Nested) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Ints = m.Ints[:0]
 	m.Words = m.Words[:0]
 	m.Rows = m.Rows[:0]
@@ -190,7 +194,7 @@ func (m *Nested) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Nested
 // call it.
-func (m *Nested) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Nested) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -553,7 +557,7 @@ func _nested_putSliceSliceInt32(buf []byte, x [][]int32) int {
 // [][]int32 without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -587,7 +591,7 @@ func _nested_readSliceSliceInt32(dst *[][]int32, data []byte, slab string, off, 
 // [][]string without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceSliceString(dst *[][]string, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceString(dst *[][]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -621,7 +625,7 @@ func _nested_readSliceSliceString(dst *[][]string, data []byte, slab string, off
 // [][2]string without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceArray2String(dst *[][2]string, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceArray2String(dst *[][2]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -630,7 +634,11 @@ func _nested_readSliceArray2String(dst *[][2]string, data []byte, slab string, o
 		x = make([][2]string, 0, wire.SliceCap[[2]string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, [2]string{})
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, [2]string{})
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
@@ -650,7 +658,7 @@ func _nested_readSliceArray2String(dst *[][2]string, data []byte, slab string, o
 // []map[string]int32 without its length, to *dst. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -683,7 +691,7 @@ func _nested_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab 
 // [][]time.Time without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceSliceTimeTime(dst *[][]time.Time, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceTimeTime(dst *[][]time.Time, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -717,7 +725,7 @@ func _nested_readSliceSliceTimeTime(dst *[][]time.Time, data []byte, slab string
 // [][0]byte without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _nested_readSliceArray0Byte(dst *[][0]byte, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceArray0Byte(dst *[][0]byte, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -746,7 +754,7 @@ func _nested_readSliceArray0Byte(dst *[][0]byte, data []byte, slab string, off, 
 // [][][]int64 without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceSliceSliceInt64(dst *[][][]int64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceSliceInt64(dst *[][][]int64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -779,7 +787,7 @@ func _nested_readSliceSliceSliceInt64(dst *[][][]int64, data []byte, slab string
 // _nested_readTree appends the elements that data encodes, a Tree without its
 // length, to *dst. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _nested_readTree(dst *Tree, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readTree(dst *Tree, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -813,7 +821,7 @@ func _nested_readTree(dst *Tree, data []byte, slab string, off, depth int, loc s
 // [][0]*int32 without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceArray0PtrInt32(dst *[][0]*int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceArray0PtrInt32(dst *[][0]*int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1156,7 +1164,7 @@ func _nested_putSliceInt32(buf []byte, x []int32) int {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceInt32(dst *[]int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1186,7 +1194,7 @@ func _nested_readSliceInt32(dst *[]int32, data []byte, slab string, off, depth i
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readSliceString(dst *[]string, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceString(dst *[]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1195,14 +1203,18 @@ func _nested_readSliceString(dst *[]string, data []byte, slab string, off, depth
 		x = make([]string, 0, wire.SliceCap[string](wire.CountValues(data)))
 	}
 	for i := 0; i < len(data); {
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = slab[off+i : off+i+int(l)]
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
 		i += int(l)
 	}
 	*dst = x
@@ -1213,7 +1225,7 @@ func _nested_readSliceString(dst *[]string, data []byte, slab string, off, depth
 // without its length, into *dst. It fails unless data encodes exactly 2
 // elements. data starts at offset off of slab, and the decode enters depth
 // levels below the value at most. loc and num locate the field in errors.
-func _nested_readArray2String(dst *[2]string, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readArray2String(dst *[2]string, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	i := 0
 	for k := range dst {
 		l, n := wire.Uvarint(data[i:])
@@ -1221,7 +1233,7 @@ func _nested_readArray2String(dst *[2]string, data []byte, slab string, off, dep
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		dst[k] = slab[off+i : off+i+int(l)]
+		dst[k] = slab.String(dst[k], data[i:i+int(l)], off+i)
 		i += int(l)
 	}
 	if i != len(data) {
@@ -1235,7 +1247,7 @@ func _nested_readArray2String(dst *[2]string, data []byte, slab string, off, dep
 // *dst first, and the entries reuse the memory of up to 16 of its values. data
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. loc and num locate the field in errors.
-func _nested_readMapStringInt32(dst *map[string]int32, data []byte, slab string, off, depth int, collect bool, loc string, num int) error {
+func _nested_readMapStringInt32(dst *map[string]int32, data []byte, slab *wire.Slab, off, depth int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1256,7 +1268,7 @@ func _nested_readMapStringInt32(dst *map[string]int32, data []byte, slab string,
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		{
@@ -1280,7 +1292,7 @@ func _nested_readMapStringInt32(dst *map[string]int32, data []byte, slab string,
 // []time.Time without its length, to *dst. data starts at offset off of slab,
 // and the decode enters depth levels below the value at most. loc and num
 // locate the field in errors.
-func _nested_readSliceTimeTime(dst *[]time.Time, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceTimeTime(dst *[]time.Time, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1311,7 +1323,7 @@ func _nested_readSliceTimeTime(dst *[]time.Time, data []byte, slab string, off, 
 // [][]int64 without its length, to *dst. data starts at offset off of slab, and
 // the decode enters depth levels below the value at most. loc and num locate
 // the field in errors.
-func _nested_readSliceSliceInt64(dst *[][]int64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceSliceInt64(dst *[][]int64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1425,7 +1437,7 @@ func _nested_putSliceInt64(buf []byte, x []int64) int {
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _nested_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _nested_readSliceInt64(dst *[]int64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}

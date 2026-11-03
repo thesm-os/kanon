@@ -39,11 +39,13 @@
 //
 // # Decoding without a copy
 //
-// Every decoded string is a substring of the slab that [Options] name, a
-// string of which the input is a substring. With the zero Options a decode
-// copies its input once and uses the copy as the slab. A caller that owns
-// the input buffer passes the buffer itself as the slab, and the decode
-// then allocates nothing for its strings.
+// A decode with a slab in its [Options], a string of which the input is a
+// substring, takes every decoded string from the slab. A caller that owns
+// the input buffer passes the buffer itself as the slab, and the decode then
+// allocates nothing for its strings. With the zero Options, a decode keeps
+// each string of its receiver that the input repeats at its place, and
+// copies its input once for the strings that change, so a decode into a
+// receiver that decoded the same strings before allocates nothing for them.
 //
 // # Canonical decoding
 //

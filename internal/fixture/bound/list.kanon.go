@@ -18,10 +18,10 @@ import (
 	"go.thesmos.sh/kanon/wire"
 )
 
-// The file compiles against a runtime that supports version 5 of the generator.
+// The file compiles against a runtime that supports version 6 of the generator.
 const (
-	_ = kanon.EnforceVersion(5 - kanon.MinVersion)
-	_ = kanon.EnforceVersion(kanon.MaxVersion - 5)
+	_ = kanon.EnforceVersion(6 - kanon.MinVersion)
+	_ = kanon.EnforceVersion(kanon.MaxVersion - 6)
 )
 
 // The generated types implement kanon.Cloner.
@@ -196,21 +196,24 @@ func (m *List) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *List) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *List) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -220,24 +223,25 @@ func (m *List) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *List) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain List
 // call it.
-func (m *List) decodeKanon(data []byte, slab string, off, depth int) error {
+func (m *List) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Counts = m.Counts[:0]
 	m.Totals = m.Totals[:0]
 	m.Grid = m.Grid[:0]
 	m.Tables = m.Tables[:0]
 	m.Tags = m.Tags[:0]
 	m.Code = 0
-	m.Name = ""
 	m.Kind = 0
-	seen, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{})
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
 	if seen[0]&(1<<0) == 0 {
 		clear(m.Scores)
 	}
@@ -245,6 +249,9 @@ func (m *List) decodeKanon(data []byte, slab string, off, depth int) error {
 		clear(m.Refs)
 	}
 	if seen[0]&(1<<2) == 0 {
+		m.Name = ""
+	}
+	if seen[0]&(1<<3) == 0 {
 		_list_resetWindow(&m.Window)
 	}
 	return err
@@ -254,107 +261,107 @@ func (m *List) decodeKanon(data []byte, slab string, off, depth int) error {
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain List
 // call it.
-func (m *List) mergeKanon(data []byte, slab string, off, depth int) error {
-	_, err := m.fieldsKanon(data, slab, off, depth, [1]uint64{^uint64(0)})
-	return err
+func (m *List) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
 }
 
 // fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
 // The first occurrence of a tracked field whose bit in seen is clear decodes
 // into the memory of the field, and every other occurrence merges. fieldsKanon
-// returns seen with the bits of the tracked fields that data contains.
-func (m *List) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uint64) ([1]uint64, error) {
+// sets the bits of the tracked fields that data contains in seen.
+func (m *List) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
 		if n <= 0 {
-			return seen, wire.ReadError(n, "List", 0, off+i)
+			return wire.ReadError(n, "List", 0, off+i)
 		}
 		i += n
 		switch tag >> 3 {
 		case 1:
 			if tag != 1<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Counts", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Counts", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Counts", 1, off+i)
+				return wire.ReadError(n, "List.Counts", 1, off+i)
 			}
 			i += n
 			if err := _list_readSliceInt64(&m.Counts, data[i:i+int(l)], slab, off+i, depth-1, 3, "List.Counts", 1); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 2:
 			if tag != 2<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Totals", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Totals", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Totals", 2, off+i)
+				return wire.ReadError(n, "List.Totals", 2, off+i)
 			}
 			i += n
 			if err := _list_readSliceInt64(&m.Totals, data[i:i+int(l)], slab, off+i, depth-1, math.MaxInt, "List.Totals", 2); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 3:
 			if tag != 3<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Grid", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Grid", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Grid", 3, off+i)
+				return wire.ReadError(n, "List.Grid", 3, off+i)
 			}
 			i += n
 			if err := _list_readSliceSliceInt64(&m.Grid, data[i:i+int(l)], slab, off+i, depth-1, "List.Grid", 3); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 4:
 			if tag != 4<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Scores", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Scores", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Scores", 4, off+i)
+				return wire.ReadError(n, "List.Scores", 4, off+i)
 			}
 			i += n
 			if err := _list_readMapStringInt32(&m.Scores, data[i:i+int(l)], slab, off+i, depth-1, 3, seen[0]&(1<<0) == 0, "List.Scores", 4); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 0
 		case 5:
 			if tag != 5<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Refs", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Refs", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Refs", 5, off+i)
+				return wire.ReadError(n, "List.Refs", 5, off+i)
 			}
 			i += n
 			if err := _list_readMapPtrInt32String(&m.Refs, data[i:i+int(l)], slab, off+i, depth-1, 4, seen[0]&(1<<1) == 0, "List.Refs", 5); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 			seen[0] |= 1 << 1
 		case 9:
 			if tag != 9<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Tables", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Tables", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Tables", 9, off+i)
+				return wire.ReadError(n, "List.Tables", 9, off+i)
 			}
 			i += n
 			if err := _list_readSliceMapStringInt32(&m.Tables, data[i:i+int(l)], slab, off+i, depth-1, 2, "List.Tables", 9); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 6:
 			if tag != 6<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Tags", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Tags", off+at)
 			}
 			if m.Kind != ListKindTags {
 				_list_deselectListKind(m)
@@ -363,16 +370,16 @@ func (m *List) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			m.Tags = m.Tags[:0]
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Tags", 6, off+i)
+				return wire.ReadError(n, "List.Tags", 6, off+i)
 			}
 			i += n
 			if err := _list_readSliceString(&m.Tags, data[i:i+int(l)], slab, off+i, depth-1, 2, "List.Tags", 6); err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		case 7:
 			if tag != 7<<3|wire.Varint {
-				return seen, wire.FormatError(tag, wire.Varint, "List.Code", off+at)
+				return wire.FormatError(tag, wire.Varint, "List.Code", off+at)
 			}
 			if m.Kind != ListKindCode {
 				_list_deselectListKind(m)
@@ -380,13 +387,13 @@ func (m *List) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			}
 			u, n := wire.Uvarint(data[i:])
 			if n <= 0 {
-				return seen, wire.ReadError(n, "List.Code", 7, off+i)
+				return wire.ReadError(n, "List.Code", 7, off+i)
 			}
 			m.Code = wire.Unzigzag(u)
 			i += n
 		case 10:
 			if tag != 10<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Name", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Name", off+at)
 			}
 			if m.Kind != ListKindName {
 				_list_deselectListKind(m)
@@ -394,46 +401,47 @@ func (m *List) fieldsKanon(data []byte, slab string, off, depth int, seen [1]uin
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Name", 10, off+i)
+				return wire.ReadError(n, "List.Name", 10, off+i)
 			}
 			i += n
 			if l > 2 {
-				return seen, wire.MaxError("List.Name", 10, off+i+2, 2)
+				return wire.MaxError("List.Name", 10, off+i+2, 2)
 			}
-			m.Name = slab[off+i : off+i+int(l)]
+			m.Name = slab.String(m.Name, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 2
 		case 8:
 			if tag != 8<<3|wire.Bytes {
-				return seen, wire.FormatError(tag, wire.Bytes, "List.Window", off+at)
+				return wire.FormatError(tag, wire.Bytes, "List.Window", off+at)
 			}
 			l, n := wire.Uvarint(data[i:])
 			if n <= 0 || uint64(len(data)-i-n) < l {
-				return seen, wire.ReadError(n, "List.Window", 8, off+i)
+				return wire.ReadError(n, "List.Window", 8, off+i)
 			}
 			i += n
 			if depth < 1 {
-				return seen, wire.DepthError("window", 0, off+i)
+				return wire.DepthError("window", 0, off+i)
 			}
 			var err error
-			if seen[0]&(1<<2) == 0 {
-				seen[0] |= 1 << 2
+			if seen[0]&(1<<3) == 0 {
+				seen[0] |= 1 << 3
 				err = _list_readWindow(&m.Window, data[i:i+int(l)], slab, off+i, depth-1)
 			} else {
 				err = _list_mergeWindow(&m.Window, data[i:i+int(l)], slab, off+i, depth-1)
 			}
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += int(l)
 		default:
 			n, err := wire.Skip(data[i:], tag, "List", 0, off+at)
 			if err != nil {
-				return seen, err
+				return err
 			}
 			i += n
 		}
 	}
-	return seen, nil
+	return nil
 }
 
 // Reset clears every field of m, the fields that the encoding leaves out
@@ -582,21 +590,24 @@ func (m *Shelf) MarshalBinary() ([]byte, error) {
 }
 
 // UnmarshalBinary sets m to the value encoded in data, as DecodeKanon does with
-// the zero Options, which copy data once.
+// the zero Options, which copy data once for the strings that change.
 func (m *Shelf) UnmarshalBinary(data []byte) error {
 	return m.DecodeKanon(data, kanon.Options{})
 }
 
 // DecodeKanon sets m to the value encoded in data and reuses the memory of m:
 // the values that its pointers point at, its nested structs, the capacity of
-// its slices and maps, and up to 16 values of each map whose values refer to
-// memory. It first clears the fields that the encoding leaves out, as Reset
-// does. Every decoded string is a substring of the slab of opts. It returns a
-// *kanon.DecodeError for malformed input, after which m contains the fields
+// its slices and maps, up to 16 values of each map whose values refer to
+// memory, and its strings. It first clears the fields that the encoding leaves
+// out, as Reset does. With a slab in opts, every decoded string is a substring
+// of the slab. Without one, the decode keeps each string of m that data repeats
+// at its place, and takes every other string from one copy of data. It returns
+// a *kanon.DecodeError for malformed input, after which m contains the fields
 // decoded before the error.
 func (m *Shelf) DecodeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.decodeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.decodeKanon(data, &slab, off, opts.Limit())
 }
 
 // MergeKanon decodes data into m without resetting m first, with the options
@@ -606,25 +617,39 @@ func (m *Shelf) DecodeKanon(data []byte, opts kanon.Options) error {
 // union, and any other field takes the value in data. The fields that the
 // encoding leaves out keep their values.
 func (m *Shelf) MergeKanon(data []byte, opts kanon.Options) error {
-	slab, off := opts.Source(data)
-	return m.mergeKanon(data, slab, off, opts.Limit())
+	var slab wire.Slab
+	off := slab.Reset(data, opts)
+	return m.mergeKanon(data, &slab, off, opts.Limit())
 }
 
 // decodeKanon sets m to the value encoded in data, which starts at offset off
 // of slab, as DecodeKanon does. The decode enters depth levels below m at most.
 // DecodeKanon and the decode of the structs of the package that contain Shelf
 // call it.
-func (m *Shelf) decodeKanon(data []byte, slab string, off, depth int) error {
-	m.Name = ""
+func (m *Shelf) decodeKanon(data []byte, slab *wire.Slab, off, depth int) error {
 	m.Lists = m.Lists[:0]
-	return m.mergeKanon(data, slab, off, depth)
+	var seen [1]uint64
+	err := m.fieldsKanon(data, slab, off, depth, &seen)
+	if seen[0]&(1<<0) == 0 {
+		m.Name = ""
+	}
+	return err
 }
 
 // mergeKanon merges the encoding in data, which starts at offset off of slab,
 // into m, as MergeKanon does. The decode enters depth levels below m at most.
 // MergeKanon and the decode of the structs of the package that contain Shelf
 // call it.
-func (m *Shelf) mergeKanon(data []byte, slab string, off, depth int) error {
+func (m *Shelf) mergeKanon(data []byte, slab *wire.Slab, off, depth int) error {
+	seen := [1]uint64{^uint64(0)}
+	return m.fieldsKanon(data, slab, off, depth, &seen)
+}
+
+// fieldsKanon decodes the fields in data into m for decodeKanon and mergeKanon.
+// The first occurrence of a tracked field whose bit in seen is clear decodes
+// into the memory of the field, and every other occurrence merges. fieldsKanon
+// sets the bits of the tracked fields that data contains in seen.
+func (m *Shelf) fieldsKanon(data []byte, slab *wire.Slab, off, depth int, seen *[1]uint64) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -642,8 +667,9 @@ func (m *Shelf) mergeKanon(data []byte, slab string, off, depth int) error {
 				return wire.ReadError(n, "Shelf.Name", 1, off+i)
 			}
 			i += n
-			m.Name = slab[off+i : off+i+int(l)]
+			m.Name = slab.String(m.Name, data[i:i+int(l)], off+i)
 			i += int(l)
+			seen[0] |= 1 << 0
 		case 2:
 			if tag != 2<<3|wire.Bytes {
 				return wire.FormatError(tag, wire.Bytes, "Shelf.Lists", off+at)
@@ -927,7 +953,7 @@ func _list_resetWindow(m *window) {
 // decode enters depth levels below the value at most. It fails at an element
 // that would take the slice past bound elements. loc and num locate the field
 // in errors.
-func _list_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth, bound int, loc string, num int) error {
+func _list_readSliceInt64(dst *[]int64, data []byte, slab *wire.Slab, off, depth, bound int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -956,7 +982,7 @@ func _list_readSliceInt64(dst *[]int64, data []byte, slab string, off, depth, bo
 // without its length, to *dst. data starts at offset off of slab, and the
 // decode enters depth levels below the value at most. loc and num locate the
 // field in errors.
-func _list_readSliceSliceInt64(dst *[][]int64, data []byte, slab string, off, depth int, loc string, num int) error {
+func _list_readSliceSliceInt64(dst *[][]int64, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -992,7 +1018,7 @@ func _list_readSliceSliceInt64(dst *[][]int64, data []byte, slab string, off, de
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. It fails at an entry that would take the map past bound
 // elements. loc and num locate the field in errors.
-func _list_readMapStringInt32(dst *map[string]int32, data []byte, slab string, off, depth, bound int, collect bool, loc string, num int) error {
+func _list_readMapStringInt32(dst *map[string]int32, data []byte, slab *wire.Slab, off, depth, bound int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1014,7 +1040,7 @@ func _list_readMapStringInt32(dst *map[string]int32, data []byte, slab string, o
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mk = slab[off+i : off+i+int(l)]
+			mk = slab.String(mk, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		if len(x) >= bound {
@@ -1045,7 +1071,7 @@ func _list_readMapStringInt32(dst *map[string]int32, data []byte, slab string, o
 // starts at offset off of slab, and the decode enters depth levels below the
 // value at most. It fails at an entry that would take the map past bound
 // elements. loc and num locate the field in errors.
-func _list_readMapPtrInt32String(dst *map[*int32]string, data []byte, slab string, off, depth, bound int, collect bool, loc string, num int) error {
+func _list_readMapPtrInt32String(dst *map[*int32]string, data []byte, slab *wire.Slab, off, depth, bound int, collect bool, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1087,7 +1113,7 @@ func _list_readMapPtrInt32String(dst *map[*int32]string, data []byte, slab strin
 				return wire.ReadError(n, loc, num, off+i)
 			}
 			i += n
-			mv = slab[off+i : off+i+int(l)]
+			mv = slab.String(mv, data[i:i+int(l)], off+i)
 			i += int(l)
 		}
 		x[mk] = mv
@@ -1104,7 +1130,7 @@ func _list_readMapPtrInt32String(dst *map[*int32]string, data []byte, slab strin
 // slab, and the decode enters depth levels below the value at most. It fails at
 // an element that would take the slice past bound elements. loc and num locate
 // the field in errors.
-func _list_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab string, off, depth, bound int, loc string, num int) error {
+func _list_readSliceMapStringInt32(dst *[]map[string]int32, data []byte, slab *wire.Slab, off, depth, bound int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1154,7 +1180,7 @@ func _list_deselectListKind(m *List) {
 // decode enters depth levels below the value at most. It fails at an element
 // that would take the slice past bound elements. loc and num locate the field
 // in errors.
-func _list_readSliceString(dst *[]string, data []byte, slab string, off, depth, bound int, loc string, num int) error {
+func _list_readSliceString(dst *[]string, data []byte, slab *wire.Slab, off, depth, bound int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1166,14 +1192,18 @@ func _list_readSliceString(dst *[]string, data []byte, slab string, off, depth, 
 		if len(x) >= bound {
 			return wire.MaxError(loc, num, off+i, bound)
 		}
-		x = append(x, "")
+		if len(x) < cap(x) {
+			x = x[:len(x)+1]
+		} else {
+			x = append(x, "")
+		}
 		last := len(x) - 1
 		l, n := wire.Uvarint(data[i:])
 		if n <= 0 || uint64(len(data)-i-n) < l {
 			return wire.ReadError(n, loc, num, off+i)
 		}
 		i += n
-		x[last] = slab[off+i : off+i+int(l)]
+		x[last] = slab.String(x[last], data[i:i+int(l)], off+i)
 		i += int(l)
 	}
 	*dst = x
@@ -1183,7 +1213,7 @@ func _list_readSliceString(dst *[]string, data []byte, slab string, off, depth, 
 // _list_readWindow sets the window that m points at to the value encoded in
 // data and reuses its memory, as DecodeKanon does. data starts at offset off of
 // slab, and the decode enters depth levels below the value at most.
-func _list_readWindow(m *window, data []byte, slab string, off, depth int) error {
+func _list_readWindow(m *window, data []byte, slab *wire.Slab, off, depth int) error {
 	m.Marks = m.Marks[:0]
 	m.Stamp = m.Stamp[:0]
 	return _list_mergeWindow(m, data, slab, off, depth)
@@ -1192,7 +1222,7 @@ func _list_readWindow(m *window, data []byte, slab string, off, depth int) error
 // _list_mergeWindow merges the encoding in data, which starts at offset off of
 // slab, into the window that m points at, as MergeKanon does. The decode enters
 // depth levels below m at most.
-func _list_mergeWindow(m *window, data []byte, slab string, off, depth int) error {
+func _list_mergeWindow(m *window, data []byte, slab *wire.Slab, off, depth int) error {
 	for i := 0; i < len(data); {
 		at := i
 		tag, n := wire.Uvarint(data[i:])
@@ -1362,7 +1392,7 @@ func _list_putSliceList(buf []byte, x []List, loc string, num int) (int, error) 
 // _list_readSliceList appends the elements that data encodes, a []List without
 // its length, to *dst. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _list_readSliceList(dst *[]List, data []byte, slab string, off, depth int, loc string, num int) error {
+func _list_readSliceList(dst *[]List, data []byte, slab *wire.Slab, off, depth int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
@@ -1478,7 +1508,7 @@ func _list_canonPtrInt32(x *int32) bool {
 // presence byte 1 the value that follows, into the value that *dst points at or
 // into a new one. data starts at offset off of slab, and the decode enters
 // depth levels below the value at most. loc and num locate the field in errors.
-func _list_readPtrInt32(dst **int32, data []byte, slab string, off, depth int, loc string, num int) (int, error) {
+func _list_readPtrInt32(dst **int32, data []byte, slab *wire.Slab, off, depth int, loc string, num int) (int, error) {
 	if depth < 0 {
 		return 0, wire.DepthError(loc, num, off)
 	}
@@ -1514,7 +1544,7 @@ func _list_readPtrInt32(dst **int32, data []byte, slab string, off, depth int, l
 // decode enters depth levels below the value at most. It fails at an element
 // that would take the slice past bound elements. loc and num locate the field
 // in errors.
-func _list_readSliceUint32(dst *[]uint32, data []byte, slab string, off, depth, bound int, loc string, num int) error {
+func _list_readSliceUint32(dst *[]uint32, data []byte, slab *wire.Slab, off, depth, bound int, loc string, num int) error {
 	if depth < 0 {
 		return wire.DepthError(loc, num, off)
 	}
